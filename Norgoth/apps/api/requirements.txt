@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+pydantic
+redis
+httpx
+sqlalchemy>=2.0.51
+psycopg[binary]>=3.3
+alembic>=1.18
+cryptography>=49
+python-dotenv
+python-multipart>=0.0.9
+Pillow>=10
+pytest>=9
+greenlet

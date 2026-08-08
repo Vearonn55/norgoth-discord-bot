@@ -1,0 +1,164 @@
+"use client";
+
+import type { CSSProperties } from "react";
+import { Icon } from "@/components/ui/icon";
+import { Switch } from "@/components/ui/switch";
+import type { NorgothCategory } from "@/lib/design/category";
+import { categoryAccent } from "@/lib/design/category";
+
+export type MiniFeatureStatus =
+  | "enabled"
+  | "disabled"
+  | "configured"
+  | "needs-attention"
+  | "neutral";
+
+const STATUS_LABELS: Record<MiniFeatureStatus, string> = {
+  enabled: "Enabled",
+  disabled: "Disabled",
+  configured: "Configured",
+  "needs-attention": "Needs attention",
+  neutral: "",
+};
+
+const STATUS_COLORS: Record<MiniFeatureStatus, string> = {
+  enabled: "var(--cui-success)",
+  disabled: "var(--cui-secondary)",
+  configured: "var(--cui-info)",
+  "needs-attention": "var(--cui-warning)",
+  neutral: "var(--cui-secondary)",
+};
+
+type MiniFeatureCardProps = {
+  icon: string | string[];
+  name: string;
+  description?: string;
+  category?: NorgothCategory;
+  status?: MiniFeatureStatus;
+  /** Overrides the default status label text. */
+  statusLabel?: string;
+  onClick: () => void;
+  /**
+   * When provided, an inline enable toggle is rendered on the card. Enabled
+   * cards use a green accent; disabled cards are neutral. The toggle text label
+   * (Enabled/Disabled) is always shown so color is not the only signal.
+   */
+  enabled?: boolean;
+  onToggle?: (checked: boolean) => void;
+  toggleDisabled?: boolean;
+};
+
+/**
+ * Compact, dense feature card. Shows an icon, name, short description and a
+ * status dot/badge, and opens a configuration modal on click. Category color
+ * drives the accent unless an enable toggle is present, in which case the
+ * accent becomes green when enabled and neutral when disabled.
+ */
+export function MiniFeatureCard({
+  icon,
+  name,
+  description,
+  category,
+  status = "neutral",
+  statusLabel,
+  onClick,
+  enabled,
+  onToggle,
+  toggleDisabled = false,
+}: MiniFeatureCardProps) {
+  const hasToggle = typeof onToggle === "function";
+  const categoryColor = category ? categoryAccent(category) : undefined;
+  const accent = hasToggle
+    ? enabled
+      ? "var(--cui-success)"
+      : "rgba(241, 244, 250, 0.28)"
+    : categoryColor;
+
+  const iconColor = hasToggle
+    ? enabled
+      ? "var(--cui-success)"
+      : "var(--cui-secondary)"
+    : categoryColor;
+
+  const label = statusLabel ?? STATUS_LABELS[status];
+  const accentStyle = accent
+    ? ({ ["--norgoth-section-accent" as string]: accent } as CSSProperties)
+    : undefined;
+
+  const body = (
+    <>
+      <span
+        className="norgoth-mini-card-icon flex-shrink-0 d-inline-flex align-items-center justify-content-center"
+        style={iconColor ? { color: iconColor, borderColor: accent } : undefined}
+        aria-hidden
+      >
+        <Icon icon={icon} height={20} />
+      </span>
+      <span className="min-w-0 flex-grow-1">
+        <span className="d-flex align-items-center justify-content-between gap-2">
+          <span className="fw-semibold text-white text-truncate">{name}</span>
+          {!hasToggle && label ? (
+            <span className="norgoth-mini-card-status small d-inline-flex align-items-center gap-1 flex-shrink-0">
+              <span
+                className="norgoth-mini-card-dot"
+                style={{ background: STATUS_COLORS[status] }}
+                aria-hidden
+              />
+              {label}
+            </span>
+          ) : null}
+        </span>
+        {description ? (
+          <span className="d-block small text-body-secondary mt-1">
+            {description}
+          </span>
+        ) : null}
+      </span>
+    </>
+  );
+
+  if (!hasToggle) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className="norgoth-mini-card text-start w-100 d-flex align-items-start gap-3 p-3"
+        style={accentStyle}
+      >
+        {body}
+      </button>
+    );
+  }
+
+  return (
+    <div
+      className="norgoth-mini-card d-flex align-items-start gap-3 p-3"
+      style={accentStyle}
+    >
+      <button
+        type="button"
+        onClick={onClick}
+        className="norgoth-mini-card-hit"
+        aria-label={`Configure ${name}`}
+      >
+        {body}
+      </button>
+      <span className="norgoth-mini-card-toggle">
+        <span
+          className="small flex-shrink-0"
+          style={{
+            color: enabled ? "var(--cui-success)" : "var(--cui-secondary)",
+          }}
+        >
+          {enabled ? "Enabled" : "Disabled"}
+        </span>
+        <Switch
+          checked={!!enabled}
+          disabled={toggleDisabled}
+          onChange={(checked) => onToggle?.(checked)}
+          aria-label={`Toggle ${name}`}
+        />
+      </span>
+    </div>
+  );
+}

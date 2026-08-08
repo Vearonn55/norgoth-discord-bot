@@ -1,0 +1,39 @@
+{
+  "name": "dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "postinstall": "rm -rf public/tinymce && cp -R node_modules/tinymce public/tinymce"
+  },
+  "dependencies": {
+    "@coreui/coreui": "^5.9.0",
+    "@coreui/icons": "^3.1.0",
+    "@coreui/icons-react": "^2.3.0",
+    "@coreui/react": "^5.13.0",
+    "@emoji-mart/data": "^1.2.1",
+    "@tinymce/tinymce-react": "^6.3.0",
+    "next": "16.2.4",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "recharts": "^3.8.1",
+    "tinymce": "^8.8.2",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.4",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "vitest": "^3.2.7"
+  }
+}

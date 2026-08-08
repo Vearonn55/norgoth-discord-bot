@@ -1,0 +1,1177 @@
+@import "@coreui/coreui/dist/css/coreui.min.css";
+
+/* High-contrast dark palette (within CoreUI dark family) */
+html[data-coreui-theme="dark"],
+html.dark-theme {
+  color-scheme: dark;
+
+  --cui-body-bg: #0b0e14;
+  --cui-body-color: #f1f4fa;
+  --cui-body-color-rgb: 241, 244, 250;
+  --cui-body-bg-rgb: 11, 14, 20;
+
+  --cui-emphasis-color: #ffffff;
+  --cui-secondary-color: rgba(241, 244, 250, 0.72);
+  --cui-tertiary-color: rgba(241, 244, 250, 0.55);
+  --cui-secondary-bg: #151b26;
+  --cui-tertiary-bg: #1c2433;
+  --cui-secondary-bg-rgb: 21, 27, 38;
+  --cui-tertiary-bg-rgb: 28, 36, 51;
+
+  --cui-border-width: 1px;
+  --cui-border-color: rgba(180, 198, 230, 0.28);
+  --cui-border-color-translucent: rgba(180, 198, 230, 0.22);
+
+  --cui-card-bg: #141a24;
+  --cui-card-cap-bg: #1a2230;
+  --cui-card-border-color: rgba(180, 198, 230, 0.32);
+  --cui-card-border-width: 1px;
+  --cui-card-box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 8px 24px rgba(0, 0, 0, 0.35);
+
+  --cui-heading-color: #ffffff;
+  --cui-link-color: #8eb6ff;
+  --cui-link-hover-color: #b7d0ff;
+
+  --cui-form-control-bg: #0f141d;
+  --cui-form-control-color: #f1f4fa;
+  --cui-form-control-border-color: rgba(180, 198, 230, 0.38);
+  --cui-form-control-focus-border-color: #6ea8fe;
+  --cui-form-control-disabled-bg: #121722;
+  --cui-input-bg: #0f141d;
+  --cui-input-border-color: rgba(180, 198, 230, 0.38);
+  --cui-input-focus-border-color: #6ea8fe;
+  --cui-input-placeholder-color: rgba(241, 244, 250, 0.45);
+  --cui-input-disabled-bg: #121722;
+  --cui-form-select-indicator-color: #c5d0e6;
+
+  --cui-table-bg: transparent;
+  --cui-table-color: #e8eef8;
+  --cui-table-border-color: rgba(180, 198, 230, 0.22);
+  --cui-table-striped-bg: rgba(255, 255, 255, 0.035);
+  --cui-table-hover-bg: rgba(110, 168, 254, 0.1);
+  --cui-table-active-bg: rgba(110, 168, 254, 0.14);
+
+  --cui-primary: #6ea8fe;
+  --cui-primary-rgb: 110, 168, 254;
+  --cui-primary-text-emphasis: #cfe2ff;
+  --cui-primary-bg-subtle: rgba(110, 168, 254, 0.16);
+  --cui-primary-border-subtle: rgba(110, 168, 254, 0.45);
+
+  --cui-success: #3dd68c;
+  --cui-success-rgb: 61, 214, 140;
+  --cui-danger: #ff6b7a;
+  --cui-danger-rgb: 255, 107, 122;
+  --cui-warning: #ffc857;
+  --cui-warning-rgb: 255, 200, 87;
+  --cui-info: #5ec8ff;
+  --cui-info-rgb: 94, 200, 255;
+
+  --norgoth-sidebar-width: 280px;
+  --norgoth-shell-header-height: 64px;
+  --norgoth-shell-border: rgba(180, 198, 230, 0.22);
+  --norgoth-activity-max-height: 640px;
+  --norgoth-surface: #141a24;
+  --norgoth-surface-elevated: #1a2230;
+  --norgoth-ink: #f1f4fa;
+  --norgoth-ink-muted: rgba(241, 244, 250, 0.72);
+  --norgoth-ink-faint: rgba(241, 244, 250, 0.52);
+
+  /* Card border hierarchy */
+  --norgoth-card-border-primary: rgba(241, 244, 250, 0.22);
+  --norgoth-card-border-secondary: rgba(241, 244, 250, 0.1);
+
+  /* Category accents (identity — not status colors) */
+  --norgoth-cat-dashboard: #6ea8fe;
+  --norgoth-cat-community: #3dd68c;
+  --norgoth-cat-messages: #5ec8ff;
+  --norgoth-cat-campaigns: #b794f6;
+  --norgoth-cat-moderation: #ff6b7a;
+  --norgoth-cat-security: #ff8f6b;
+  --norgoth-cat-support: #5eead4;
+  --norgoth-cat-analytics: #f0abfc;
+  --norgoth-cat-operations: #94a3b8;
+  --norgoth-cat-logging: #fbbf24;
+  --norgoth-cat-roles: #f472b6;
+  --norgoth-cat-invitations: #34d399;
+  --norgoth-cat-leveling: #facc15;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--cui-body-bg);
+  color: var(--cui-body-color);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Stronger muted text than CoreUI default */
+.text-body-secondary {
+  color: var(--norgoth-ink-muted) !important;
+}
+
+.text-body-tertiary {
+  color: var(--norgoth-ink-faint) !important;
+}
+
+/* Keep campaign message preview readable in dark theme */
+.prose-preview {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  overflow: hidden;
+  color: var(--norgoth-ink);
+}
+
+.prose-preview p {
+  margin: 0 0 0.5rem 0;
+}
+
+.prose-preview p:last-child {
+  margin-bottom: 0;
+}
+
+.prose-preview h1,
+.prose-preview h2,
+.prose-preview h3 {
+  margin: 0.5rem 0 0.25rem 0;
+  font-weight: 600;
+  color: #fff;
+}
+
+.prose-preview h1 {
+  font-size: 1.25rem;
+}
+
+.prose-preview h2 {
+  font-size: 1.1rem;
+}
+
+.prose-preview h3 {
+  font-size: 1rem;
+}
+
+.prose-preview ul,
+.prose-preview ol {
+  margin: 0.25rem 0 0.5rem 1.25rem;
+}
+
+.prose-preview a {
+  text-decoration: underline;
+  color: var(--cui-link-color);
+}
+
+.prose-preview code {
+  border-radius: 0.25rem;
+  background: var(--cui-tertiary-bg);
+  padding: 0.1rem 0.3rem;
+  font-size: 0.85em;
+}
+
+.prose-preview pre {
+  border-radius: 0.5rem;
+  background: var(--cui-tertiary-bg);
+  padding: 0.75rem;
+  overflow-x: auto;
+}
+
+.prose-preview blockquote {
+  margin: 0.25rem 0;
+  border-left: 3px solid var(--cui-border-color);
+  padding-left: 0.75rem;
+  color: var(--norgoth-ink-muted);
+}
+
+/* Viewport-locked app shell */
+.norgoth-app {
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+  background: var(--cui-body-bg);
+}
+
+.norgoth-sidebar {
+  --cui-sidebar-width: var(--norgoth-sidebar-width);
+  width: var(--norgoth-sidebar-width) !important;
+  min-width: var(--norgoth-sidebar-width);
+  height: 100vh !important;
+  position: fixed !important;
+  top: 0;
+  left: 0;
+  z-index: 1030;
+  display: flex !important;
+  flex-direction: column;
+  background: #080b11 !important;
+  border-right: 1px solid var(--norgoth-shell-border) !important;
+}
+
+.norgoth-sidebar .sidebar-header {
+  height: var(--norgoth-shell-header-height);
+  min-height: var(--norgoth-shell-header-height);
+  max-height: var(--norgoth-shell-header-height);
+  flex-shrink: 0;
+  padding: 0 1rem !important;
+  border-bottom: 1px solid var(--norgoth-shell-border) !important;
+  box-sizing: border-box;
+}
+
+.norgoth-sidebar .sidebar-brand {
+  color: #fff !important;
+  line-height: 1.2;
+}
+
+.norgoth-sidebar .nav-title {
+  color: rgba(241, 244, 250, 0.48) !important;
+  font-size: 0.68rem !important;
+  letter-spacing: 0.12em;
+  margin-top: 0.75rem;
+}
+
+.norgoth-sidebar .nav-link {
+  color: rgba(241, 244, 250, 0.78) !important;
+  border-radius: 0.5rem;
+  margin: 0.1rem 0.55rem;
+  padding: 0.55rem 0.75rem !important;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.norgoth-sidebar .nav-link .nav-icon {
+  color: rgba(241, 244, 250, 0.55);
+}
+
+.norgoth-sidebar .nav-link:hover {
+  color: #fff !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+
+.norgoth-sidebar .nav-link:hover .nav-icon {
+  color: #cfe2ff;
+}
+
+.norgoth-sidebar .nav-link.active {
+  color: #fff !important;
+  background: rgba(110, 168, 254, 0.18) !important;
+  box-shadow: inset 3px 0 0 #6ea8fe;
+  font-weight: 600;
+}
+
+.norgoth-sidebar .nav-link.active .nav-icon {
+  color: #8eb6ff;
+}
+
+.norgoth-sidebar .sidebar-nav,
+.norgoth-sidebar-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto !important;
+}
+
+.norgoth-sidebar .sidebar-footer {
+  background: #080b11;
+  border-top-color: rgba(180, 198, 230, 0.2) !important;
+}
+
+.norgoth-main {
+  margin-left: var(--norgoth-sidebar-width);
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  background: linear-gradient(180deg, #0d121a 0%, #0b0e14 40%);
+}
+
+.norgoth-main .header,
+.norgoth-topbar {
+  height: var(--norgoth-shell-header-height);
+  min-height: var(--norgoth-shell-header-height);
+  max-height: var(--norgoth-shell-header-height);
+  flex-shrink: 0;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  background: rgba(14, 18, 26, 0.92) !important;
+  border-bottom: 1px solid var(--norgoth-shell-border) !important;
+  backdrop-filter: blur(10px);
+  box-sizing: border-box;
+}
+
+.norgoth-main-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 2rem;
+}
+
+.norgoth-main-body > .container-fluid {
+  padding-top: 1.25rem !important;
+}
+
+.norgoth-page-header h1 {
+  color: #fff;
+  letter-spacing: -0.02em;
+}
+
+.norgoth-page-header .norgoth-page-icon {
+  width: 2.75rem;
+  height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  background: rgba(110, 168, 254, 0.14);
+  border: 1px solid rgba(110, 168, 254, 0.35);
+  color: #9ec5fe;
+}
+
+.norgoth-activity-panel {
+  max-height: var(--norgoth-activity-max-height);
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--norgoth-surface);
+  border: 1px solid var(--cui-card-border-color) !important;
+  border-radius: 0.75rem;
+  box-shadow: var(--cui-card-box-shadow);
+}
+
+.norgoth-activity-panel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Cards */
+.card,
+.norgoth-card,
+.norgoth-section-card {
+  background: var(--norgoth-surface) !important;
+  box-shadow: var(--cui-card-box-shadow);
+}
+
+.norgoth-section-card-primary,
+.norgoth-card.norgoth-section-card-primary {
+  border: 1px solid var(--norgoth-card-border-primary) !important;
+}
+
+.norgoth-section-card-secondary,
+.norgoth-card.norgoth-section-card-secondary {
+  border: 1px solid var(--norgoth-card-border-secondary) !important;
+}
+
+.norgoth-section-card[style*="--norgoth-section-accent"] {
+  border-left: 3px solid var(--norgoth-section-accent) !important;
+}
+
+.norgoth-section-card-header {
+  background: transparent !important;
+  border-bottom-color: var(--norgoth-card-border-secondary) !important;
+}
+
+.norgoth-card-static {
+  border: 1px solid var(--norgoth-card-border-primary) !important;
+}
+
+.norgoth-card.norgoth-section-card-secondary.norgoth-card-static {
+  border-color: var(--norgoth-card-border-secondary) !important;
+}
+
+.norgoth-card-interactive {
+  border: 1px solid rgba(110, 168, 254, 0.42) !important;
+  background: linear-gradient(
+    180deg,
+    rgba(110, 168, 254, 0.08) 0%,
+    var(--norgoth-surface) 48%
+  ) !important;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease,
+    transform 0.15s ease, background 0.15s ease;
+}
+
+.norgoth-card-interactive:hover,
+.norgoth-card-interactive:focus-visible {
+  border-color: rgba(110, 168, 254, 0.85) !important;
+  box-shadow: 0 0 0 0.2rem rgba(110, 168, 254, 0.18),
+    var(--cui-card-box-shadow);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+/* Category headers */
+.norgoth-category-header {
+  border-left: 3px solid transparent;
+  padding-left: 0.85rem;
+}
+
+.norgoth-category-header-icon {
+  width: 2.25rem;
+  height: 2.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid;
+  border-radius: 0.5rem;
+  background: rgba(241, 244, 250, 0.04);
+}
+
+/* Discord role badge */
+.norgoth-discord-role-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(241, 244, 250, 0.28);
+  background: rgba(241, 244, 250, 0.08);
+  color: var(--norgoth-ink);
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.norgoth-discord-role-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.norgoth-role-picker-item .norgoth-discord-role-badge {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: inherit;
+}
+
+/* High-contrast pagination */
+.norgoth-pagination-bar .btn,
+.norgoth-pagination-btn {
+  color: var(--norgoth-ink) !important;
+  border-color: rgba(241, 244, 250, 0.35) !important;
+  background: rgba(241, 244, 250, 0.06) !important;
+}
+
+.norgoth-pagination-bar .btn:hover:not(:disabled),
+.norgoth-pagination-btn:hover:not(:disabled) {
+  border-color: rgba(110, 168, 254, 0.75) !important;
+  background: rgba(110, 168, 254, 0.16) !important;
+  color: #fff !important;
+}
+
+.norgoth-pagination-bar .btn:disabled,
+.norgoth-pagination-btn:disabled {
+  opacity: 0.45;
+  color: var(--norgoth-ink-faint) !important;
+}
+
+.norgoth-pagination .page-item .page-link,
+.norgoth-pagination .page-item.active .page-link {
+  color: #fff !important;
+  background: rgba(110, 168, 254, 0.28) !important;
+  border-color: rgba(110, 168, 254, 0.55) !important;
+  font-weight: 600;
+  min-width: 3.25rem;
+  text-align: center;
+}
+
+.norgoth-date-range-picker .btn-group .btn {
+  font-weight: 600;
+}
+
+/* Metric widgets */
+.norgoth-metric-widget {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--cui-card-border-color);
+  border-radius: 0.75rem;
+  background: var(--norgoth-surface);
+  padding: 1rem 1.1rem 1rem 1.25rem;
+  box-shadow: var(--cui-card-box-shadow);
+  min-height: 6.5rem;
+}
+
+.norgoth-metric-widget::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--norgoth-accent, var(--cui-primary));
+}
+
+.norgoth-metric-widget[data-accent="primary"] {
+  --norgoth-accent: var(--cui-primary);
+  background: linear-gradient(
+    135deg,
+    rgba(110, 168, 254, 0.12),
+    var(--norgoth-surface) 55%
+  );
+}
+
+.norgoth-metric-widget[data-accent="danger"] {
+  --norgoth-accent: var(--cui-danger);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 107, 122, 0.12),
+    var(--norgoth-surface) 55%
+  );
+}
+
+/* Retry heatmap intensity cells — dark tints, not Bootstrap *-subtle */
+.norgoth-heatmap-cell {
+  background: var(--norgoth-surface);
+  border-color: var(--norgoth-card-border-secondary) !important;
+}
+
+.norgoth-heatmap-cell[data-intensity="low"] {
+  background: rgba(94, 200, 255, 0.1);
+  border-color: rgba(94, 200, 255, 0.45) !important;
+}
+
+.norgoth-heatmap-cell[data-intensity="medium"] {
+  background: rgba(255, 200, 87, 0.1);
+  border-color: rgba(255, 200, 87, 0.5) !important;
+}
+
+.norgoth-heatmap-cell[data-intensity="high"] {
+  background: rgba(255, 107, 122, 0.12);
+  border-color: rgba(255, 107, 122, 0.55) !important;
+}
+
+.norgoth-metric-widget[data-accent="warning"] {
+  --norgoth-accent: var(--cui-warning);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 200, 87, 0.12),
+    var(--norgoth-surface) 55%
+  );
+}
+
+.norgoth-metric-widget[data-accent="success"] {
+  --norgoth-accent: var(--cui-success);
+  background: linear-gradient(
+    135deg,
+    rgba(61, 214, 140, 0.12),
+    var(--norgoth-surface) 55%
+  );
+}
+
+.norgoth-metric-widget[data-accent="info"] {
+  --norgoth-accent: var(--cui-info);
+  background: linear-gradient(
+    135deg,
+    rgba(94, 200, 255, 0.12),
+    var(--norgoth-surface) 55%
+  );
+}
+
+.norgoth-metric-widget .norgoth-metric-label {
+  color: var(--norgoth-ink-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.norgoth-metric-widget .norgoth-metric-value {
+  color: #fff;
+}
+
+.norgoth-metric-widget .norgoth-metric-icon {
+  width: 2.25rem;
+  height: 2.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.55rem;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--norgoth-accent, var(--cui-primary));
+}
+
+/* Forms — clearer fields */
+.form-control,
+.form-select,
+.input-group-text {
+  background-color: var(--cui-form-control-bg) !important;
+  border-color: var(--cui-form-control-border-color) !important;
+  color: var(--cui-form-control-color) !important;
+}
+
+.form-control::placeholder {
+  color: var(--cui-input-placeholder-color) !important;
+  opacity: 1;
+}
+
+.form-control:focus,
+.form-select:focus {
+  background-color: #121826 !important;
+  border-color: var(--cui-form-control-focus-border-color) !important;
+  box-shadow: 0 0 0 0.2rem rgba(110, 168, 254, 0.22) !important;
+  color: #fff !important;
+}
+
+.form-label {
+  color: rgba(241, 244, 250, 0.86);
+  font-weight: 500;
+  margin-bottom: 0.35rem;
+}
+
+/* Buttons — secondary outlines more visible */
+.btn-outline-secondary,
+.btn-outline-light {
+  --cui-btn-color: #d7e0f2;
+  --cui-btn-border-color: rgba(180, 198, 230, 0.45);
+  --cui-btn-hover-bg: rgba(255, 255, 255, 0.08);
+  --cui-btn-hover-border-color: rgba(180, 198, 230, 0.7);
+  --cui-btn-hover-color: #fff;
+  --cui-btn-active-bg: rgba(255, 255, 255, 0.12);
+  --cui-btn-active-border-color: rgba(180, 198, 230, 0.8);
+}
+
+.btn-ghost-light,
+.btn-ghost-secondary {
+  --cui-btn-color: rgba(241, 244, 250, 0.78);
+  --cui-btn-hover-color: #fff;
+  --cui-btn-hover-bg: rgba(255, 255, 255, 0.06);
+}
+
+.btn-primary {
+  --cui-btn-bg: #4d8dff;
+  --cui-btn-border-color: #4d8dff;
+  --cui-btn-hover-bg: #6ea8fe;
+  --cui-btn-hover-border-color: #6ea8fe;
+  font-weight: 600;
+}
+
+/* Tables */
+.table {
+  --cui-table-color: var(--cui-table-color);
+  --cui-table-border-color: var(--cui-table-border-color);
+}
+
+.table > :not(caption) > * > * {
+  background-color: transparent;
+  color: var(--cui-table-color);
+  border-bottom-color: var(--cui-table-border-color);
+}
+
+.table thead th,
+.table > thead > tr > th {
+  color: rgba(241, 244, 250, 0.78) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  border-bottom-width: 1px !important;
+}
+
+.norgoth-data-table {
+  border: 1px solid var(--cui-card-border-color);
+  border-radius: 0.75rem;
+  overflow: hidden;
+  background: var(--norgoth-surface);
+}
+
+.norgoth-data-table .table {
+  margin-bottom: 0;
+}
+
+/* Badges / alerts */
+.badge {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.badge.text-bg-dark,
+.badge.bg-dark {
+  background: rgba(241, 244, 250, 0.12) !important;
+  color: #e8eef8 !important;
+  border: 1px solid rgba(180, 198, 230, 0.28);
+}
+
+.badge.text-bg-success,
+.badge.bg-success {
+  background: rgba(61, 214, 140, 0.18) !important;
+  color: #9af0c2 !important;
+  border: 1px solid rgba(61, 214, 140, 0.4);
+}
+
+.badge.text-bg-warning,
+.badge.bg-warning {
+  background: rgba(255, 200, 87, 0.18) !important;
+  color: #ffe29a !important;
+  border: 1px solid rgba(255, 200, 87, 0.4);
+}
+
+.badge.text-bg-danger,
+.badge.bg-danger {
+  background: rgba(255, 107, 122, 0.18) !important;
+  color: #ffb3bb !important;
+  border: 1px solid rgba(255, 107, 122, 0.4);
+}
+
+.badge.text-bg-info,
+.badge.bg-info {
+  background: rgba(94, 200, 255, 0.18) !important;
+  color: #b6e7ff !important;
+  border: 1px solid rgba(94, 200, 255, 0.4);
+}
+
+.alert {
+  border-width: 1px;
+}
+
+/* Command palette */
+.norgoth-command-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  justify-content: center;
+  padding-top: 12vh;
+}
+
+.norgoth-command-panel {
+  width: min(640px, calc(100vw - 2rem));
+  max-height: min(420px, 70vh);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(180, 198, 230, 0.35);
+  border-radius: 0.75rem;
+  background: #121826;
+  box-shadow: 0 1.25rem 3rem rgba(0, 0, 0, 0.55);
+}
+
+.norgoth-command-panel .list-group-item {
+  background: transparent;
+  color: var(--norgoth-ink);
+  border-color: rgba(180, 198, 230, 0.12);
+}
+
+.norgoth-command-panel .list-group-item:hover,
+.norgoth-command-panel .list-group-item:focus {
+  background: rgba(110, 168, 254, 0.12);
+  color: #fff;
+}
+
+/* Generic bordered panels used outside Card */
+.border.rounded,
+.border.rounded-1,
+.border.rounded-2,
+.border.rounded-3 {
+  border-color: var(--cui-card-border-color) !important;
+  background-color: rgba(20, 26, 36, 0.55);
+}
+
+/* Scrollbars */
+.norgoth-main-body::-webkit-scrollbar,
+.norgoth-sidebar-scroll::-webkit-scrollbar,
+.norgoth-activity-panel-body::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.norgoth-main-body::-webkit-scrollbar-thumb,
+.norgoth-sidebar-scroll::-webkit-scrollbar-thumb,
+.norgoth-activity-panel-body::-webkit-scrollbar-thumb {
+  background: rgba(180, 198, 230, 0.28);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.norgoth-main-body::-webkit-scrollbar-thumb:hover,
+.norgoth-sidebar-scroll::-webkit-scrollbar-thumb:hover,
+.norgoth-activity-panel-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(180, 198, 230, 0.45);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+
+/* KPI strip */
+.norgoth-kpi-pill {
+  border: 1px solid var(--norgoth-card-border-secondary);
+  border-radius: 0.65rem;
+  background: var(--norgoth-surface);
+  padding: 0.75rem 0.9rem;
+  border-left: 3px solid rgba(241, 244, 250, 0.28);
+}
+
+.norgoth-kpi-pill[data-tone="success"] {
+  border-left-color: var(--cui-success);
+}
+
+.norgoth-kpi-pill[data-tone="warning"] {
+  border-left-color: var(--cui-warning);
+}
+
+.norgoth-kpi-pill[data-tone="danger"] {
+  border-left-color: var(--cui-danger);
+}
+
+.norgoth-kpi-pill[data-tone="info"] {
+  border-left-color: var(--cui-info);
+}
+
+.norgoth-kpi-pill[data-tone="default"] {
+  border-left-color: var(--cui-primary);
+}
+
+/* Member transcript portal — isolated from CCC shell scrolling lock */
+.norgoth-transcript-portal {
+  height: 100vh;
+  overflow-y: auto;
+  background: var(--cui-body-bg);
+}
+
+.norgoth-discord-embed {
+  background: rgba(241, 244, 250, 0.04);
+}
+
+.norgoth-segmented .btn {
+  font-weight: 600;
+}
+
+/* Discord emoji picker — fully opaque panel so page content does not bleed through */
+.norgoth-emoji-popover {
+  position: absolute;
+  z-index: 1080;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  width: min(22rem, 90vw);
+  isolation: isolate;
+  background-color: #1a2230 !important;
+  background-image: none !important;
+  border: 1px solid rgba(241, 244, 250, 0.28) !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+.norgoth-emoji-popover .norgoth-emoji-grid .btn {
+  background-color: #141a24;
+  border-color: rgba(241, 244, 250, 0.2);
+}
+
+.norgoth-emoji-popover .norgoth-emoji-grid .btn:hover,
+.norgoth-emoji-popover .norgoth-emoji-grid .btn:focus-visible {
+  background-color: #243044;
+  border-color: rgba(110, 168, 254, 0.55);
+}
+
+.norgoth-discord-style-swatch-active {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85);
+}
+
+.norgoth-role-assignment-preview {
+  position: sticky;
+  top: 1rem;
+}
+
+/* ==========================================================================
+   Page title hierarchy: Page Title > Section Title > Card Title > Label
+   ========================================================================== */
+.norgoth-page-header h1 {
+  font-size: clamp(1.6rem, 1.2rem + 1.2vw, 2.1rem);
+  line-height: 1.15;
+  font-weight: 600;
+}
+
+/* ==========================================================================
+   Shared range / slider — strong dark-theme contrast
+   Uses --norgoth-range-fill (0-100%) to paint the active portion.
+   ========================================================================== */
+.form-range.norgoth-range {
+  --norgoth-range-fill: 0%;
+  --norgoth-range-track: rgba(241, 244, 250, 0.16);
+  --norgoth-range-active: var(--cui-primary, #6ea8fe);
+  height: 1.5rem;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.form-range.norgoth-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* WebKit track */
+.form-range.norgoth-range::-webkit-slider-runnable-track {
+  height: 0.5rem;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--norgoth-range-active) 0%,
+    var(--norgoth-range-active) var(--norgoth-range-fill),
+    var(--norgoth-range-track) var(--norgoth-range-fill),
+    var(--norgoth-range-track) 100%
+  );
+  border: 1px solid rgba(241, 244, 250, 0.12);
+}
+
+/* Firefox track + progress */
+.form-range.norgoth-range::-moz-range-track {
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--norgoth-range-track);
+  border: 1px solid rgba(241, 244, 250, 0.12);
+}
+
+.form-range.norgoth-range::-moz-range-progress {
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--norgoth-range-active);
+}
+
+/* Thumb */
+.form-range.norgoth-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  margin-top: -0.3rem;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--norgoth-range-active);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.form-range.norgoth-range::-moz-range-thumb {
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--norgoth-range-active);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+.form-range.norgoth-range:hover::-webkit-slider-thumb,
+.form-range.norgoth-range:focus-visible::-webkit-slider-thumb {
+  transform: scale(1.08);
+}
+
+.form-range.norgoth-range:focus-visible {
+  outline: none;
+}
+
+.form-range.norgoth-range:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 0.2rem rgba(110, 168, 254, 0.35);
+}
+
+.form-range.norgoth-range:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 0.2rem rgba(110, 168, 254, 0.35);
+}
+
+/* ==========================================================================
+   Mini feature card (dense, clickable → opens configuration modal)
+   ========================================================================== */
+.norgoth-mini-card {
+  --norgoth-section-accent: rgba(241, 244, 250, 0.28);
+  background: var(--norgoth-surface);
+  border: 1px solid var(--norgoth-card-border-secondary);
+  border-left: 3px solid var(--norgoth-section-accent);
+  border-radius: 0.65rem;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease,
+    transform 0.15s ease, background 0.15s ease;
+}
+
+.norgoth-mini-card:hover,
+.norgoth-mini-card:focus-visible {
+  background: rgba(241, 244, 250, 0.03);
+  box-shadow: 0 0 0 0.15rem rgba(110, 168, 254, 0.16),
+    var(--cui-card-box-shadow);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.norgoth-mini-card-icon {
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 1px solid;
+  border-radius: 0.5rem;
+  background: rgba(241, 244, 250, 0.04);
+}
+
+.norgoth-mini-card-status {
+  color: var(--cui-body-color);
+  white-space: nowrap;
+}
+
+.norgoth-mini-card-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* Stronger visual divider between independent sections/cards */
+.norgoth-divider-strong {
+  border: 0;
+  border-top: 2px solid var(--norgoth-card-border-secondary, rgba(241, 244, 250, 0.18));
+  opacity: 1;
+}
+
+/* Expandable data-table detail row */
+.norgoth-data-table-detail {
+  background: rgba(241, 244, 250, 0.03);
+  border-left: 3px solid rgba(110, 168, 254, 0.4);
+}
+
+/* ==========================================================================
+   Embed workbench — sticky live preview on desktop
+   ========================================================================== */
+@media (min-width: 1200px) {
+  .norgoth-embed-workbench-preview {
+    position: sticky;
+    top: 1rem;
+  }
+}
+
+/* ==========================================================================
+   Shared feature switch — larger, higher dark-theme contrast
+   ========================================================================== */
+.norgoth-switch {
+  display: inline-flex;
+  align-items: center;
+}
+
+.norgoth-switch .form-check {
+  margin-bottom: 0;
+  min-height: auto;
+  padding-left: 0;
+  display: inline-flex;
+  align-items: center;
+}
+
+.norgoth-switch .form-check-input {
+  float: none;
+  margin: 0;
+  width: 2.5rem;
+  height: 1.35rem;
+  cursor: pointer;
+  background-color: rgba(241, 244, 250, 0.18);
+  border-color: rgba(241, 244, 250, 0.32);
+}
+
+.norgoth-switch.norgoth-switch-lg .form-check-input {
+  width: 3rem;
+  height: 1.6rem;
+}
+
+.norgoth-switch .form-check-input:focus {
+  border-color: rgba(110, 168, 254, 0.6);
+  box-shadow: 0 0 0 0.2rem rgba(110, 168, 254, 0.35);
+}
+
+.norgoth-switch .form-check-input:checked {
+  background-color: var(--cui-primary, #6ea8fe);
+  border-color: var(--cui-primary, #6ea8fe);
+}
+
+.norgoth-switch .form-check-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ==========================================================================
+   Mini feature card — with inline enable toggle + enabled(green)/neutral accent
+   ========================================================================== */
+.norgoth-mini-card-hit {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  color: inherit;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.norgoth-mini-card-hit:focus-visible {
+  outline: none;
+}
+
+.norgoth-mini-card.norgoth-mini-card-static {
+  cursor: default;
+}
+
+.norgoth-mini-card:focus-within {
+  box-shadow: 0 0 0 0.15rem rgba(110, 168, 254, 0.16);
+}
+
+.norgoth-mini-card-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+/* ==========================================================================
+   Stepper (wizard progress) — dependency-free CoreUI-compatible shell
+   ========================================================================== */
+.norgoth-stepper {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-wrap: wrap;
+}
+
+.norgoth-stepper-step {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--cui-body-color);
+}
+
+.norgoth-stepper-index {
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.85rem;
+  border: 2px solid rgba(241, 244, 250, 0.28);
+  color: var(--cui-body-color);
+  flex-shrink: 0;
+}
+
+.norgoth-stepper-step.is-active .norgoth-stepper-index {
+  border-color: var(--cui-primary, #6ea8fe);
+  background: var(--cui-primary, #6ea8fe);
+  color: #04121f;
+}
+
+.norgoth-stepper-step.is-complete .norgoth-stepper-index {
+  border-color: var(--cui-success, #3dd68c);
+  background: var(--cui-success, #3dd68c);
+  color: #04121f;
+}
+
+.norgoth-stepper-connector {
+  flex: 1 1 1.5rem;
+  min-width: 1.5rem;
+  height: 2px;
+  background: rgba(241, 244, 250, 0.18);
+  margin: 0 0.5rem;
+}
+
+.norgoth-stepper-connector.is-complete {
+  background: var(--cui-success, #3dd68c);
+}
