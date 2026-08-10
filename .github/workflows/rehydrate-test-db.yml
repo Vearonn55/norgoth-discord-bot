@@ -1,0 +1,33 @@
+name: Rehydrate test DB
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly Sunday 04:00 UTC
+    - cron: "0 4 * * 0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rehydrate-test-db
+  cancel-in-progress: false
+
+jobs:
+  rehydrate:
+    name: Guarded prod → test refresh
+    runs-on: ubuntu-latest
+    environment: test
+    steps:
+      - name: Run rehydrate on VDS
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            export CONFIRM_REHYDRATE=norbot_test
+            export NORBOT_IMAGE_TAG="$(grep '^SHA=' /opt/norbot/releases/CURRENT | cut -d= -f2)"
+            export NORBOT_API_IMAGE="ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/norbot-api"
+            /opt/norbot/scripts/rehydrate-test-db.sh

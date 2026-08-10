@@ -16,7 +16,7 @@ from app.api.v1.dependencies_auth import (
     require_operator_session,
 )
 from app.core.config import get_settings
-from app.db.session import get_database_session
+from app.db.session import get_database_session, get_session_factory
 from app.models.embed_messages import EmbedMessage
 from app.security.session import OperatorSession
 from app.services.campaign_store import get_redis, now_iso
@@ -191,6 +191,36 @@ async def list_tickets(guild_id: str) -> list[dict[str, Any]]:
 
         if isinstance(parsed, dict):
             tickets.append(parsed)
+
+    if tickets:
+        tickets.sort(key=lambda ticket: ticket.get("number", 0), reverse=True)
+        return tickets
+
+    # Redis miss / flush — fall back to durable Postgres ticket rows.
+    from app.models.runtime_events import Ticket
+
+    factory = get_session_factory()
+    async with factory() as session:
+        rows = (
+            await session.execute(
+                select(Ticket).where(Ticket.guild_id == guild_id)
+            )
+        ).scalars().all()
+
+    for row in rows:
+        tickets.append(
+            {
+                "id": str(row.id),
+                "number": row.number,
+                "guild_id": row.guild_id,
+                "channel_id": row.channel_id,
+                "opener_id": row.opener_id,
+                "subject": row.subject,
+                "status": row.status,
+                "opened_at": row.created_at.isoformat() if row.created_at else None,
+                "closed_at": row.closed_at.isoformat() if row.closed_at else None,
+            }
+        )
 
     tickets.sort(key=lambda ticket: ticket.get("number", 0), reverse=True)
     return tickets

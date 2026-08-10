@@ -54,6 +54,39 @@ from app.routes.verification_panel import router as verification_panel_router  #
 logger = logging.getLogger(__name__)
 
 
+def _cors_allow_origins(settings: Settings) -> list[str]:
+    """Build the credentialed CORS allowlist for the current environment."""
+
+    import os
+
+    defaults = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "https://www.norbot.io",
+        "https://norbot.io",
+        "https://test.norbot.io",
+    ]
+    if settings.dashboard_public_url:
+        defaults.append(settings.dashboard_public_url.rstrip("/"))
+
+    extra = os.getenv("NORGOTH_CORS_ORIGINS", "").strip()
+    if extra:
+        defaults.extend(
+            origin.strip().rstrip("/")
+            for origin in extra.split(",")
+            if origin.strip()
+        )
+
+    # Preserve order while removing duplicates.
+    seen: set[str] = set()
+    origins: list[str] = []
+    for origin in defaults:
+        if origin and origin not in seen:
+            seen.add(origin)
+            origins.append(origin)
+    return origins
+
+
 @asynccontextmanager
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     settings = cast(Settings, application.state.settings)
@@ -89,18 +122,19 @@ def create_application(settings: Settings | None = None) -> FastAPI:
     application.add_middleware(RequestContextMiddleware)
     application.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://localhost:3000",
-            "http://127.0.0.1:3000",
-        ],
-        # Allow dashboard access from other devices on the LAN.
+        allow_origins=_cors_allow_origins(resolved_settings),
+        # Allow dashboard access from other devices on the LAN (dev/staging).
         allow_origin_regex=(
-            r"https?://("
-            r"localhost|127\.0\.0\.1|"
-            r"192\.168\.\d{1,3}\.\d{1,3}|"
-            r"10\.\d{1,3}\.\d{1,3}\.\d{1,3}|"
-            r"172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}"
-            r")(:\d+)?"
+            None
+            if resolved_settings.environment == "production"
+            else (
+                r"https?://("
+                r"localhost|127\.0\.0\.1|"
+                r"192\.168\.\d{1,3}\.\d{1,3}|"
+                r"10\.\d{1,3}\.\d{1,3}\.\d{1,3}|"
+                r"172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}"
+                r")(:\d+)?"
+            )
         ),
         allow_credentials=True,
         allow_methods=["*"],

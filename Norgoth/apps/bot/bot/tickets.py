@@ -10,6 +10,7 @@ import uuid
 from typing import TYPE_CHECKING, Any
 
 import discord
+import httpx
 from discord import app_commands
 from discord.ext import commands
 
@@ -273,6 +274,52 @@ class TicketsCog(commands.Cog):
             record["id"],
             json.dumps(record),
         )
+        await self._ingest_ticket(guild_id, record)
+
+    async def _ingest_ticket(
+        self,
+        guild_id: int,
+        record: dict[str, Any],
+        *,
+        transcript: str | None = None,
+    ) -> None:
+        """Dual-write ticket rows to Postgres via the internal ingest API."""
+
+        settings = self.bot.settings
+        base = (settings.api_base_url or "").rstrip("/")
+        token = settings.token
+        if not base or not token:
+            return
+
+        payload: dict[str, Any] = {
+            "number": int(record.get("number") or 0),
+            "channel_id": record.get("channel_id"),
+            "opener_id": record.get("opener_id"),
+            "subject": record.get("panel_name") or record.get("channel_name"),
+            "status": record.get("status") or "open",
+        }
+        closed_at = record.get("closed_at")
+        if isinstance(closed_at, str) and closed_at:
+            payload["closed_at"] = closed_at
+        if transcript is not None:
+            payload["transcript"] = transcript
+
+        url = f"{base}/internal/ingest/{guild_id}/ticket"
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(
+                    url,
+                    headers={"X-Norgoth-Bot-Token": token},
+                    json=payload,
+                )
+            if response.status_code >= 400:
+                logger.warning(
+                    "Ticket ingest failed: HTTP %s %s",
+                    response.status_code,
+                    response.text[:200],
+                )
+        except Exception:  # noqa: BLE001
+            logger.exception("Ticket ingest error for guild %s", guild_id)
 
     async def _log_ticket_event(
         self,
@@ -583,7 +630,12 @@ class TicketsCog(commands.Cog):
         record["closed_at"] = closed_at
         record["closed_by"] = closed_by
         record["share_token"] = share_token
-        await self.save_record(guild.id, record)
+        await self.bot.state.redis.hset(
+            tickets_records_key(guild.id),
+            record["id"],
+            json.dumps(record),
+        )
+        await self._ingest_ticket(guild.id, record, transcript=transcript)
 
         transcript_url = (
             f"{dashboard_base_url()}/en/tickets/transcript/{share_token}"

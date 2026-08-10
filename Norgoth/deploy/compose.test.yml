@@ -1,0 +1,40 @@
+name: norbot-test
+
+services:
+  postgres:
+    environment:
+      POSTGRES_DB: norbot_test
+
+  api:
+    image: ${NORBOT_API_IMAGE:?}:${NORBOT_IMAGE_TAG:?}
+    env_file:
+      - /opt/norbot/env/test.env
+    environment:
+      NORGOTH_ENVIRONMENT: staging
+      NORGOTH_AUTH_ENFORCED: "true"
+      NORGOTH_ENABLE_DOCS: "false"
+      NORGOTH_CAMPAIGN_PG_ENABLED: "true"
+    ports:
+      - "127.0.0.1:8001:8000"
+
+  campaign-worker:
+    image: ${NORBOT_API_IMAGE:?}:${NORBOT_IMAGE_TAG:?}
+    env_file:
+      - /opt/norbot/env/test.env
+
+  content-worker:
+    image: ${NORBOT_API_IMAGE:?}:${NORBOT_IMAGE_TAG:?}
+    env_file:
+      - /opt/norbot/env/test.env
+
+  bot:
+    image: ${NORBOT_BOT_IMAGE:?}:${NORBOT_IMAGE_TAG:?}
+    env_file:
+      - /opt/norbot/env/test.env
+
+  web:
+    image: ${NORBOT_WEB_IMAGE:?}:${NORBOT_IMAGE_TAG:?}
+    env_file:
+      - /opt/norbot/env/test.env
+    ports:
+      - "127.0.0.1:3001:3000"

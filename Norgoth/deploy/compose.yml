@@ -1,0 +1,168 @@
+# NorBot base Compose stack (internal network only).
+# Usage:
+#   docker compose -f Norgoth/deploy/compose.yml -f Norgoth/deploy/compose.production.yml up -d
+# Image tags default to "local"; CI/CD sets NORBOT_IMAGE_TAG=<git-sha>.
+
+name: norbot
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-restart: &default-restart
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    <<: *default-restart
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-norbot_prod}
+      POSTGRES_USER: ${POSTGRES_USER:-norbot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+    logging: *default-logging
+
+  redis:
+    image: redis:7-alpine
+    <<: *default-restart
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    networks:
+      - internal
+    logging: *default-logging
+
+  api:
+    image: ${NORBOT_API_IMAGE:-norbot-api}:${NORBOT_IMAGE_TAG:-local}
+    <<: *default-restart
+    env_file:
+      - ${NORBOT_ENV_FILE:-./env/production.env.example}
+    environment:
+      NORGOTH_DATABASE_URL: ${NORGOTH_DATABASE_URL:-postgresql+psycopg://norbot:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-norbot_prod}}
+      NORGOTH_REDIS_URL: ${NORGOTH_REDIS_URL:-redis://redis:6379/0}
+      NORGOTH_RELEASE_SHA: ${NORBOT_IMAGE_TAG:-local}
+      NORGOTH_UPLOAD_DIR: /app/var/uploads
+    volumes:
+      - uploads:/app/var/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - internal
+    logging: *default-logging
+
+  campaign-worker:
+    image: ${NORBOT_API_IMAGE:-norbot-api}:${NORBOT_IMAGE_TAG:-local}
+    <<: *default-restart
+    command: ["python", "-m", "app.workers.campaign_worker"]
+    env_file:
+      - ${NORBOT_ENV_FILE:-./env/production.env.example}
+    environment:
+      NORGOTH_DATABASE_URL: ${NORGOTH_DATABASE_URL:-postgresql+psycopg://norbot:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-norbot_prod}}
+      NORGOTH_REDIS_URL: ${NORGOTH_REDIS_URL:-redis://redis:6379/0}
+      NORGOTH_RELEASE_SHA: ${NORBOT_IMAGE_TAG:-local}
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+    logging: *default-logging
+
+  content-worker:
+    image: ${NORBOT_API_IMAGE:-norbot-api}:${NORBOT_IMAGE_TAG:-local}
+    <<: *default-restart
+    command: ["python", "-m", "app.workers.content_notification_worker"]
+    env_file:
+      - ${NORBOT_ENV_FILE:-./env/production.env.example}
+    environment:
+      NORGOTH_DATABASE_URL: ${NORGOTH_DATABASE_URL:-postgresql+psycopg://norbot:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-norbot_prod}}
+      NORGOTH_REDIS_URL: ${NORGOTH_REDIS_URL:-redis://redis:6379/0}
+      NORGOTH_RELEASE_SHA: ${NORBOT_IMAGE_TAG:-local}
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+    logging: *default-logging
+
+  bot:
+    image: ${NORBOT_BOT_IMAGE:-norbot-bot}:${NORBOT_IMAGE_TAG:-local}
+    <<: *default-restart
+    env_file:
+      - ${NORBOT_ENV_FILE:-./env/production.env.example}
+    environment:
+      NORGOTH_REDIS_URL: ${NORGOTH_REDIS_URL:-redis://redis:6379/0}
+      NORGOTH_API_URL: ${NORGOTH_API_URL:-http://api:8000}
+      NORGOTH_RELEASE_SHA: ${NORBOT_IMAGE_TAG:-local}
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+    logging: *default-logging
+
+  web:
+    image: ${NORBOT_WEB_IMAGE:-norbot-web}:${NORBOT_IMAGE_TAG:-local}
+    <<: *default-restart
+    env_file:
+      - ${NORBOT_ENV_FILE:-./env/production.env.example}
+    environment:
+      NORGOTH_API_INTERNAL_URL: ${NORGOTH_API_INTERNAL_URL:-http://api:8000}
+      NORGOTH_RELEASE_SHA: ${NORBOT_IMAGE_TAG:-local}
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - internal
+    logging: *default-logging
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  pgdata:
+  redisdata:
+  uploads:

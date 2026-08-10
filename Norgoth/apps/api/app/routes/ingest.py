@@ -293,9 +293,13 @@ async def ingest_ticket(
     guild_id: str = Path(pattern=SNOWFLAKE),
     session: AsyncSession = Depends(get_database_session),
 ) -> dict[str, Any]:
+    from app.models.runtime_events import TicketTranscript
+    from sqlalchemy.orm import selectinload
+
     ticket = (
         await session.execute(
             select(Ticket)
+            .options(selectinload(Ticket.transcript))
             .where(Ticket.guild_id == guild_id, Ticket.number == body.number)
             .with_for_update()
         )
@@ -308,6 +312,16 @@ async def ingest_ticket(
     ticket.subject = body.subject
     ticket.status = body.status
     ticket.closed_at = body.closed_at
+
+    if body.transcript is not None:
+        await session.flush()
+        if ticket.transcript is None:
+            session.add(
+                TicketTranscript(ticket_id=ticket.id, content=body.transcript)
+            )
+        else:
+            ticket.transcript.content = body.transcript
+
     await session.commit()
     return {"id": str(ticket.id), "number": ticket.number}
 
