@@ -325,10 +325,10 @@ def build_feed_embed(
 
 
 def desired_source_ids(top: list[FeedMessage]) -> list[str]:
-    """Source message IDs in visual Discord send order (worst→best)."""
+    """Source message IDs in Discord send order (#1 best → #N)."""
 
-    # top is already net DESC (best first). Reverse for send order.
-    return [row.message_id for row in reversed(top)]
+    # top is already net DESC (best first); send in that order so #1 is at top.
+    return [row.message_id for row in top]
 
 
 def needs_full_rebuild(
@@ -339,12 +339,10 @@ def needs_full_rebuild(
     """True when mapped order/set differs from desired ranked set."""
 
     desired = desired_source_ids(top)
-    # Existing chronological Discord order ≈ insertion order; we store rank as
-    # true rank (1=best). Visual bottom = highest rank. Compare desired send
-    # order (worst→best) against entries sorted by rank descending.
+    # Compare desired send order (#1→#N) against entries sorted by rank ascending.
     current = [
         entry.source_message_id
-        for entry in sorted(existing, key=lambda e: e.rank, reverse=True)
+        for entry in sorted(existing, key=lambda e: e.rank)
         if entry.source_message_id
     ]
     if len(current) != len(desired):
@@ -499,12 +497,11 @@ async def rebuild_feed_window(
                     await session.delete(entry)
                 await session.flush()
 
-                # Send worst→best so best ends at bottom. Rank labels stay 1=best.
-                # top is best-first; reverse for send; assign rank = len-i.
-                send_order = list(reversed(top))
+                # Send #1→#N so best is at channel top. Rank labels stay 1=best.
+                send_order = list(top)
                 total = len(send_order)
                 for index, source in enumerate(send_order):
-                    rank = total - index  # last sent = rank 1
+                    rank = index + 1
                     await refresh_feed_message_media(bot, source)
                     payload = build_feed_embed(
                         rank=rank,

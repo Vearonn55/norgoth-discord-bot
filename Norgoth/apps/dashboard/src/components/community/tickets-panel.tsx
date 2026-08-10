@@ -8,7 +8,6 @@ import {
   CFormInput,
   CFormLabel,
   CFormSelect,
-  CFormTextarea,
   CRow,
   CSpinner,
 } from "@coreui/react";
@@ -183,17 +182,21 @@ export function TicketsPanel() {
                 <CFormLabel className="mb-1 small">
                   Message inside new tickets
                 </CFormLabel>
-                <CFormTextarea
+                <RichMessageEditor
+                  key="ticket-welcome-editor"
                   value={config.welcome_text}
-                  onChange={(event) =>
+                  onChange={(markdown) =>
                     setConfig((current) => ({
                       ...current,
-                      welcome_text: event.target.value,
+                      welcome_text: markdown.trim() ? markdown : "",
                     }))
                   }
-                  maxLength={1000}
-                  rows={2}
+                  height={160}
+                  placeholder="Support will be with you shortly…"
                 />
+                <p className="mt-1 mb-0 small text-body-secondary">
+                  {config.welcome_text.length}/1000 characters
+                </p>
               </div>
 
               <div className="d-flex flex-wrap align-items-center gap-2">

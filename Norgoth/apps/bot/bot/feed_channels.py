@@ -211,6 +211,26 @@ def _parse_iso_utc(value: Any) -> datetime | None:
     return ts.astimezone(timezone.utc)
 
 
+def _is_feed_refresh_due(config: dict[str, Any], *, now: datetime | None = None) -> bool:
+    """Mirror API is_feed_refresh_due: prefer stored next_refresh_at."""
+
+    if not config.get("enabled"):
+        return False
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    else:
+        current = current.astimezone(timezone.utc)
+    next_at = _parse_iso_utc(config.get("next_refresh_at"))
+    if next_at is not None:
+        return current >= next_at
+    last = _parse_iso_utc(config.get("last_full_sync_at"))
+    if last is None:
+        return True
+    interval_min = _clamp_refresh_minutes(config.get("refresh_interval_minutes"))
+    return current >= last + timedelta(minutes=interval_min)
+
+
 class FeedChannelsCog(commands.Cog):
     def __init__(self, bot: "NorgothBot") -> None:
         self.bot = bot
@@ -591,30 +611,22 @@ class FeedChannelsCog(commands.Cog):
 
     @tasks.loop(minutes=1)
     async def _refresh_loop(self) -> None:
-        """Full sync when PG last_full_sync_at + interval is due (guild-scoped)."""
+        """Full sync when guild next_refresh_at is due (guild-scoped)."""
 
-        now = datetime.now(timezone.utc)
         for guild in list(self.bot.guilds):
             try:
                 if not await self._module_enabled(guild.id):
                     continue
                 config = await self._config(guild.id)
-                if not config.get("enabled"):
+                if not _is_feed_refresh_due(config):
                     continue
-                interval_min = _clamp_refresh_minutes(
-                    config.get("refresh_interval_minutes")
-                )
-                last = _parse_iso_utc(config.get("last_full_sync_at"))
-                if last is not None:
-                    due_at = last + timedelta(minutes=interval_min)
-                    if now < due_at:
-                        continue
                 result = await self._ingest(guild.id, "feed-repair", {})
                 if result is not None:
                     logger.info(
-                        "Feed auto refresh completed guild=%s next=%s",
+                        "Feed auto refresh completed guild=%s next=%s status=%s",
                         guild.id,
                         result.get("next_refresh_at"),
+                        result.get("scheduler_status"),
                     )
             except Exception:  # noqa: BLE001
                 logger.exception("Feed refresh loop failed for guild %s", guild.id)

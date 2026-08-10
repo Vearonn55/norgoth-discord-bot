@@ -33,13 +33,11 @@ from app.services.feed_ranking import (
     FeedWindow,
     clamp_display_limit,
     clamp_refresh_interval_minutes,
-    compute_next_refresh_at,
     emoji_reaction_key,
     emojis_equal,
     load_merged_feed_config,
     merge_feed_config,
-    parse_iso_utc,
-    touch_last_full_sync,
+    scheduler_countdown_fields,
 )
 from app.services.feed_rebuild import process_dirty_feeds
 from app.services.feed_repair import repair_feed_channels
@@ -147,10 +145,7 @@ async def get_feed_config(
     return {
         "guild_id": guild_id,
         "config": config,
-        "next_refresh_at": compute_next_refresh_at(
-            config.get("last_full_sync_at"),
-            config.get("refresh_interval_minutes"),
-        ),
+        **scheduler_countdown_fields(config),
     }
 
 
@@ -164,24 +159,20 @@ async def put_feed_config(
     payload = _normalize_payload(body)
     payload["last_refresh_at"] = previous.get("last_refresh_at") or {}
     payload["last_full_sync_at"] = previous.get("last_full_sync_at")
+    # Keep active countdown; new interval applies after next successful sync.
+    payload["next_refresh_at"] = previous.get("next_refresh_at")
 
     prev_interval = clamp_refresh_interval_minutes(
         previous.get("refresh_interval_minutes")
     )
     new_interval = payload["refresh_interval_minutes"]
     if new_interval != prev_interval:
-        from datetime import datetime, timedelta, timezone
-
-        now = datetime.now(timezone.utc)
-        last = parse_iso_utc(payload.get("last_full_sync_at"))
-        if last is None or last + timedelta(minutes=new_interval) <= now:
-            touch_last_full_sync(payload, now=now)
         logger.info(
-            "Feed refresh interval changed guild=%s from=%s to=%s last_full_sync_at=%s",
+            "feed_refresh_interval_updated guild=%s from=%s to=%s next_unchanged=%s",
             guild_id,
             prev_interval,
             new_interval,
-            payload.get("last_full_sync_at"),
+            payload.get("next_refresh_at"),
         )
 
     prev_category = previous.get("feed_category_id") or None
@@ -274,10 +265,7 @@ async def put_feed_config(
     return {
         "guild_id": guild_id,
         "config": merged,
-        "next_refresh_at": compute_next_refresh_at(
-            merged.get("last_full_sync_at"),
-            merged.get("refresh_interval_minutes"),
-        ),
+        **scheduler_countdown_fields(merged),
     }
 
 
@@ -499,6 +487,8 @@ async def feed_status(
         )
     ).scalar_one_or_none()
 
+    countdown = scheduler_countdown_fields(config)
+    # Keep per-window last_refresh_at map; countdown alias is last_full_sync_at.
     return {
         "guild_id": guild_id,
         "enabled": bool(config.get("enabled")),
@@ -516,13 +506,12 @@ async def feed_status(
             else None
         ),
         "last_refresh_at": config.get("last_refresh_at") or {},
-        "refresh_interval_minutes": clamp_refresh_interval_minutes(
-            config.get("refresh_interval_minutes")
-        ),
         "feed_category_id": config.get("feed_category_id"),
-        "last_full_sync_at": config.get("last_full_sync_at"),
-        "next_refresh_at": compute_next_refresh_at(
-            config.get("last_full_sync_at"),
-            config.get("refresh_interval_minutes"),
-        ),
+        "last_successful_refresh_at": countdown["last_full_sync_at"],
+        "refresh_interval_minutes": countdown["refresh_interval_minutes"],
+        "last_full_sync_at": countdown["last_full_sync_at"],
+        "next_refresh_at": countdown["next_refresh_at"],
+        "server_time": countdown["server_time"],
+        "remaining_seconds": countdown["remaining_seconds"],
+        "scheduler_status": countdown["scheduler_status"],
     }

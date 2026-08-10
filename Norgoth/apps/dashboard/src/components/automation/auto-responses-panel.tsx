@@ -5,7 +5,6 @@ import {
   CFormInput,
   CFormLabel,
   CFormSelect,
-  CFormTextarea,
   CSpinner,
 } from "@coreui/react";
 import { Card } from "@/components/ui/card";
@@ -14,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { NumberInput } from "@/components/ui/number-input";
 import { DataTable } from "@/components/ui/data-table";
+import { RichMessageEditor } from "@/components/editors/rich-message-editor";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import {
   useAutoResponsesStore,
@@ -145,18 +145,22 @@ export function AutoResponsesPanel() {
 
           <div>
             <CFormLabel>Response</CFormLabel>
-            <CFormTextarea
+            <RichMessageEditor
+              key={`auto-response-${draft.trigger}-${rules.length}`}
               value={draft.response}
-              onChange={(event) =>
+              onChange={(markdown) =>
                 setDraft((current) => ({
                   ...current,
-                  response: event.target.value,
+                  response: markdown,
                 }))
               }
-              maxLength={1500}
-              rows={3}
+              variables={["{user}", "{username}", "{server}"]}
+              height={180}
               placeholder="e.g. Hi {user}, head to #verification to get started!"
             />
+            <p className="mt-1 mb-0 small text-body-secondary">
+              {draft.response.length}/1500 characters
+            </p>
           </div>
 
           <div className="row g-3">

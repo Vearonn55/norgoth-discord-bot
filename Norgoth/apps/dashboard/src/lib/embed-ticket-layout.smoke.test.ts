@@ -55,6 +55,9 @@ describe("ticket panel embed workflow + layout", () => {
     expect(src).toContain("col-lg-4");
     expect(src).toContain("col-lg-8");
     expect(src).toContain("Ticket Support Role");
+    expect(src).toContain("Message inside new tickets");
+    expect(src).toContain("RichMessageEditor");
+    expect(src).toContain("ticket-welcome-editor");
   });
 });
 

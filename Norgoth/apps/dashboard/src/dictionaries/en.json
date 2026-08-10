@@ -230,7 +230,7 @@
     "leaderboard": {
       "title": "Leaderboards",
       "description": "Ranks members by Text XP, Voice XP, or All-Time net upvotes from Top Trending.",
-      "usage": "Switch between Text XP, Voice XP, and Top Net Upvote tabs here. Configure Top Trending to populate net upvote rankings."
+      "usage": "Switch between Text XP, Voice XP, and Top Upvote tabs here. Configure Top Trending to populate net upvote rankings."
     },
     "feedChannels": {
       "title": "Top Trending",
@@ -256,7 +256,7 @@
     "honeypot": {
       "title": "Honeypot",
       "description": "Traps and flags malicious accounts using hidden bait channels or roles.",
-      "usage": "Configure the trap and its action, then enable the honeypot from the header.",
+      "usage": "Configure the trap and warning message (TinyMCE + Embed Library), then enable the honeypot from the header.",
       "alertActive": "The honeypot is active. Legitimate members must be warned never to use the trap channel. Administrators and configured exemptions are protected. Posting may cause immediate automated punishment. Triggers are recorded through Logging Configurations (Security event group).",
       "alertInactive": "The honeypot trap is currently inactive. Enable it from the header to start catching spam bots. Legitimate members must still be warned never to use the trap channel once it is enabled."
     },

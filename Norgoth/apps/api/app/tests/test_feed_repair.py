@@ -156,6 +156,14 @@ async def test_repair_recreates_missing_channel_then_idempotent(
     monkeypatch.setattr("app.services.feed_repair.record_audit", fake_audit)
     monkeypatch.setattr("app.services.feed_repair.DiscordBotClient", FakeBot)
     monkeypatch.setattr("app.services.feed_repair.httpx.AsyncClient", FakeHttp)
+    monkeypatch.setattr(
+        "app.services.feed_repair.acquire_feed_refresh_lock",
+        AsyncMock(return_value=True),
+    )
+    monkeypatch.setattr(
+        "app.services.feed_repair.release_feed_refresh_lock",
+        AsyncMock(),
+    )
 
     session = MagicMock()
     session.commit = AsyncMock()
@@ -166,6 +174,9 @@ async def test_repair_recreates_missing_channel_then_idempotent(
     assert created_channels == ["feed-daily"]
     assert config["windows"]["daily"]["channel_id"] == "new-ch"
     assert rebuild_calls == 1
+    assert config.get("last_full_sync_at")
+    assert config.get("next_refresh_at")
+    assert first["scheduler_status"] == "scheduled"
 
     # Second repair: channel exists → no create, still syncs.
     second = await repair_feed_channels(session, guild_id="guild1")
@@ -173,3 +184,37 @@ async def test_repair_recreates_missing_channel_then_idempotent(
     assert second["channels_created"] == 0
     assert len(created_channels) == 1
     assert rebuild_calls == 2
+
+
+@pytest.mark.anyio
+async def test_repair_busy_when_lock_held(monkeypatch: pytest.MonkeyPatch) -> None:
+    config: dict[str, Any] = {
+        "enabled": True,
+        "refresh_interval_minutes": 15,
+        "last_full_sync_at": "2026-08-10T12:00:00Z",
+        "next_refresh_at": "2026-08-10T12:15:00Z",
+        "windows": {},
+    }
+
+    async def fake_load(_guild_id: str) -> dict[str, Any]:
+        return config
+
+    class FakeSettings:
+        discord_bot_token = "token"
+
+    monkeypatch.setattr(
+        "app.services.feed_repair.get_settings", lambda: FakeSettings()
+    )
+    monkeypatch.setattr(
+        "app.services.feed_repair.load_merged_feed_config", fake_load
+    )
+    monkeypatch.setattr(
+        "app.services.feed_repair.acquire_feed_refresh_lock",
+        AsyncMock(return_value=False),
+    )
+
+    session = MagicMock()
+    result = await repair_feed_channels(session, guild_id="guild1")
+    assert result["success"] is False
+    assert result["scheduler_status"] == "busy"
+    assert result["last_full_sync_at"] == "2026-08-10T12:00:00Z"

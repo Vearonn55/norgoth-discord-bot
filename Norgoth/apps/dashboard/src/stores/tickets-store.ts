@@ -213,17 +213,32 @@ export const useTicketsStore = create<TicketsState>((set, get) => ({
   save: async (guildId) => {
     set({ saving: true, feedback: null });
     try {
+      const config = get().config;
+      const welcome = (config.welcome_text ?? "").trim();
+      if (welcome.length > 1000) {
+        set({
+          saving: false,
+          feedback: "Message inside new tickets must be 1000 characters or fewer.",
+          feedbackIsError: true,
+        });
+        return;
+      }
+      const payload = {
+        ...config,
+        welcome_text: welcome || config.welcome_text,
+      };
       const response = await fetch(
         apiUrl(`/guilds/${guildId}/tickets/config`),
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(get().config),
+          body: JSON.stringify(payload),
         }
       );
 
       if (response.ok) {
         set({
+          config: payload,
           feedback: `Settings saved at ${new Date().toLocaleTimeString()}.`,
           feedbackIsError: false,
         });

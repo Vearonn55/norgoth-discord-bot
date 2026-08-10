@@ -230,7 +230,7 @@
     "leaderboard": {
       "title": "Sıralamalar",
       "description": "Üyeleri Metin XP, Ses XP veya Top Trending All-Time net upvote’a göre sıralar.",
-      "usage": "Metin XP, Ses XP ve Top Net Upvote sekmeleri arasında geçiş yapın. Net upvote sıralaması için Top Trending’i yapılandırın."
+      "usage": "Metin XP, Ses XP ve Top Upvote sekmeleri arasında geçiş yapın. Net upvote sıralaması için Top Trending’i yapılandırın."
     },
     "feedChannels": {
       "title": "Top Trending",
@@ -256,7 +256,7 @@
     "honeypot": {
       "title": "Bal Küpü (Honeypot)",
       "description": "Gizli tuzak kanalları veya rolleri kullanarak kötü niyetli hesapları yakalar ve işaretler.",
-      "usage": "Tuzağı ve eylemini yapılandırın, ardından başlıktan bal küpünü etkinleştirin.",
+      "usage": "Tuzağı ve uyarı mesajını (TinyMCE + Embed Kitaplığı) yapılandırın, ardından başlıktan bal küpünü etkinleştirin.",
       "alertActive": "Bal küpü aktif. Meşru üyeler tuzak kanalını asla kullanmamaları konusunda uyarılmalıdır. Yöneticiler ve yapılandırılmış istisnalar korunur. Mesaj göndermek anında otomatik cezaya yol açabilir. Tetiklemeler Logging Configurations (Security olay grubu) üzerinden kaydedilir.",
       "alertInactive": "Bal küpü tuzağı şu anda pasif. Spam botlarını yakalamaya başlamak için başlıktan etkinleştirin. Etkinleştirildiğinde meşru üyeler tuzak kanalını asla kullanmamaları konusunda uyarılmalıdır."
     },

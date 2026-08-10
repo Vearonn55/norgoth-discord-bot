@@ -234,7 +234,7 @@ export const useLevelingStore = create<LevelingState>((set, get) => ({
             activeMetric === "voice"
               ? "Voice XP"
               : activeMetric === "net_upvotes"
-                ? "Top Net Upvote"
+                ? "Top Upvote"
                 : "Text XP"
           } leaderboard (${leaderboardResponse.status}).`,
           feedbackIsError: true,

@@ -18,6 +18,7 @@ type RichMessageEditorProps = {
   variables?: string[];
   height?: number;
   placeholder?: string;
+  disabled?: boolean;
 };
 
 export function RichMessageEditor({
@@ -26,6 +27,7 @@ export function RichMessageEditor({
   variables = [],
   height = 260,
   placeholder,
+  disabled = false,
 }: RichMessageEditorProps) {
   const editorRef = useRef<TinyMCEEditor | null>(null);
 
@@ -35,6 +37,7 @@ export function RichMessageEditor({
   const initialHtml = useMemo(() => discordMarkdownToHtml(value), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function insertVariable(variable: string) {
+    if (disabled) return;
     editorRef.current?.insertContent(variable);
     editorRef.current?.focus();
   }
@@ -45,6 +48,7 @@ export function RichMessageEditor({
         <Editor
           tinymceScriptSrc="/tinymce/tinymce.min.js"
           licenseKey="gpl"
+          disabled={disabled}
           onInit={(_evt, editor) => {
             editorRef.current = editor;
           }}
@@ -85,6 +89,7 @@ export function RichMessageEditor({
               color="secondary"
               variant="outline"
               size="sm"
+              disabled={disabled}
               onClick={() => insertVariable(variable)}
             >
               {variable}

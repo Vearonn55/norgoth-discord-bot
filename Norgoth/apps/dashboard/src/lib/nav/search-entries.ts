@@ -100,7 +100,7 @@ export function getSearchEntries(lang: string): SearchEntry[] {
     },
     {
       id: "sub:leaderboard.net-upvotes",
-      label: "Top Net Upvote",
+      label: "Top Upvote",
       keywords: [
         "net upvotes",
         "net upvote",

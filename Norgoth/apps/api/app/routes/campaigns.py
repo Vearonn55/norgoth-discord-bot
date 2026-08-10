@@ -50,6 +50,7 @@ DeliveryTarget = Literal["channel", "dm"]
 class CampaignUpdate(BaseModel):
     title: Optional[str] = None
     name: Optional[str] = None
+    description: Optional[str] = None
     message: Optional[Any] = None
     body: Optional[Any] = None
     audience_count: Optional[int] = Field(default=None, ge=0)
@@ -544,6 +545,14 @@ async def update_campaign(campaign_id: str, payload: CampaignUpdate):
 
         if "name" in update_data and update_data["name"]:
             campaign["title"] = update_data["name"]
+
+        if "description" in update_data:
+            raw = campaign.get("raw_payload")
+            if not isinstance(raw, dict):
+                raw = {}
+            raw = {**raw, "description": update_data["description"] or ""}
+            campaign["raw_payload"] = raw
+            campaign["description"] = update_data["description"] or ""
 
         if "message" in update_data and isinstance(update_data["message"], str):
             campaign["message"] = update_data["message"]

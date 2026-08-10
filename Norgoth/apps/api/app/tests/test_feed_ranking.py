@@ -16,7 +16,12 @@ from app.services.feed_ranking import (
     feed_author_net_key,
     feed_dirty_key,
     feed_rank_key,
+    is_feed_refresh_due,
     merge_feed_config,
+    schedule_after_failure,
+    schedule_after_interval_change,
+    schedule_after_success,
+    scheduler_countdown_fields,
     touch_last_full_sync,
     window_bounds,
     windows_for_timestamp,
@@ -30,6 +35,7 @@ def test_merge_feed_config_defaults() -> None:
     assert merged["display_limit"] == 10
     assert merged["feed_category_id"] is None
     assert merged["last_full_sync_at"] is None
+    assert merged["next_refresh_at"] is None
     assert merged["refresh_interval_minutes"] == 15
     assert set(merged["windows"]) == {"daily", "weekly", "monthly", "all_time"}
     for key in merged["windows"]:
@@ -224,17 +230,146 @@ def test_compute_next_refresh_at_from_last_sync() -> None:
     assert next_at == "2026-08-10T12:15:00Z"
 
 
-def test_compute_next_refresh_at_when_overdue_schedules_from_now() -> None:
+def test_compute_next_refresh_at_prefers_stored_next() -> None:
+    next_at = compute_next_refresh_at(
+        "2026-08-10T12:00:00Z",
+        15,
+        stored_next_refresh_at="2026-08-10T13:00:00Z",
+    )
+    assert next_at == "2026-08-10T13:00:00Z"
+
+
+def test_compute_next_refresh_at_when_overdue_keeps_due_instant() -> None:
+    """Overdue must not re-anchor from wall clock (stable across page loads)."""
+
     last = "2026-08-10T10:00:00Z"
     now = datetime(2026, 8, 10, 12, 0, tzinfo=timezone.utc)
     next_at = compute_next_refresh_at(last, 15, now=now)
-    assert next_at == "2026-08-10T12:15:00Z"
+    assert next_at == "2026-08-10T10:15:00Z"
 
 
-def test_compute_next_refresh_at_missing_last_uses_interval_from_now() -> None:
+def test_compute_next_refresh_at_missing_last_returns_none() -> None:
     now = datetime(2026, 8, 10, 12, 0, tzinfo=timezone.utc)
-    next_at = compute_next_refresh_at(None, 20, now=now)
-    assert next_at == "2026-08-10T12:20:00Z"
+    assert compute_next_refresh_at(None, 20, now=now) is None
+
+
+def test_schedule_after_success_sets_last_and_next() -> None:
+    cfg = merge_feed_config({"refresh_interval_minutes": 15, "enabled": True})
+    now = datetime(2026, 8, 10, 14, 0, tzinfo=timezone.utc)
+    schedule_after_success(cfg, now=now)
+    assert cfg["last_full_sync_at"] == "2026-08-10T14:00:00Z"
+    assert cfg["next_refresh_at"] == "2026-08-10T14:15:00Z"
+
+
+def test_schedule_after_interval_change_uses_now_plus_interval() -> None:
+    """Legacy helper still supports immediate reschedule (routes no longer call it)."""
+
+    cfg = merge_feed_config(
+        {
+            "refresh_interval_minutes": 30,
+            "last_full_sync_at": "2026-08-10T12:00:00Z",
+            "next_refresh_at": "2026-08-10T12:15:00Z",
+        }
+    )
+    now = datetime(2026, 8, 10, 14, 0, tzinfo=timezone.utc)
+    schedule_after_interval_change(cfg, now=now)
+    assert cfg["last_full_sync_at"] == "2026-08-10T12:00:00Z"
+    assert cfg["next_refresh_at"] == "2026-08-10T14:30:00Z"
+
+
+def test_interval_change_defers_until_success() -> None:
+    """Persisting a new interval must keep next_refresh_at; success applies it."""
+
+    cfg = merge_feed_config(
+        {
+            "refresh_interval_minutes": 15,
+            "last_full_sync_at": "2026-08-10T12:00:00Z",
+            "next_refresh_at": "2026-08-10T12:15:00Z",
+        }
+    )
+    # Simulate PUT: update interval only, keep schedule.
+    cfg["refresh_interval_minutes"] = 30
+    assert cfg["next_refresh_at"] == "2026-08-10T12:15:00Z"
+    assert cfg["last_full_sync_at"] == "2026-08-10T12:00:00Z"
+
+    now = datetime(2026, 8, 10, 12, 15, tzinfo=timezone.utc)
+    schedule_after_success(cfg, now=now)
+    assert cfg["last_full_sync_at"] == "2026-08-10T12:15:00Z"
+    assert cfg["next_refresh_at"] == "2026-08-10T12:45:00Z"
+
+
+def test_scheduler_countdown_fields_remaining_and_server_time() -> None:
+    cfg = merge_feed_config(
+        {
+            "refresh_interval_minutes": 15,
+            "last_full_sync_at": "2026-08-10T14:00:00Z",
+            "next_refresh_at": "2026-08-10T14:15:00Z",
+        }
+    )
+    now = datetime(2026, 8, 10, 14, 5, 30, tzinfo=timezone.utc)
+    fields = scheduler_countdown_fields(cfg, now=now)
+    assert fields["server_time"] == "2026-08-10T14:05:30Z"
+    assert fields["remaining_seconds"] == 570
+    assert fields["next_refresh_at"] == "2026-08-10T14:15:00Z"
+    assert fields["scheduler_status"] == "scheduled"
+
+
+def test_scheduler_countdown_fields_null_when_never_synced() -> None:
+    cfg = merge_feed_config({"enabled": True})
+    now = datetime(2026, 8, 10, 14, 0, tzinfo=timezone.utc)
+    fields = scheduler_countdown_fields(cfg, now=now)
+    assert fields["next_refresh_at"] is None
+    assert fields["remaining_seconds"] is None
+    assert fields["server_time"] == "2026-08-10T14:00:00Z"
+
+
+def test_schedule_after_failure_does_not_advance_last() -> None:
+    cfg = merge_feed_config(
+        {
+            "refresh_interval_minutes": 15,
+            "last_full_sync_at": "2026-08-10T12:00:00Z",
+        }
+    )
+    now = datetime(2026, 8, 10, 14, 0, tzinfo=timezone.utc)
+    schedule_after_failure(cfg, now=now)
+    assert cfg["last_full_sync_at"] == "2026-08-10T12:00:00Z"
+    assert cfg["next_refresh_at"] == "2026-08-10T14:05:00Z"
+
+
+def test_is_feed_refresh_due_overdue_and_pending() -> None:
+    now = datetime(2026, 8, 10, 13, 25, tzinfo=timezone.utc)
+    overdue = merge_feed_config(
+        {
+            "enabled": True,
+            "next_refresh_at": "2026-08-10T13:15:00Z",
+        }
+    )
+    pending = merge_feed_config(
+        {
+            "enabled": True,
+            "next_refresh_at": "2026-08-10T13:40:00Z",
+        }
+    )
+    assert is_feed_refresh_due(overdue, now=now) is True
+    assert is_feed_refresh_due(pending, now=now) is False
+
+
+def test_multi_guild_schedules_independent() -> None:
+    a = merge_feed_config(
+        {"refresh_interval_minutes": 5, "next_refresh_at": "2026-08-10T12:05:00Z"}
+    )
+    b = merge_feed_config(
+        {"refresh_interval_minutes": 30, "next_refresh_at": "2026-08-10T12:30:00Z"}
+    )
+    assert a["refresh_interval_minutes"] == 5
+    assert b["refresh_interval_minutes"] == 30
+    assert a["next_refresh_at"] != b["next_refresh_at"]
+
+
+def test_interval_clamp_min_max() -> None:
+    assert clamp_refresh_interval_minutes(1) == 5
+    assert clamp_refresh_interval_minutes(100) == 60
+    assert clamp_refresh_interval_minutes(15) == 15
 
 
 def test_touch_last_full_sync_and_merge_category() -> None:

@@ -24,7 +24,7 @@ import {
 const METRIC_TABS = [
   { id: "text", label: "Text XP" },
   { id: "voice", label: "Voice XP" },
-  { id: "net_upvotes", label: "Top Net Upvote" },
+  { id: "net_upvotes", label: "Top Upvote" },
 ] as const;
 
 function isMetricId(value: string | null): value is LeaderboardMetric {
@@ -102,7 +102,7 @@ export function LeaderboardPanel() {
 
   const isNet = leaderboardMetric === "net_upvotes";
   const headerTitle = isNet
-    ? "Top Net Upvote"
+    ? "Top Upvote"
     : leaderboardMetric === "voice"
       ? "Voice XP"
       : "Text XP";

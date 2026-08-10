@@ -31,6 +31,7 @@ DEFAULT_FEED_CONFIG: dict[str, Any] = {
     "refresh_interval_minutes": 15,
     "feed_category_id": None,
     "last_full_sync_at": None,
+    "next_refresh_at": None,
     "exclude_bots": True,
     "exclude_webhooks": True,
     "exclude_threads": True,
@@ -47,6 +48,8 @@ REFRESH_INTERVAL_MIN = 5
 REFRESH_INTERVAL_MAX = 60
 REFRESH_INTERVAL_STEP = 5
 DISPLAY_LIMIT_MAX = 25
+FEED_REFRESH_LOCK_TTL_SEC = 600
+FEED_REFRESH_RETRY_CAP_MINUTES = 5
 
 
 def clamp_refresh_interval_minutes(value: Any) -> int:
@@ -103,6 +106,13 @@ def now_iso_utc(now: datetime | None = None) -> str:
     return current.replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
+def _aware_utc(now: datetime | None = None) -> datetime:
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        return current.replace(tzinfo=timezone.utc)
+    return current.astimezone(timezone.utc)
+
+
 def touch_last_full_sync(
     config: dict[str, Any],
     *,
@@ -119,28 +129,157 @@ def compute_next_refresh_at(
     refresh_interval_minutes: Any,
     *,
     now: datetime | None = None,
-) -> str:
-    """Compute absolute next refresh ISO timestamp from PG scheduler state.
+    stored_next_refresh_at: Any = None,
+) -> str | None:
+    """Canonical next Discord full-sync time.
 
-    If last sync is missing or next is already due/past, schedule from *now*
-    plus the interval so the UI does not stick at 00:00:00.
+    Prefers persisted ``next_refresh_at``. Otherwise derives
+    ``last_full_sync_at + interval``. Never invents a schedule from wall-clock
+    ``now`` on read.
     """
 
-    current = now or datetime.now(timezone.utc)
-    if current.tzinfo is None:
-        current = current.replace(tzinfo=timezone.utc)
-    else:
-        current = current.astimezone(timezone.utc)
-
-    interval = clamp_refresh_interval_minutes(refresh_interval_minutes)
+    _ = now
+    stored = parse_iso_utc(stored_next_refresh_at)
+    if stored is not None:
+        return stored.replace(microsecond=0).isoformat().replace("+00:00", "Z")
     last = parse_iso_utc(last_full_sync_at)
     if last is None:
-        next_at = current + timedelta(minutes=interval)
-    else:
-        next_at = last + timedelta(minutes=interval)
-        if next_at <= current:
-            next_at = current + timedelta(minutes=interval)
+        return None
+    interval = clamp_refresh_interval_minutes(refresh_interval_minutes)
+    next_at = last + timedelta(minutes=interval)
     return next_at.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def resolve_next_refresh_at(config: dict[str, Any]) -> str | None:
+    """Read helper using config's stored next / last + interval."""
+
+    return compute_next_refresh_at(
+        config.get("last_full_sync_at"),
+        config.get("refresh_interval_minutes"),
+        stored_next_refresh_at=config.get("next_refresh_at"),
+    )
+
+
+def scheduler_countdown_fields(
+    config: dict[str, Any],
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Canonical countdown payload for API consumers."""
+
+    current = _aware_utc(now)
+    interval = clamp_refresh_interval_minutes(config.get("refresh_interval_minutes"))
+    last = config.get("last_full_sync_at")
+    next_at = resolve_next_refresh_at(config)
+    remaining: int | None = None
+    if next_at is not None:
+        next_dt = parse_iso_utc(next_at)
+        if next_dt is not None:
+            remaining = max(0, int((next_dt - current).total_seconds()))
+    if next_at:
+        status = "due" if remaining == 0 else "scheduled"
+    elif is_feed_refresh_due(config, now=current):
+        status = "due"
+    else:
+        status = "pending"
+    return {
+        "refresh_interval_minutes": interval,
+        "last_full_sync_at": last,
+        "last_refresh_at": last,
+        "next_refresh_at": next_at,
+        "server_time": now_iso_utc(current),
+        "remaining_seconds": remaining,
+        "scheduler_status": status,
+    }
+
+
+def schedule_after_success(
+    config: dict[str, Any],
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Mark successful Discord sync and schedule next cycle from completion."""
+
+    current = _aware_utc(now)
+    interval = clamp_refresh_interval_minutes(config.get("refresh_interval_minutes"))
+    config["last_full_sync_at"] = now_iso_utc(current)
+    next_at = current + timedelta(minutes=interval)
+    config["next_refresh_at"] = next_at.replace(microsecond=0).isoformat().replace(
+        "+00:00", "Z"
+    )
+    return config
+
+
+def schedule_after_interval_change(
+    config: dict[str, Any],
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Legacy helper: immediate now+interval reschedule (prefer deferred policy)."""
+
+    current = _aware_utc(now)
+    interval = clamp_refresh_interval_minutes(config.get("refresh_interval_minutes"))
+    next_at = current + timedelta(minutes=interval)
+    config["next_refresh_at"] = next_at.replace(microsecond=0).isoformat().replace(
+        "+00:00", "Z"
+    )
+    return config
+
+
+def schedule_after_failure(
+    config: dict[str, Any],
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Do not advance last sync; set retry backoff next_refresh_at."""
+
+    current = _aware_utc(now)
+    interval = clamp_refresh_interval_minutes(config.get("refresh_interval_minutes"))
+    backoff = min(interval, FEED_REFRESH_RETRY_CAP_MINUTES)
+    next_at = current + timedelta(minutes=backoff)
+    config["next_refresh_at"] = next_at.replace(microsecond=0).isoformat().replace(
+        "+00:00", "Z"
+    )
+    return config
+
+
+def is_feed_refresh_due(
+    config: dict[str, Any],
+    *,
+    now: datetime | None = None,
+) -> bool:
+    """True when automatic Discord full sync should run."""
+
+    if not config.get("enabled"):
+        return False
+    current = _aware_utc(now)
+    next_at = parse_iso_utc(config.get("next_refresh_at"))
+    if next_at is not None:
+        return current >= next_at
+    last = parse_iso_utc(config.get("last_full_sync_at"))
+    if last is None:
+        # Never synced: due immediately so first cycle can establish schedule.
+        return True
+    interval = clamp_refresh_interval_minutes(config.get("refresh_interval_minutes"))
+    return current >= last + timedelta(minutes=interval)
+
+
+def ensure_persisted_next_refresh(config: dict[str, Any]) -> bool:
+    """If next_refresh_at missing but last exists, derive and set it. Returns dirty."""
+
+    if parse_iso_utc(config.get("next_refresh_at")) is not None:
+        return False
+    last = parse_iso_utc(config.get("last_full_sync_at"))
+    if last is None:
+        return False
+    derived = compute_next_refresh_at(
+        config.get("last_full_sync_at"),
+        config.get("refresh_interval_minutes"),
+    )
+    if derived:
+        config["next_refresh_at"] = derived
+        return True
+    return False
 
 
 def feed_config_key(guild_id: str) -> str:
@@ -161,6 +300,10 @@ def feed_dirty_key(guild_id: str) -> str:
 
 def feed_lock_key(guild_id: str, window: FeedWindow) -> str:
     return f"norgoth:guild:{guild_id}:feed:lock:{window}"
+
+
+def feed_refresh_lock_key(guild_id: str) -> str:
+    return f"norgoth:guild:{guild_id}:feed:refresh-lock"
 
 
 def feed_debounce_key(guild_id: str, window: FeedWindow) -> str:
@@ -273,6 +416,16 @@ def merge_feed_config(raw: dict[str, Any] | None) -> dict[str, Any]:
     merged["last_full_sync_at"] = (
         str(last_sync) if last_sync not in (None, "") else None
     )
+    next_refresh = raw.get("next_refresh_at")
+    merged["next_refresh_at"] = (
+        str(next_refresh) if next_refresh not in (None, "") else None
+    )
+    # Reconstruct missing next from last + interval (durable recovery).
+    if merged["next_refresh_at"] is None and merged["last_full_sync_at"]:
+        merged["next_refresh_at"] = compute_next_refresh_at(
+            merged["last_full_sync_at"],
+            merged["refresh_interval_minutes"],
+        )
     return merged
 
 

@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
   CAlert,
   CFormInput,
   CFormLabel,
   CFormSelect,
-  CFormTextarea,
   CSpinner,
 } from "@coreui/react";
 import { SectionCard } from "@/components/ui/section-card";
@@ -25,15 +24,27 @@ import { PageActionFooter } from "@/components/layout/page-action-footer";
 import { EmbedEditor } from "@/components/discord/embed-editor";
 import { EmbedWorkbench } from "@/components/discord/embed-workbench";
 import { MessagePreview } from "@/components/discord/message-preview";
+import { RichMessageEditor } from "@/components/editors/rich-message-editor";
+import { EmbedDraftCreator } from "@/components/embed-messages/embed-draft-creator";
 import { useFirstGuild } from "@/stores/guild-store";
 import { useHoneypotStore, type HoneypotConfig } from "@/stores/honeypot-store";
+import {
+  useEmbedMessagesStore,
+  type EmbedMessage,
+} from "@/stores/embed-messages-store";
 import { Icon } from "@/components/ui/icon";
 import { cilBan, cilBug, cilSettings, cilShieldAlt, cilWarning } from "@coreui/icons";
 import type { DiscordEmbedPayload } from "@/lib/discord/message-payload";
 import { useFeatureInfo } from "@/lib/feature-info";
 import { formatDateTime } from "@/lib/datetime";
+import {
+  assertDiscordMarkdownLength,
+  isBlankDiscordMarkdown,
+} from "@/lib/discord-markdown-validation";
+import { copyEmbedIntoHoneypot } from "@/lib/honeypot-embed-copy";
 
 type HoneypotFeature = "config" | "punishment" | "exemptions";
+type EmbedSourceMode = "INLINE" | "SELECT_EXISTING" | "CREATE_NEW";
 
 export function HoneypotPanel() {
   const params = useParams();
@@ -48,20 +59,38 @@ export function HoneypotPanel() {
   const save = useHoneypotStore((s) => s.save);
   const loadTriggers = useHoneypotStore((s) => s.loadTriggers);
   const requestCreateChannel = useHoneypotStore((s) => s.requestCreateChannel);
+  const embedMessages = useEmbedMessagesStore((s) => s.messages);
+  const loadEmbedMessages = useEmbedMessagesStore((s) => s.load);
   const honeypotInfo = useFeatureInfo("honeypot");
   const [draft, setDraft] = useState<HoneypotConfig | null>(null);
   const [newChannelName, setNewChannelName] = useState("honeypot");
   const [activeModal, setActiveModal] = useState<HoneypotFeature | null>(null);
+  const [editorSeed, setEditorSeed] = useState(0);
+  const [embedSourceMode, setEmbedSourceMode] =
+    useState<EmbedSourceMode>("INLINE");
+  const [creatorKey, setCreatorKey] = useState(0);
+  const [draftSearch, setDraftSearch] = useState("");
+  const [localError, setLocalError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!guildId) return;
     void load(guildId);
     void loadTriggers(guildId);
-  }, [guildId, load, loadTriggers]);
+    void loadEmbedMessages(guildId);
+  }, [guildId, load, loadTriggers, loadEmbedMessages]);
 
   useEffect(() => {
-    if (config) setDraft(config);
+    if (config) {
+      setDraft(config);
+      setEditorSeed((n) => n + 1);
+    }
   }, [config]);
+
+  const filteredDrafts = useMemo(() => {
+    const q = draftSearch.trim().toLowerCase();
+    if (!q) return embedMessages;
+    return embedMessages.filter((m) => m.name.toLowerCase().includes(q));
+  }, [embedMessages, draftSearch]);
 
   if (guildLoading || loading || !draft) {
     return (
@@ -79,6 +108,27 @@ export function HoneypotPanel() {
     setDraft((prev) => (prev ? { ...prev, ...partial } : prev));
   }
 
+  function patchEmbedDescription(markdown: string) {
+    const trimmed = isBlankDiscordMarkdown(markdown) ? "" : markdown;
+    setDraft((prev) => {
+      if (!prev) return prev;
+      const base = (prev.warning_embed ?? {
+        title: "Honeypot Channel",
+        description: "",
+      }) as Record<string, unknown>;
+      return {
+        ...prev,
+        warning_embed: { ...base, description: trimmed },
+      };
+    });
+  }
+
+  function applyEmbedCopy(message: EmbedMessage) {
+    patch(copyEmbedIntoHoneypot(message));
+    setEditorSeed((n) => n + 1);
+    setEmbedSourceMode("INLINE");
+  }
+
   // The master switch is authoritative and persists immediately so the
   // disabled state is saved even while the page-level Save is disabled.
   async function setEnabledAndSave(checked: boolean) {
@@ -90,7 +140,34 @@ export function HoneypotPanel() {
 
   async function saveDraft() {
     if (!guildId || !draft) return;
-    await save(guildId, draft);
+    setLocalError(null);
+    const content = draft.warning_content ?? "";
+    if (!isBlankDiscordMarkdown(content)) {
+      const check = assertDiscordMarkdownLength(content, 2000);
+      if (check.reason === "too_long") {
+        setLocalError("Warning content must be 2000 characters or fewer.");
+        return;
+      }
+    }
+    const desc = String(
+      (draft.warning_embed as DiscordEmbedPayload | null)?.description ?? ""
+    );
+    if (!isBlankDiscordMarkdown(desc) && desc.trim().length > 4096) {
+      setLocalError("Embed description must be 4096 characters or fewer.");
+      return;
+    }
+    const normalized: HoneypotConfig = {
+      ...draft,
+      warning_content: isBlankDiscordMarkdown(content) ? "" : content.trim(),
+      warning_embed: draft.warning_embed
+        ? {
+            ...draft.warning_embed,
+            description: isBlankDiscordMarkdown(desc) ? "" : desc.trim(),
+          }
+        : null,
+    };
+    setDraft(normalized);
+    await save(guildId, normalized);
   }
 
   async function handleModalSave() {
@@ -101,7 +178,7 @@ export function HoneypotPanel() {
 
   const embed = (draft.warning_embed ?? {
     title: "Honeypot Channel",
-    description: draft.warning_content,
+    description: "",
   }) as DiscordEmbedPayload;
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(config);
@@ -138,6 +215,7 @@ export function HoneypotPanel() {
       </CAlert>
 
       {error ? <p className="text-danger">{error}</p> : null}
+      {localError ? <p className="text-danger">{localError}</p> : null}
 
       <MutedSection enabled={draft.enabled} className="d-flex flex-column gap-4">
         {/* Feature mini-cards */}
@@ -175,7 +253,7 @@ export function HoneypotPanel() {
           </div>
         </div>
 
-        {/* Warning Message — two-column editor + live preview */}
+        {/* Warning Message — TinyMCE + Embed Creator copy-into-snapshot */}
         <SectionCard level="primary" category="security" header="Warning Message">
           <div className="d-flex flex-column gap-3 p-1">
             <div className="d-flex align-items-center justify-content-between gap-3 border rounded p-3">
@@ -186,35 +264,136 @@ export function HoneypotPanel() {
                 aria-label="Post a pinned warning"
               />
             </div>
-            <EmbedWorkbench
-              editor={
-                <div className="d-flex flex-column gap-3">
-                  <div>
-                    <CFormLabel>Content</CFormLabel>
-                    <CFormTextarea
-                      rows={3}
-                      value={draft.warning_content}
-                      onChange={(e) => patch({ warning_content: e.target.value })}
+
+            <div className="d-flex flex-wrap gap-2">
+              <Button
+                variant={embedSourceMode === "INLINE" ? "primary" : "secondary"}
+                size="sm"
+                onClick={() => setEmbedSourceMode("INLINE")}
+              >
+                Edit Warning
+              </Button>
+              <Button
+                variant={
+                  embedSourceMode === "SELECT_EXISTING" ? "primary" : "secondary"
+                }
+                size="sm"
+                onClick={() => setEmbedSourceMode("SELECT_EXISTING")}
+              >
+                Select From Draft
+              </Button>
+              <Button
+                variant={
+                  embedSourceMode === "CREATE_NEW" ? "primary" : "secondary"
+                }
+                size="sm"
+                onClick={() => {
+                  setEmbedSourceMode("CREATE_NEW");
+                  setCreatorKey((k) => k + 1);
+                }}
+              >
+                Create New
+              </Button>
+            </div>
+
+            {embedSourceMode === "SELECT_EXISTING" ? (
+              <div className="d-flex flex-column gap-2">
+                <p className="small text-body-secondary mb-0">
+                  Copy an Embed Library draft into this honeypot warning. Editing
+                  the warning afterward does not change the library draft.
+                </p>
+                <CFormInput
+                  value={draftSearch}
+                  onChange={(e) => setDraftSearch(e.target.value)}
+                  placeholder="Search drafts…"
+                  aria-label="Search Embed Library drafts"
+                />
+                <CFormSelect
+                  value=""
+                  aria-label="Select Embed Library draft"
+                  onChange={(event) => {
+                    const id = event.target.value;
+                    if (!id) return;
+                    const message = embedMessages.find((m) => m.id === id);
+                    if (message) applyEmbedCopy(message);
+                  }}
+                >
+                  <option value="">Select a draft to copy…</option>
+                  {filteredDrafts.map((message) => (
+                    <option key={message.id} value={message.id}>
+                      {message.name}
+                    </option>
+                  ))}
+                </CFormSelect>
+              </div>
+            ) : null}
+
+            {embedSourceMode === "CREATE_NEW" ? (
+              <EmbedDraftCreator
+                key={`honeypot-create-${creatorKey}`}
+                guildId={guildId}
+                compact
+                onCreated={(message) => {
+                  applyEmbedCopy(message);
+                  void loadEmbedMessages(guildId);
+                }}
+                onCancel={() => setEmbedSourceMode("INLINE")}
+              />
+            ) : null}
+
+            {embedSourceMode === "INLINE" ? (
+              <EmbedWorkbench
+                editor={
+                  <div className="d-flex flex-column gap-3">
+                    <div>
+                      <CFormLabel>Content</CFormLabel>
+                      <RichMessageEditor
+                        key={`honeypot-content-${editorSeed}`}
+                        value={draft.warning_content}
+                        onChange={(markdown) =>
+                          patch({
+                            warning_content: isBlankDiscordMarkdown(markdown)
+                              ? ""
+                              : markdown,
+                          })
+                        }
+                        height={180}
+                        placeholder="Message above the warning embed…"
+                      />
+                      <p className="mt-1 mb-0 small text-body-secondary">
+                        {draft.warning_content.length}/2000 characters
+                      </p>
+                    </div>
+                    <div>
+                      <CFormLabel>Embed Description</CFormLabel>
+                      <RichMessageEditor
+                        key={`honeypot-desc-${editorSeed}`}
+                        value={String(embed.description ?? "")}
+                        onChange={patchEmbedDescription}
+                        height={180}
+                        placeholder="Embed description…"
+                      />
+                    </div>
+                    <EmbedEditor
+                      value={embed}
+                      guildId={guildId ?? undefined}
+                      hideDescription
+                      onChange={(next) =>
+                        patch({ warning_embed: next as Record<string, unknown> })
+                      }
                     />
                   </div>
-                  <EmbedEditor
-                    value={embed}
-                    guildId={guildId ?? undefined}
-                    onChange={(next) =>
-                      patch({ warning_embed: next as Record<string, unknown> })
-                    }
+                }
+                preview={
+                  <MessagePreview
+                    content={draft.warning_content}
+                    embed={embed}
+                    mode="embed"
+                    showContentWithEmbed
                   />
-                </div>
-              }
-              preview={
-                <MessagePreview
-                  content={draft.warning_content}
-                  embed={embed}
-                  mode="embed"
-                  showContentWithEmbed
-                />
-              }
-            />
+                }
+              />
+            ) : null}
           </div>
         </SectionCard>
       </MutedSection>

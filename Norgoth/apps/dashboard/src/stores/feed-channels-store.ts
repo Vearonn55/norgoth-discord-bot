@@ -30,6 +30,7 @@ export type FeedConfig = {
   refresh_interval_minutes: number;
   feed_category_id: string | null;
   last_full_sync_at?: string | null;
+  next_refresh_at?: string | null;
   exclude_bots: boolean;
   exclude_webhooks: boolean;
   exclude_threads: boolean;
@@ -59,6 +60,11 @@ export type FeedStatus = {
   feed_category_id?: string | null;
   last_full_sync_at?: string | null;
   next_refresh_at?: string | null;
+  server_time?: string | null;
+  remaining_seconds?: number | null;
+  /** Client receive time for snapshot countdown (ms since epoch). */
+  countdown_received_at?: number;
+  scheduler_status?: string | null;
 };
 
 export const DEFAULT_FEED_CONFIG: FeedConfig = {
@@ -84,6 +90,7 @@ export const DEFAULT_FEED_CONFIG: FeedConfig = {
   refresh_interval_minutes: 15,
   feed_category_id: null,
   last_full_sync_at: null,
+  next_refresh_at: null,
   exclude_bots: true,
   exclude_webhooks: true,
   exclude_threads: true,
@@ -111,6 +118,8 @@ type FeedChannelsState = {
   error: string | null;
   feedback: string | null;
   load: (guildId: string) => Promise<void>;
+  /** Quiet status poll for countdown — never toggles loading / remounts UI. */
+  refreshStatus: (guildId: string) => Promise<void>;
   save: (guildId: string, body: FeedConfig) => Promise<FeedConfig | null>;
   setEnabled: (guildId: string, enabled: boolean) => Promise<FeedConfig | null>;
   patchWindow: (
@@ -123,6 +132,42 @@ type FeedChannelsState = {
 
 function base(guildId: string) {
   return `/guilds/${guildId}/feed-channels`;
+}
+
+type CountdownFields = {
+  next_refresh_at?: string | null;
+  server_time?: string | null;
+  remaining_seconds?: number | null;
+  last_full_sync_at?: string | null;
+  refresh_interval_minutes?: number;
+  scheduler_status?: string | null;
+};
+
+/** Stamp client receive time so UI ticks from backend remaining_seconds. */
+function withCountdownSnapshot<T extends CountdownFields>(
+  status: T,
+  extras?: CountdownFields
+): T & {
+  countdown_received_at: number;
+  remaining_seconds: number | null;
+  server_time: string | null;
+  next_refresh_at: string | null;
+} {
+  return {
+    ...status,
+    last_full_sync_at:
+      status.last_full_sync_at ?? extras?.last_full_sync_at ?? null,
+    refresh_interval_minutes:
+      status.refresh_interval_minutes ?? extras?.refresh_interval_minutes,
+    next_refresh_at:
+      status.next_refresh_at ?? extras?.next_refresh_at ?? null,
+    server_time: status.server_time ?? extras?.server_time ?? null,
+    remaining_seconds:
+      status.remaining_seconds ?? extras?.remaining_seconds ?? null,
+    scheduler_status:
+      status.scheduler_status ?? extras?.scheduler_status ?? null,
+    countdown_received_at: Date.now(),
+  };
 }
 
 export const useFeedChannelsStore = create<FeedChannelsState>((set) => ({
@@ -144,28 +189,84 @@ export const useFeedChannelsStore = create<FeedChannelsState>((set) => ({
         set({ error: await readError(configRes), config: null });
         return;
       }
-      const configBody = (await configRes.json()) as {
-        config: FeedConfig;
-        next_refresh_at?: string;
-      };
+      const configBody = (await configRes.json()) as FeedConfig &
+        CountdownFields & { config: FeedConfig };
       const status = statusRes.ok
         ? ((await statusRes.json()) as FeedStatus)
         : null;
+      const mergedConfig = {
+        ...DEFAULT_FEED_CONFIG,
+        ...configBody.config,
+      };
       const mergedStatus = status
-        ? {
-            ...status,
-            next_refresh_at:
-              status.next_refresh_at ?? configBody.next_refresh_at ?? null,
-          }
-        : null;
+        ? withCountdownSnapshot(status, {
+            last_full_sync_at: mergedConfig.last_full_sync_at,
+            refresh_interval_minutes: mergedConfig.refresh_interval_minutes,
+            next_refresh_at: configBody.next_refresh_at,
+            remaining_seconds: configBody.remaining_seconds,
+            server_time: configBody.server_time,
+          })
+        : withCountdownSnapshot({
+            enabled: Boolean(mergedConfig.enabled),
+            tracked_messages: 0,
+            votes_total: 0,
+            windows: [],
+            warnings: [],
+            top_message: null,
+            last_refresh_at: {},
+            last_full_sync_at: mergedConfig.last_full_sync_at ?? null,
+            refresh_interval_minutes: mergedConfig.refresh_interval_minutes,
+            next_refresh_at: configBody.next_refresh_at ?? null,
+            remaining_seconds: configBody.remaining_seconds ?? null,
+            server_time: configBody.server_time ?? null,
+          });
       set({
-        config: { ...DEFAULT_FEED_CONFIG, ...configBody.config },
+        config: mergedConfig,
         status: mergedStatus,
       });
     } catch {
       set({ error: "Could not reach the Norgoth API." });
     } finally {
       set({ loading: false });
+    }
+  },
+
+  refreshStatus: async (guildId) => {
+    try {
+      const statusRes = await fetch(apiUrl(`${base(guildId)}/status`), {
+        cache: "no-store",
+      });
+      if (!statusRes.ok) return;
+      const status = (await statusRes.json()) as FeedStatus;
+      set((state) => {
+        const nextLast =
+          status.last_full_sync_at ??
+          state.status?.last_full_sync_at ??
+          state.config?.last_full_sync_at ??
+          null;
+        const configUnchanged =
+          !state.config ||
+          (state.config.last_full_sync_at ?? null) === (nextLast ?? null);
+        return {
+          status: withCountdownSnapshot(status, {
+            last_full_sync_at: nextLast,
+            refresh_interval_minutes:
+              state.status?.refresh_interval_minutes ??
+              state.config?.refresh_interval_minutes,
+            next_refresh_at: state.status?.next_refresh_at ?? null,
+          }),
+          // Only rewrite config when last sync actually changed (keep slider draft stable).
+          config:
+            configUnchanged || !state.config
+              ? state.config
+              : {
+                  ...state.config,
+                  last_full_sync_at: nextLast,
+                },
+        };
+      });
+    } catch {
+      // Quiet poll — ignore transient network errors.
     }
   },
 
@@ -183,27 +284,52 @@ export const useFeedChannelsStore = create<FeedChannelsState>((set) => ({
       }
       const data = (await res.json()) as {
         config: FeedConfig;
-        next_refresh_at?: string;
+      } & CountdownFields;
+      const mergedConfig = {
+        ...DEFAULT_FEED_CONFIG,
+        ...data.config,
+        last_full_sync_at:
+          data.last_full_sync_at ?? data.config.last_full_sync_at ?? null,
+        next_refresh_at:
+          data.next_refresh_at ?? data.config.next_refresh_at ?? null,
+        refresh_interval_minutes:
+          data.refresh_interval_minutes ??
+          data.config.refresh_interval_minutes ??
+          DEFAULT_FEED_CONFIG.refresh_interval_minutes,
       };
       set({
-        config: { ...DEFAULT_FEED_CONFIG, ...data.config },
+        config: mergedConfig,
         feedback: "Top Trending settings saved.",
       });
-      // Refresh status so countdown picks up new next_refresh_at.
+      // Apply backend-confirmed schedule immediately (do not invent from slider).
       const statusRes = await fetch(apiUrl(`${base(guildId)}/status`), {
         cache: "no-store",
       });
       if (statusRes.ok) {
         const status = (await statusRes.json()) as FeedStatus;
         set({
-          status: {
-            ...status,
-            next_refresh_at:
-              status.next_refresh_at ?? data.next_refresh_at ?? null,
-          },
+          status: withCountdownSnapshot(status, data),
         });
+      } else {
+        set((state) => ({
+          status: state.status
+            ? withCountdownSnapshot(
+                {
+                  ...state.status,
+                  last_full_sync_at: mergedConfig.last_full_sync_at ?? null,
+                  next_refresh_at: mergedConfig.next_refresh_at ?? null,
+                  refresh_interval_minutes:
+                    mergedConfig.refresh_interval_minutes,
+                  remaining_seconds: data.remaining_seconds ?? null,
+                  server_time: data.server_time ?? null,
+                  scheduler_status: data.scheduler_status ?? null,
+                },
+                data
+              )
+            : state.status,
+        }));
       }
-      return data.config;
+      return mergedConfig;
     } catch {
       set({ error: "Could not reach the Norgoth API." });
       return null;
@@ -282,6 +408,12 @@ export const useFeedChannelsStore = create<FeedChannelsState>((set) => ({
         messages_restored?: number;
         messages_updated?: number;
         errors?: string[];
+        last_full_sync_at?: string | null;
+        next_refresh_at?: string | null;
+        refresh_interval_minutes?: number;
+        remaining_seconds?: number | null;
+        server_time?: string | null;
+        scheduler_status?: string | null;
       };
       const parts = [
         `Channels recreated: ${data.channels_created ?? 0}`,
@@ -307,15 +439,35 @@ export const useFeedChannelsStore = create<FeedChannelsState>((set) => ({
         cache: "no-store",
       });
       if (statusRes.ok) {
-        set({ status: (await statusRes.json()) as FeedStatus });
+        const status = (await statusRes.json()) as FeedStatus;
+        set({
+          status: withCountdownSnapshot(status, data),
+        });
       }
       const configRes = await fetch(apiUrl(`${base(guildId)}/config`), {
         cache: "no-store",
       });
       if (configRes.ok) {
-        const configBody = (await configRes.json()) as { config: FeedConfig };
+        const configBody = (await configRes.json()) as {
+          config: FeedConfig;
+          next_refresh_at?: string | null;
+          last_full_sync_at?: string | null;
+        };
         set({
-          config: { ...DEFAULT_FEED_CONFIG, ...configBody.config },
+          config: {
+            ...DEFAULT_FEED_CONFIG,
+            ...configBody.config,
+            last_full_sync_at:
+              configBody.last_full_sync_at ??
+              configBody.config.last_full_sync_at ??
+              data.last_full_sync_at ??
+              null,
+            next_refresh_at:
+              configBody.next_refresh_at ??
+              configBody.config.next_refresh_at ??
+              data.next_refresh_at ??
+              null,
+          },
         });
       }
     } catch {

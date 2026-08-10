@@ -9,6 +9,7 @@ type SliderProps = {
   max: number;
   step?: number;
   onChange: (value: number) => void;
+  onPointerUp?: () => void;
   disabled?: boolean;
   id?: string;
   className?: string;
@@ -27,6 +28,7 @@ export function Slider({
   max,
   step = 1,
   onChange,
+  onPointerUp,
   disabled = false,
   id,
   className,
@@ -47,6 +49,18 @@ export function Slider({
       className={["norgoth-range", className].filter(Boolean).join(" ")}
       style={{ ["--norgoth-range-fill" as string]: `${pct}%` } as CSSProperties}
       onChange={(event) => onChange(Number(event.target.value))}
+      onPointerUp={onPointerUp}
+      onKeyUp={(event) => {
+        if (
+          onPointerUp &&
+          (event.key === "ArrowLeft" ||
+            event.key === "ArrowRight" ||
+            event.key === "Home" ||
+            event.key === "End")
+        ) {
+          onPointerUp();
+        }
+      }}
     />
   );
 }

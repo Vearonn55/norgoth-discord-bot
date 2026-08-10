@@ -45,14 +45,14 @@ def _msg(
     )
 
 
-def test_desired_source_ids_worst_to_best() -> None:
-    # top is best-first (A=100, B=80, C=50) → send C, B, A
+def test_desired_source_ids_best_first() -> None:
+    # top is best-first (A=100, B=80, C=50) → send A, B, C (#1 at top)
     top = [
         _msg("A", net=100),
         _msg("B", net=80),
         _msg("C", net=50),
     ]
-    assert desired_source_ids(top) == ["C", "B", "A"]  # type: ignore[arg-type]
+    assert desired_source_ids(top) == ["A", "B", "C"]  # type: ignore[arg-type]
 
 
 def test_capacity_clamp() -> None:
@@ -231,7 +231,7 @@ def test_build_feed_embed_never_empty_placeholder() -> None:
 
 def test_needs_full_rebuild_on_order_change() -> None:
     top = [_msg("A", net=100), _msg("B", net=50)]
-    # Entries ranked best=1; visual bottom-first order stored as rank desc for compare
+    # Entries ranked #1→#N ascending matches desired send order
     existing = [
         SimpleNamespace(
             source_message_id="A",

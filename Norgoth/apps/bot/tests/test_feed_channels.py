@@ -12,6 +12,7 @@ if str(BOT_ROOT) not in sys.path:
 
 from bot.feed_channels import (  # noqa: E402
     FeedChannelsCog,
+    _is_feed_refresh_due,
     _primary_media_url,
 )
 
@@ -126,3 +127,30 @@ def test_vote_suppress_consume() -> None:
 
     assert cog._consume_suppress_remove(1, 2, 3, Emoji()) is True
     assert cog._consume_suppress_remove(1, 2, 3, Emoji()) is False
+
+
+def test_is_feed_refresh_due_prefers_next_refresh_at() -> None:
+    from datetime import datetime, timezone
+
+    now = datetime(2026, 8, 10, 12, 0, tzinfo=timezone.utc)
+    assert (
+        _is_feed_refresh_due(
+            {
+                "enabled": True,
+                "next_refresh_at": "2026-08-10T11:59:00Z",
+            },
+            now=now,
+        )
+        is True
+    )
+    assert (
+        _is_feed_refresh_due(
+            {
+                "enabled": True,
+                "next_refresh_at": "2026-08-10T12:30:00Z",
+            },
+            now=now,
+        )
+        is False
+    )
+    assert _is_feed_refresh_due({"enabled": False}, now=now) is False

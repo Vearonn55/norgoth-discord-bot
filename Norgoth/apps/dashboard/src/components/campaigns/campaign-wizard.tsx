@@ -8,7 +8,6 @@ import {
   CFormInput,
   CFormLabel,
   CFormSelect,
-  CFormTextarea,
   CRow,
 } from "@coreui/react";
 import { Card } from "@/components/ui/card";
@@ -26,6 +25,7 @@ import {
   discordMarkdownToHtml,
   substituteVariables,
 } from "@/lib/discord-markdown";
+import { isBlankDiscordMarkdown } from "@/lib/discord-markdown-validation";
 import {
   defaultCampaignWizardState,
   type CampaignWizardState,
@@ -290,16 +290,19 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
     (s) => s.setBannerDismissed,
   );
   const [draftHydrated, setDraftHydrated] = useState(false);
+  const [descriptionEditorSeed, setDescriptionEditorSeed] = useState(0);
 
   useEffect(() => {
     if (isEdit) {
       resetWizard(initialStateFromCampaign(editCampaign!));
+      setDescriptionEditorSeed((n) => n + 1);
       setDraftHydrated(true);
       return;
     }
 
     // Offer restore via banner; start empty until Continue / Start new.
     resetWizard(defaultCampaignWizardState);
+    setDescriptionEditorSeed((n) => n + 1);
     setBannerDismissed(false);
     setDraftHydrated(true);
     // Intentionally key on the campaign id only: depending on the whole
@@ -518,7 +521,9 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
           launchAt,
           riskLevel,
         }),
-        description: wizardState.basics.description.trim(),
+        description: isBlankDiscordMarkdown(wizardState.basics.description)
+          ? ""
+          : wizardState.basics.description.trim(),
       };
 
       const url = isEdit
@@ -535,6 +540,7 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
             ? {
                 title: payload.title,
                 name: payload.name,
+                description: payload.description,
                 message: payload.message,
                 body: wizardState.message.body.trim(),
                 audience_count: estimatedAudience,
@@ -621,6 +627,7 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                     if (draft) {
                       resetWizard(draft.wizardState);
                       setStep(draft.step);
+                      setDescriptionEditorSeed((n) => n + 1);
                     }
                     setBannerDismissed(true);
                   }}
@@ -633,6 +640,7 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                   onClick={() => {
                     discardDraft();
                     resetWizard(defaultCampaignWizardState);
+                    setDescriptionEditorSeed((n) => n + 1);
                     setStep(1);
                   }}
                 >
@@ -740,20 +748,27 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                   <CFormLabel>
                     {dict.campaignWizard.internalDescription}
                   </CFormLabel>
-                  <CFormTextarea
+                  <RichMessageEditor
+                    key={`campaign-internal-desc-${editCampaign?.id ?? "new"}-${descriptionEditorSeed}`}
                     value={wizardState.basics.description}
-                    onChange={(e) =>
+                    onChange={(markdown) =>
                       setWizardState((prev) => ({
                         ...prev,
                         basics: {
                           ...prev.basics,
-                          description: e.target.value,
+                          description: isBlankDiscordMarkdown(markdown)
+                            ? ""
+                            : markdown,
                         },
                       }))
                     }
+                    height={180}
                     placeholder="Internal note about the purpose of this campaign (not sent to Discord)"
-                    rows={5}
                   />
+                  <p className="mt-1 mb-0 small text-body-secondary">
+                    Formatting is stored for dashboard display; not sent to
+                    Discord.
+                  </p>
                 </div>
               </div>
             </CCol>

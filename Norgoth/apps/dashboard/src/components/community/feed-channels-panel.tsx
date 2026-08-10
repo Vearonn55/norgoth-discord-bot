@@ -31,7 +31,11 @@ import { Slider } from "@/components/ui/slider";
 import { NumberInput } from "@/components/ui/number-input";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import { feedEmojiFromPicker, feedEmojiToPicker } from "@/lib/feed-emoji";
-import { formatCountdown, msUntil } from "@/lib/feed-countdown";
+import {
+  COUNTDOWN_PLACEHOLDER,
+  formatCountdown,
+  snapshotRemainingMs,
+} from "@/lib/feed-countdown";
 import {
   feedNeedsSetup,
   mergeFeedWindowCards,
@@ -78,6 +82,7 @@ export function FeedChannelsPanel() {
   const error = useFeedChannelsStore((s) => s.error);
   const feedback = useFeedChannelsStore((s) => s.feedback);
   const load = useFeedChannelsStore((s) => s.load);
+  const refreshStatus = useFeedChannelsStore((s) => s.refreshStatus);
   const save = useFeedChannelsStore((s) => s.save);
   const setEnabled = useFeedChannelsStore((s) => s.setEnabled);
   const patchWindow = useFeedChannelsStore((s) => s.patchWindow);
@@ -95,7 +100,25 @@ export function FeedChannelsPanel() {
   const [intervalDraft, setIntervalDraft] = useState(15);
   const [intervalSaving, setIntervalSaving] = useState(false);
   const [countdownMs, setCountdownMs] = useState(0);
-  const zeroFetchForRef = useRef<string | null>(null);
+  const [countdownReady, setCountdownReady] = useState(false);
+  const intervalDraftRef = useRef(intervalDraft);
+  intervalDraftRef.current = intervalDraft;
+
+  // Canonical backend schedule only — never invent from slider draft.
+  const countdownSnapshot = useMemo(
+    () =>
+      status
+        ? {
+            remainingSeconds: status.remaining_seconds ?? null,
+            serverTime: status.server_time ?? null,
+            nextRefreshAt: status.next_refresh_at ?? null,
+            receivedAt: status.countdown_received_at ?? Date.now(),
+          }
+        : null,
+    [status]
+  );
+
+  const savedIntervalMinutes = config?.refresh_interval_minutes ?? 15;
 
   useEffect(() => {
     if (!guildId) return;
@@ -103,32 +126,57 @@ export function FeedChannelsPanel() {
   }, [guildId, load]);
 
   useEffect(() => {
-    if (!config) return;
-    setIntervalDraft(
-      clampRefreshMinutes(config.refresh_interval_minutes ?? 15)
-    );
-  }, [config]);
+    setIntervalDraft(clampRefreshMinutes(savedIntervalMinutes));
+  }, [savedIntervalMinutes]);
 
-  // Live countdown from backend next_refresh_at (1s tick).
   useEffect(() => {
-    const nextAt = status?.next_refresh_at ?? null;
+    setCountdownReady(Boolean(status) && !loading);
+  }, [status, loading]);
+
+  // Display-only tick from backend remaining_seconds snapshot (skew-safe).
+  useEffect(() => {
     const tick = () => {
-      const remaining = msUntil(nextAt);
-      setCountdownMs(Math.max(0, remaining));
-      if (
-        remaining <= 0 &&
-        nextAt &&
-        guildId &&
-        zeroFetchForRef.current !== nextAt
-      ) {
-        zeroFetchForRef.current = nextAt;
-        void load(guildId);
-      }
+      setCountdownMs(snapshotRemainingMs(countdownSnapshot));
     };
     tick();
     const id = window.setInterval(tick, 1000);
     return () => window.clearInterval(id);
-  }, [status?.next_refresh_at, guildId, load]);
+  }, [countdownSnapshot]);
+
+  // At zero: hold and quietly reconcile until backend advances next_refresh_at.
+  // Must depend on countdownMs so we start polling when the tick reaches zero.
+  useEffect(() => {
+    if (!guildId || !countdownReady || !countdownSnapshot?.nextRefreshAt) return;
+    if (countdownMs > 0) return;
+
+    void refreshStatus(guildId);
+    const id = window.setInterval(() => {
+      void refreshStatus(guildId);
+    }, 5_000);
+    return () => window.clearInterval(id);
+  }, [
+    guildId,
+    countdownReady,
+    countdownMs,
+    countdownSnapshot?.nextRefreshAt,
+    refreshStatus,
+  ]);
+
+  // Tab focus: reconcile against backend (browser timer throttling).
+  useEffect(() => {
+    if (!guildId) return;
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        void refreshStatus(guildId);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [guildId, refreshStatus]);
 
   const channels = resources?.channels ?? [];
   const categories = resources?.categories ?? [];
@@ -152,10 +200,15 @@ export function FeedChannelsPanel() {
     if (next === (config.refresh_interval_minutes ?? 15)) return;
     setIntervalSaving(true);
     try {
-      await save(guildId, {
+      const saved = await save(guildId, {
         ...config,
         refresh_interval_minutes: next,
       });
+      if (saved) {
+        setIntervalDraft(
+          clampRefreshMinutes(saved.refresh_interval_minutes ?? next)
+        );
+      }
     } finally {
       setIntervalSaving(false);
     }
@@ -327,12 +380,13 @@ export function FeedChannelsPanel() {
               </div>
               <div
                 className="text-end"
-                aria-hidden="true"
-                title="Time until the next automatic feed refresh"
+                title="Time until the next automatic Discord feed synchronization"
               >
                 <div className="small text-body-secondary">Next refresh</div>
                 <div className="fw-semibold font-monospace">
-                  {formatCountdown(countdownMs)}
+                  {!countdownReady || !countdownSnapshot?.nextRefreshAt
+                    ? COUNTDOWN_PLACEHOLDER
+                    : formatCountdown(countdownMs)}
                 </div>
               </div>
             </div>
@@ -352,6 +406,12 @@ export function FeedChannelsPanel() {
               disabled={busy || intervalSaving}
               aria-label="Feed refresh interval in minutes"
               onChange={(value) => setIntervalDraft(clampRefreshMinutes(value))}
+              onPointerUp={() => {
+                const next = intervalDraftRef.current;
+                if (next !== savedIntervalMinutes) {
+                  void persistRefreshInterval(next);
+                }
+              }}
             />
             <div>
               <Button
@@ -360,7 +420,7 @@ export function FeedChannelsPanel() {
                 disabled={
                   busy ||
                   intervalSaving ||
-                  intervalDraft === (config.refresh_interval_minutes ?? 15)
+                  intervalDraft === savedIntervalMinutes
                 }
                 onClick={() => void persistRefreshInterval(intervalDraft)}
               >

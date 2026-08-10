@@ -11,6 +11,7 @@ import discord
 from discord.ext import commands, tasks
 
 from bot.state import now_iso
+from bot.embed_render import build_embed_from_json
 
 if TYPE_CHECKING:
     from bot.client import NorgothBot
@@ -83,17 +84,7 @@ class HoneypotCog(commands.Cog):
         raw = config.get("warning_embed")
         if not isinstance(raw, dict) or not raw:
             return None
-
-        embed = discord.Embed(
-            title=str(raw.get("title") or "Honeypot Warning")[:256],
-            description=str(raw.get("description") or "")[:4096] or None,
-            color=discord.Color.orange(),
-        )
-
-        if raw.get("footer"):
-            embed.set_footer(text=str(raw["footer"])[:2048])
-
-        return embed
+        return build_embed_from_json(raw)
 
     async def ensure_pinned_warning(
         self,
@@ -138,12 +129,22 @@ class HoneypotCog(commands.Cog):
         embed = self.build_warning_embed(config)
 
         if existing is not None and existing.author.id == me.id:
-            if not existing.pinned:
-                try:
-                    await existing.pin(reason="Norgoth honeypot warning")
-                except discord.HTTPException:
-                    pass
-            return config
+            try:
+                await existing.edit(content=content, embed=embed)
+            except discord.HTTPException:
+                logger.exception(
+                    "Failed to edit honeypot warning in guild %s channel %s",
+                    guild.id,
+                    channel.id,
+                )
+                # Fall through to recreate below when edit fails.
+            else:
+                if not existing.pinned:
+                    try:
+                        await existing.pin(reason="Norgoth honeypot warning")
+                    except discord.HTTPException:
+                        pass
+                return config
 
         try:
             message = await channel.send(content=content, embed=embed)

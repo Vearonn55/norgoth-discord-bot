@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { apiUrl } from "@/lib/api";
+import { isValidAutoResponseMarkdown } from "@/lib/auto-response-validation";
 import { createId } from "@/lib/id";
 
 // ── Welcome / auto-role / mod-log settings ──────────────────────────────────
@@ -598,10 +599,20 @@ export const useAutoResponsesStore = create<AutoResponsesState>((set, get) => ({
   },
   addRule: async (guildId) => {
     const { draft, rules, persist } = get();
+    const response = draft.response.trim();
+    const validity = isValidAutoResponseMarkdown(draft.response);
 
-    if (!draft.trigger.trim() || !draft.response.trim()) {
+    if (!draft.trigger.trim() || validity.reason === "empty") {
       set({
         feedback: "A trigger and a response are both required.",
+        feedbackIsError: true,
+      });
+      return;
+    }
+
+    if (validity.reason === "too_long") {
+      set({
+        feedback: "Response must be 1500 characters or fewer.",
         feedbackIsError: true,
       });
       return;
@@ -620,7 +631,7 @@ export const useAutoResponsesStore = create<AutoResponsesState>((set, get) => ({
       {
         ...draft,
         trigger: draft.trigger.trim(),
-        response: draft.response.trim(),
+        response,
       },
     ]);
 
