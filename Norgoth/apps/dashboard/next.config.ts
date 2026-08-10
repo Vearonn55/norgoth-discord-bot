@@ -8,6 +8,8 @@ const apiOrigin =
 const lanHost = process.env.NORGOTH_LAN_HOST?.trim();
 
 const nextConfig: NextConfig = {
+  // Hide the floating Next.js route/config indicator in development.
+  devIndicators: false,
   allowedDevOrigins: [
     ...(lanHost ? [lanHost] : []),
     "127.0.0.1",
