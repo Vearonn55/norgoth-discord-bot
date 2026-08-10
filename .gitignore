@@ -17,6 +17,9 @@ __pycache__/
 .venv/
 venv/
 env/
+# Keep NorBot deploy env templates trackable (not a Python virtualenv).
+!Norgoth/deploy/env/
+!Norgoth/deploy/env/**
 *.egg-info/
 .eggs/
 .pytest_cache/
