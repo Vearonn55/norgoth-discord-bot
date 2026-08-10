@@ -114,7 +114,6 @@ def main() -> int:
             json={
                 "verification_channel_id": args.verification_channel,
                 "log_channel_id": args.log_channel,
-                "verified_role_id": args.verified_role,
                 "unverified_role_id": args.unverified_role,
                 "member_role_id": args.member_role,
                 "minimum_account_age_days": args.min_account_age_days,

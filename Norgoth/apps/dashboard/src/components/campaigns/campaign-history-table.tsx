@@ -14,6 +14,7 @@ import {
   isInDateRange,
 } from "@/components/ui/date-range-filter";
 import { apiUrl } from "@/lib/api";
+import { formatDateTime } from "@/lib/datetime";
 import {
   useCampaignsStore,
   type Campaign,
@@ -65,15 +66,9 @@ function campaignPlatforms(campaign: Campaign): string[] {
   return keys.map((key) => key.charAt(0).toUpperCase() + key.slice(1));
 }
 
-function formatDate(value?: string | null): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString();
-}
-
 export function CampaignHistoryTable() {
   const params = useParams();
-  const lang = String(params?.lang ?? "en");
+  const lang = String(params?.lang || "en");
 
   const campaigns = useCampaignsStore((s) => s.campaigns);
   const loading = useCampaignsStore((s) => s.loading);
@@ -256,7 +251,7 @@ export function CampaignHistoryTable() {
                 key: "created_at",
                 header: "Created At",
                 className: "text-nowrap",
-                cell: (row) => formatDate(row.created_at),
+                cell: (row) => formatDateTime(row.created_at, lang),
               },
               {
                 key: "name",

@@ -353,10 +353,37 @@ class HoneypotCog(commands.Cog):
             await logging_cog.record_event(
                 guild,
                 "security",
+                "Honeypot member detected",
+                f"{member} was detected in a honeypot trap.",
+                {
+                    "Member": f"{member} ({member.id})",
+                    "Channel": f"<#{entry['channel_id']}>",
+                },
+                event_type="honeypot_member_detected",
+                actor_id=str(member.id),
+                actor_name=str(member),
+            )
+            await logging_cog.record_event(
+                guild,
+                "security",
                 "Honeypot triggered",
                 f"{member} posted in a honeypot trap channel.",
                 fields,
                 event_type="honeypot_triggered",
+                actor_id=str(member.id),
+                actor_name=str(member),
+            )
+            await logging_cog.record_event(
+                guild,
+                "security",
+                "Honeypot punishment applied",
+                f"Honeypot punishment applied to {member}.",
+                {
+                    "Member": f"{member} ({member.id})",
+                    "Punishment": str(entry.get("punishment") or "?"),
+                    "Result": str(entry.get("result") or "")[:1024],
+                },
+                event_type="honeypot_punishment_applied",
                 actor_id=str(member.id),
                 actor_name=str(member),
             )

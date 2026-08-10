@@ -6,13 +6,19 @@ import { createId } from "@/lib/id";
 
 // ── Welcome / auto-role / mod-log settings ──────────────────────────────────
 
+export type MessageSource = "text" | "embed";
+
 export type AutomationConfig = {
   welcome_enabled: boolean;
   welcome_channel_id: string | null;
   welcome_message: string;
+  welcome_source: MessageSource;
+  welcome_embed_message_id: string | null;
   leave_enabled: boolean;
   leave_channel_id: string | null;
   leave_message: string;
+  leave_source: MessageSource;
+  leave_embed_message_id: string | null;
   auto_role_enabled: boolean;
   auto_role_id: string | null;
   auto_role_ids: string[];
@@ -27,13 +33,25 @@ export type WelcomeStatus = {
   attempted_at?: string;
 } | null;
 
+export type AutoroleStatus = {
+  ok: boolean;
+  reason: string;
+  member_name?: string | null;
+  role_ids?: string[];
+  at?: string;
+} | null;
+
 export const DEFAULT_AUTOMATION_CONFIG: AutomationConfig = {
   welcome_enabled: false,
   welcome_channel_id: null,
   welcome_message: "Welcome to {server}, {user}!",
+  welcome_source: "text",
+  welcome_embed_message_id: null,
   leave_enabled: false,
   leave_channel_id: null,
   leave_message: "{username} has left {server}.",
+  leave_source: "text",
+  leave_embed_message_id: null,
   auto_role_enabled: false,
   auto_role_id: null,
   auto_role_ids: [],
@@ -65,6 +83,7 @@ type AutomationSettingsState = {
   /** Last persisted baseline used for per-section dirty detection + partial saves. */
   savedConfig: AutomationConfig;
   welcomeStatus: WelcomeStatus;
+  autoroleStatus: AutoroleStatus;
   loading: boolean;
   saving: boolean;
   savingSection: AutomationSection | null;
@@ -73,6 +92,11 @@ type AutomationSettingsState = {
   editorSeed: number;
   error: string | null;
   savedAt: string | null;
+  /** Per-section save feedback so Welcome and Leave report independently. */
+  welcomeSavedAt: string | null;
+  welcomeError: string | null;
+  leaveSavedAt: string | null;
+  leaveError: string | null;
   testResult: string | null;
   testError: string | null;
   leaveTesting: boolean;
@@ -104,11 +128,15 @@ function sectionPatch(
         welcome_enabled: config.welcome_enabled,
         welcome_channel_id: config.welcome_channel_id,
         welcome_message: config.welcome_message,
+        welcome_source: config.welcome_source,
+        welcome_embed_message_id: config.welcome_embed_message_id,
       }
     : {
         leave_enabled: config.leave_enabled,
         leave_channel_id: config.leave_channel_id,
         leave_message: config.leave_message,
+        leave_source: config.leave_source,
+        leave_embed_message_id: config.leave_embed_message_id,
       };
 }
 
@@ -117,6 +145,7 @@ export const useAutomationStore = create<AutomationSettingsState>(
     config: DEFAULT_AUTOMATION_CONFIG,
     savedConfig: DEFAULT_AUTOMATION_CONFIG,
     welcomeStatus: null,
+    autoroleStatus: null,
     loading: true,
     saving: false,
     savingSection: null,
@@ -125,6 +154,10 @@ export const useAutomationStore = create<AutomationSettingsState>(
     editorSeed: 0,
     error: null,
     savedAt: null,
+    welcomeSavedAt: null,
+    welcomeError: null,
+    leaveSavedAt: null,
+    leaveError: null,
     testResult: null,
     testError: null,
     leaveTesting: false,
@@ -174,7 +207,10 @@ export const useAutomationStore = create<AutomationSettingsState>(
 
         if (statusResponse.ok) {
           const statusPayload = await statusResponse.json();
-          set({ welcomeStatus: statusPayload?.welcome ?? null });
+          set({
+            welcomeStatus: statusPayload?.welcome ?? null,
+            autoroleStatus: statusPayload?.autorole ?? null,
+          });
         }
       } catch {
         set({
@@ -215,38 +251,57 @@ export const useAutomationStore = create<AutomationSettingsState>(
       }
     },
     saveSection: async (guildId, section) => {
-      set({ saving: true, savingSection: section, error: null });
+      set({
+        saving: true,
+        savingSection: section,
+        ...(section === "welcome"
+          ? { welcomeError: null }
+          : { leaveError: null }),
+      });
 
       try {
-        const { config, savedConfig } = get();
+        const { config } = get();
         const patch = sectionPatch(config, section);
-        const payload = { ...savedConfig, ...patch };
 
+        // PATCH only this section's fields. The backend merges them onto the
+        // stored config, so the other section is never clobbered even if this
+        // client's baseline is stale.
         const response = await fetch(apiUrl(`/guilds/${guildId}/automation`), {
-          method: "PUT",
+          method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+          body: JSON.stringify(patch),
         });
 
         if (!response.ok) {
           const errPayload = await response.json().catch(() => null);
-          set({
-            error: `Save failed: ${apiErrorMessage(errPayload, await response.text())}`,
-          });
+          const message = `Save failed: ${apiErrorMessage(errPayload, await response.text())}`;
+          set(
+            section === "welcome"
+              ? { welcomeError: message }
+              : { leaveError: message }
+          );
           return;
         }
 
         set((state) => {
           const nextSaved = { ...state.savedConfig, ...patch };
+          const now = new Date().toLocaleTimeString();
           return {
             savedConfig: nextSaved,
             // Global dirty stays true if the other section still differs.
             dirty: JSON.stringify(state.config) !== JSON.stringify(nextSaved),
-            savedAt: new Date().toLocaleTimeString(),
+            ...(section === "welcome"
+              ? { welcomeSavedAt: now, welcomeError: null }
+              : { leaveSavedAt: now, leaveError: null }),
           };
         });
       } catch {
-        set({ error: "Save failed: could not reach the API." });
+        const message = "Save failed: could not reach the API.";
+        set(
+          section === "welcome"
+            ? { welcomeError: message }
+            : { leaveError: message }
+        );
       } finally {
         set({ saving: false, savingSection: null });
       }
@@ -273,13 +328,12 @@ export const useAutomationStore = create<AutomationSettingsState>(
           ...sectionPatch(config, "welcome"),
           welcome_enabled: true,
         };
-        const payload = { ...get().savedConfig, ...welcomePatch };
         const saveResponse = await fetch(
           apiUrl(`/guilds/${guildId}/automation`),
           {
-            method: "PUT",
+            method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
+            body: JSON.stringify(welcomePatch),
           }
         );
 
@@ -331,7 +385,10 @@ export const useAutomationStore = create<AutomationSettingsState>(
         );
         if (statusResponse.ok) {
           const statusPayload = await statusResponse.json();
-          set({ welcomeStatus: statusPayload?.welcome ?? null });
+          set({
+            welcomeStatus: statusPayload?.welcome ?? null,
+            autoroleStatus: statusPayload?.autorole ?? null,
+          });
         }
       } catch {
         set({ testError: "Could not reach the API for the test send." });
@@ -364,13 +421,12 @@ export const useAutomationStore = create<AutomationSettingsState>(
           ...sectionPatch(config, "leave"),
           leave_enabled: true,
         };
-        const payload = { ...get().savedConfig, ...leavePatch };
         const saveResponse = await fetch(
           apiUrl(`/guilds/${guildId}/automation`),
           {
-            method: "PUT",
+            method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
+            body: JSON.stringify(leavePatch),
           }
         );
 
@@ -584,6 +640,8 @@ export type RoleMenuEntry = {
   emoji?: string;
 };
 
+export type RoleMenuBindingType = "embed_message" | "standalone";
+
 export type RoleMenu = {
   id: string;
   title: string;
@@ -591,18 +649,37 @@ export type RoleMenu = {
   channel_id: string | null;
   interaction: "buttons" | "select" | "reactions";
   roles: RoleMenuEntry[];
+  binding_type: RoleMenuBindingType;
+  message_source: "text" | "embed";
+  text_content: string;
+  embed_message_id?: string | null;
+  embed_delivery_id?: string | null;
+  binding_health?: RoleMenuBindingHealth;
   published_at: string | null;
   message_id?: string | null;
 };
 
+export type RoleMenuBindingHealth =
+  | "healthy"
+  | "needs_resync"
+  | "message_missing"
+  | "needs_reassignment"
+  | "unbound"
+  | "standalone";
+
 export function newRoleMenu(): RoleMenu {
   return {
     id: createId(),
-    title: "Choose your roles",
-    description: "Use the controls below to manage your roles.",
+    title: "",
+    description: "",
     channel_id: null,
     interaction: "buttons",
     roles: [],
+    binding_type: "embed_message",
+    message_source: "embed",
+    text_content: "Choose a role from the controls below.",
+    embed_message_id: null,
+    embed_delivery_id: null,
     published_at: null,
     message_id: null,
   };
@@ -647,16 +724,33 @@ export const useRoleMenusStore = create<RoleMenusState>((set, get) => ({
       if (response.ok) {
         const body = (await response.json()) as { menus: RoleMenu[] };
         set({
-          menus: (body.menus ?? []).map((menu) => ({
-            ...menu,
-            interaction: menu.interaction ?? "buttons",
-            roles: (menu.roles ?? []).map((role) => ({
-              ...role,
-              mode: role.mode ?? "toggle",
-              style: role.style ?? "secondary",
-              emoji: role.emoji ?? "",
-            })),
-          })),
+          menus: (body.menus ?? []).map((menu) => {
+            const messageSource =
+              menu.message_source === "text" || menu.message_source === "embed"
+                ? menu.message_source
+                : menu.binding_type === "embed_message" || menu.embed_message_id
+                  ? "embed"
+                  : "text";
+            return {
+              ...menu,
+              interaction: menu.interaction ?? "buttons",
+              binding_type: menu.binding_type ?? "standalone",
+              message_source: messageSource,
+              text_content:
+                menu.text_content ??
+                menu.description ??
+                "Choose a role from the controls below.",
+              embed_message_id: menu.embed_message_id ?? null,
+              embed_delivery_id: menu.embed_delivery_id ?? null,
+              binding_health: menu.binding_health,
+              roles: (menu.roles ?? []).map((role) => ({
+                ...role,
+                mode: role.mode ?? "toggle",
+                style: role.style ?? "secondary",
+                emoji: role.emoji ?? "",
+              })),
+            };
+          }),
         });
       }
     } catch {
@@ -704,7 +798,33 @@ export const useRoleMenusStore = create<RoleMenusState>((set, get) => ({
     const { editing, menus, persist } = get();
     if (!editing) return;
 
-    if (!editing.title.trim()) {
+    if (editing.message_source === "text") {
+      if (!editing.text_content.trim()) {
+        set({
+          feedback: "Write a plain-text message for this menu.",
+          feedbackIsError: true,
+        });
+        return;
+      }
+      if (!editing.channel_id) {
+        set({
+          feedback: "Choose a channel for the text menu message.",
+          feedbackIsError: true,
+        });
+        return;
+      }
+    } else if (editing.binding_type === "embed_message") {
+      // A published instance (delivery) is optional at save time: a menu can be
+      // saved as a draft bound to an Embed Message and published later. For a
+      // newly created embed the delivery is attached during publish.
+      if (!editing.embed_message_id) {
+        set({
+          feedback: "Select or create an Embed Message for this menu.",
+          feedbackIsError: true,
+        });
+        return;
+      }
+    } else if (!editing.title.trim()) {
       set({
         feedback: "The menu needs a title.",
         feedbackIsError: true,
@@ -734,7 +854,7 @@ export const useRoleMenusStore = create<RoleMenusState>((set, get) => ({
 
       if (response.ok) {
         set({
-          feedback: `"${menu.title}" published to Discord.`,
+          feedback: `"${menu.title || "Role menu"}" published to Discord.`,
           feedbackIsError: false,
         });
         await get().load(guildId);
@@ -778,11 +898,12 @@ export const useRoleMenusStore = create<RoleMenusState>((set, get) => ({
       } | null;
       const remaining =
         body?.menus ?? get().menus.filter((item) => item.id !== menu.id);
+      const menuLabel = menu.title || "Role menu";
       set({
         menus: remaining,
         feedback: body?.discord_deleted
-          ? `"${menu.title}" deleted, including its published message.`
-          : `"${menu.title}" deleted.`,
+          ? `"${menuLabel}" deleted, including its published message.`
+          : `"${menuLabel}" deleted.`,
         feedbackIsError: false,
       });
       return true;

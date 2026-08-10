@@ -16,6 +16,13 @@ type EmbedMediaPickerProps = {
   onChange: (url: string) => void;
   guildId?: string;
   banner?: boolean;
+  /**
+   * Render a banner slot's card at the compact thumbnail height so a
+   * thumbnail + banner pair line up visually. The stored value and Discord
+   * media semantics are unchanged; the preview uses `object-fit: contain` so
+   * wide images are letterboxed rather than distorted.
+   */
+  equalizeToThumbnail?: boolean;
 };
 
 /**
@@ -29,6 +36,7 @@ export function EmbedMediaPicker({
   onChange,
   guildId,
   banner = false,
+  equalizeToThumbnail = false,
 }: EmbedMediaPickerProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [showUrl, setShowUrl] = useState(false);
@@ -72,12 +80,21 @@ export function EmbedMediaPicker({
             src={value}
             alt={label}
             className="rounded border"
-            style={{
-              width: banner ? "100%" : 96,
-              height: banner ? "auto" : 96,
-              maxHeight: banner ? 180 : 96,
-              objectFit: "cover",
-            }}
+            style={
+              equalizeToThumbnail
+                ? {
+                    width: "100%",
+                    height: 96,
+                    maxHeight: 96,
+                    objectFit: "contain",
+                  }
+                : {
+                    width: banner ? "100%" : 96,
+                    height: banner ? "auto" : 96,
+                    maxHeight: banner ? 180 : 96,
+                    objectFit: "cover",
+                  }
+            }
           />
           <div className="d-flex gap-2">
             <Button
@@ -102,6 +119,7 @@ export function EmbedMediaPicker({
         <EmbedImagePlaceholder
           label={label}
           banner={banner}
+          equalizeToThumbnail={equalizeToThumbnail}
           onClick={openChooser}
         />
       )}

@@ -23,6 +23,8 @@ export type LoggingChannelConfig = {
   norgoth_managed: boolean;
   default_color: number | null;
   position: number;
+  /** Category gate; defaults true for legacy payloads. */
+  enabled: boolean;
 };
 
 export type LoggingEventConfig = {
@@ -100,6 +102,11 @@ type LoggingConfigState = {
   load: (guildId: string) => Promise<void>;
   loadCatalog: (guildId: string) => Promise<void>;
   setEnabled: (guildId: string, enabled: boolean) => Promise<LoggingConfig | null>;
+  setChannelEnabled: (
+    guildId: string,
+    channelKey: string,
+    enabled: boolean
+  ) => Promise<LoggingConfig | null>;
   save: (
     guildId: string,
     body: LoggingConfigBody
@@ -110,6 +117,10 @@ type LoggingConfigState = {
     channelPatch: Partial<Pick<LoggingChannelConfig, "name" | "default_color">>,
     channelEvents: LoggingEventConfig[]
   ) => Promise<LoggingConfig | null>;
+  deleteDiscordChannel: (
+    guildId: string,
+    channelKey: string
+  ) => Promise<LoggingConfig | null>;
   provision: (guildId: string) => Promise<LoggingConfig | null>;
   reconcile: (guildId: string) => Promise<LoggingHealth | null>;
   repair: (guildId: string) => Promise<LoggingConfig | null>;
@@ -118,6 +129,16 @@ type LoggingConfigState = {
 
 function base(guildId: string): string {
   return `/guilds/${guildId}/logging`;
+}
+
+function normalizeLoggingConfig(config: LoggingConfig): LoggingConfig {
+  return {
+    ...config,
+    channels: (config.channels ?? []).map((channel) => ({
+      ...channel,
+      enabled: channel.enabled !== false,
+    })),
+  };
 }
 
 // Guards against rapid enable/disable toggling: a single in-flight PATCH at a
@@ -144,7 +165,9 @@ export const useLoggingConfigStore = create<LoggingConfigState>((set, get) => ({
       ]);
       if (configRes.ok) {
         const body = (await configRes.json()) as { config: LoggingConfig | null };
-        set({ config: body.config });
+        set({
+          config: body.config ? normalizeLoggingConfig(body.config) : null,
+        });
       }
       if (catalogRes.ok) {
         set({ catalog: (await catalogRes.json()) as LoggingCatalog });
@@ -188,7 +211,7 @@ export const useLoggingConfigStore = create<LoggingConfigState>((set, get) => ({
       }
       const data = (await res.json()) as { config: LoggingConfig };
       set({
-        config: data.config,
+        config: normalizeLoggingConfig(data.config),
         feedback: enabled ? "Logging enabled." : "Logging disabled.",
       });
       return data.config;
@@ -197,6 +220,37 @@ export const useLoggingConfigStore = create<LoggingConfigState>((set, get) => ({
       return null;
     } finally {
       toggleInFlight = false;
+      set({ busy: false });
+    }
+  },
+
+  setChannelEnabled: async (guildId, channelKey, enabled) => {
+    set({ busy: true, error: null, feedback: null });
+    try {
+      const res = await fetch(
+        apiUrl(`${base(guildId)}/channels/${encodeURIComponent(channelKey)}`),
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled }),
+        }
+      );
+      if (!res.ok) {
+        set({ error: await readError(res) });
+        return null;
+      }
+      const data = (await res.json()) as { config: LoggingConfig };
+      set({
+        config: normalizeLoggingConfig(data.config),
+        feedback: enabled
+          ? "Category enabled."
+          : "Category disabled (settings kept).",
+      });
+      return data.config;
+    } catch {
+      set({ error: "Could not reach the Norgoth API." });
+      return null;
+    } finally {
       set({ busy: false });
     }
   },
@@ -228,41 +282,87 @@ export const useLoggingConfigStore = create<LoggingConfigState>((set, get) => ({
     const current = get().config;
     if (!current) return null;
 
-    // Apply the patch to the target channel only; leave the rest untouched.
-    const channels = current.channels.map((channel) =>
-      channel.key === channelKey ? { ...channel, ...channelPatch } : channel
-    );
-
-    // Replace this channel's events; preserve every other channel's routing.
-    const otherEvents = current.events.filter(
-      (event) => event.channel_key !== channelKey
-    );
-    const normalizedEvents = channelEvents.map((event) => ({
-      ...event,
-      channel_key: channelKey,
-    }));
-
-    const body: LoggingConfigBody = {
-      enabled: current.enabled,
-      category_id: current.category_id,
-      category_name: current.category_name,
-      norgoth_managed_category: current.norgoth_managed_category,
-      channels: channels.map(({ id: _id, ...rest }) => rest),
-      events: [...otherEvents, ...normalizedEvents],
-    };
-
-    const saved = await get().save(guildId, body);
-    if (!saved) return null;
-
-    // Provision only fills in channels lacking a Discord id, so this is a
-    // no-op for an existing channel and safe to call for newly-added ones.
-    const needsProvision = saved.channels.some(
-      (channel) => channel.norgoth_managed && !channel.channel_id
-    );
-    if (needsProvision) {
-      return get().provision(guildId);
+    // May be absent when configuring a catalog category omitted during setup.
+    const target = current.channels.find((channel) => channel.key === channelKey);
+    const name = channelPatch.name ?? target?.name;
+    if (!name) {
+      set({ error: "Channel name is required." });
+      return null;
     }
-    return saved;
+    const default_color =
+      channelPatch.default_color !== undefined
+        ? channelPatch.default_color
+        : (target?.default_color ?? null);
+
+    set({ busy: true, error: null, feedback: null });
+    try {
+      const res = await fetch(
+        apiUrl(`${base(guildId)}/channels/${encodeURIComponent(channelKey)}`),
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name,
+            default_color,
+            events: channelEvents.map((event) => ({
+              ...event,
+              channel_key: channelKey,
+            })),
+          }),
+        }
+      );
+      if (!res.ok) {
+        set({ error: await readError(res) });
+        return null;
+      }
+      const data = (await res.json()) as { config: LoggingConfig };
+      const saved = normalizeLoggingConfig(data.config);
+      set({
+        config: saved,
+        feedback: "Category settings saved.",
+      });
+
+      // Provision only fills in channels lacking a Discord id.
+      const needsProvision = saved.channels.some(
+        (channel) => channel.norgoth_managed && !channel.channel_id
+      );
+      if (needsProvision) {
+        return get().provision(guildId);
+      }
+      return saved;
+    } catch {
+      set({ error: "Could not reach the Norgoth API." });
+      return null;
+    } finally {
+      set({ busy: false });
+    }
+  },
+
+  deleteDiscordChannel: async (guildId, channelKey) => {
+    set({ busy: true, error: null, feedback: null });
+    try {
+      const res = await fetch(
+        apiUrl(
+          `${base(guildId)}/channels/${encodeURIComponent(channelKey)}/discord-channel`
+        ),
+        { method: "DELETE" }
+      );
+      if (!res.ok) {
+        set({ error: await readError(res) });
+        return null;
+      }
+      const data = (await res.json()) as { config: LoggingConfig };
+      set({
+        config: normalizeLoggingConfig(data.config),
+        feedback: "Log channel deleted; category disabled.",
+      });
+      return normalizeLoggingConfig(data.config);
+    } catch {
+      set({ error: "Could not reach the Norgoth API." });
+      return null;
+    } finally {
+      set({ busy: false });
+    }
   },
 
   provision: async (guildId) => {

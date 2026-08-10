@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from app.api.v1.dependencies_auth import guild_manager_dependency
 from app.services.campaign_store import get_redis, now_iso
+from app.services.feature_config_store import read_raw, save_config
 
 router = APIRouter(
     tags=["Auto Responses"],
@@ -45,7 +46,7 @@ async def get_auto_responses(guild_id: str) -> dict[str, Any]:
     redis_client = await get_redis()
 
     try:
-        raw = await redis_client.get(autoresponses_key(guild_id))
+        raw = await read_raw(guild_id, "autoresponder", redis_client)
     finally:
         await redis_client.aclose()
 
@@ -76,7 +77,7 @@ async def update_auto_responses(
     redis_client = await get_redis()
 
     try:
-        await redis_client.set(autoresponses_key(guild_id), json.dumps(stored))
+        await save_config(guild_id, "autoresponder", stored)
     finally:
         await redis_client.aclose()
 

@@ -12,6 +12,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { NumberInput } from "@/components/ui/number-input";
 import { DataTable } from "@/components/ui/data-table";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import {
@@ -181,23 +182,19 @@ export function AutoResponsesPanel() {
 
             <div>
               <CFormLabel>Cooldown (seconds)</CFormLabel>
-              <CFormInput
-                type="number"
+              <NumberInput
+                value={draft.cooldown_seconds}
+                defaultValue={0}
                 min={0}
                 max={3600}
-                value={draft.cooldown_seconds}
-                onChange={(event) => {
-                  const parsed = Number(event.target.value);
-                  if (!Number.isNaN(parsed)) {
-                    setDraft((current) => ({
-                      ...current,
-                      cooldown_seconds: Math.min(
-                        3600,
-                        Math.max(0, Math.round(parsed))
-                      ),
-                    }));
-                  }
-                }}
+                step={1}
+                aria-label="Cooldown seconds"
+                onCommit={(next) =>
+                  setDraft((current) => ({
+                    ...current,
+                    cooldown_seconds: next,
+                  }))
+                }
               />
             </div>
           </div>

@@ -26,6 +26,8 @@ from app.routes.autoresponder import router as autoresponder_router  # noqa: E40
 from app.routes.bot import router as bot_router  # noqa: E402
 from app.routes.campaigns import router as campaigns_router  # noqa: E402
 from app.routes.honeypot import router as honeypot_router  # noqa: E402
+from app.routes.ingest import router as ingest_router  # noqa: E402
+from app.routes.internal_config import router as internal_config_router  # noqa: E402
 from app.routes.moderation import router as moderation_router  # noqa: E402
 from app.routes.notifications import router as notifications_router  # noqa: E402
 from app.routes.content_notifications import router as content_notifications_router  # noqa: E402
@@ -40,8 +42,10 @@ from app.routes.raid import router as raid_router  # noqa: E402
 from app.routes.role_menus import router as role_menus_router  # noqa: E402
 from app.routes.invites import router as invites_router  # noqa: E402
 from app.routes.leveling import router as leveling_router  # noqa: E402
+from app.routes.feed_channels import router as feed_channels_router  # noqa: E402
 from app.routes.modules import router as modules_router  # noqa: E402
 from app.routes.server_logs import router as server_logs_router  # noqa: E402
+from app.routes.system_audit_logs import router as system_audit_logs_router  # noqa: E402
 from app.routes.tickets import router as tickets_router  # noqa: E402
 from app.routes.tickets import public_router as tickets_public_router  # noqa: E402
 from app.routes.tickets import session_router as tickets_session_router  # noqa: E402
@@ -112,11 +116,13 @@ def create_application(settings: Settings | None = None) -> FastAPI:
     application.include_router(modules_router)
     application.include_router(automod_router)
     application.include_router(server_logs_router)
+    application.include_router(system_audit_logs_router)
     application.include_router(tickets_router)
     application.include_router(tickets_public_router)
     application.include_router(tickets_session_router)
     application.include_router(verification_panel_router)
     application.include_router(leveling_router)
+    application.include_router(feed_channels_router)
     application.include_router(autoresponder_router)
     application.include_router(role_menus_router)
     application.include_router(invites_router)
@@ -130,6 +136,8 @@ def create_application(settings: Settings | None = None) -> FastAPI:
     application.include_router(logging_config_router)
     application.include_router(raid_router)
     application.include_router(honeypot_router)
+    application.include_router(ingest_router)
+    application.include_router(internal_config_router)
     application.include_router(activity_router)
 
     # Serve locally-uploaded embed media (read-only).

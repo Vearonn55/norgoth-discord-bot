@@ -1,5 +1,7 @@
 """Tests for protected IP handling in verification logs."""
 
+from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -32,8 +34,30 @@ def _create_ip_protection_service() -> IPProtectionService:
 async def test_create_log_protects_ip_automatically() -> None:
     """Raw IP input should be hashed and encrypted before persistence."""
 
+    guild_id = uuid4()
+
+    def _fake_create(**kwargs: object) -> SimpleNamespace:
+        # Echo the persisted attempt back to the service (which builds the view).
+        return SimpleNamespace(
+            id=uuid4(),
+            guild_id=kwargs["guild_id"],
+            status=kwargs["status"],
+            reason=kwargs["reason"],
+            ip_hash=kwargs["ip_hash"],
+            ip_encrypted=kwargs["ip_encrypted"],
+            vpn_or_proxy_detected=kwargs["vpn_or_proxy_detected"],
+            shared_ip_detected=kwargs["shared_ip_detected"],
+            high_risk_guild_detected=kwargs.get("high_risk_guild_detected", False),
+            matched_high_risk_guild_ids=kwargs.get(
+                "matched_high_risk_guild_ids"
+            ),
+            reviewed_by=None,
+            reviewed_at=None,
+            created_at=datetime.now(timezone.utc),
+        )
+
     repository = AsyncMock(spec=VerificationLogRepository)
-    repository.add.side_effect = lambda verification_log: verification_log
+    repository.create.side_effect = _fake_create
 
     ip_protection_service = _create_ip_protection_service()
     service = VerificationLogService(
@@ -42,20 +66,26 @@ async def test_create_log_protects_ip_automatically() -> None:
     )
 
     result = await service.create_log(
-        guild_id=uuid4(),
+        guild_id=guild_id,
         discord_user_id="123456789012345678",
         status=VerificationStatus.SUCCESS,
         reason=None,
         ip_address=IP_ADDRESS,
         vpn_or_proxy_detected=False,
         shared_ip_detected=False,
-        blacklisted_guild_detected=False,
     )
 
-    assert result.ip_hash == ip_protection_service.hash_ip(IP_ADDRESS)
-    assert result.ip_encrypted != IP_ADDRESS.encode("ascii")
-    assert ip_protection_service.decrypt_ip(result.ip_encrypted) == IP_ADDRESS
-    repository.add.assert_awaited_once_with(result)
+    # The returned view carries no raw/protected IP; assert on what was persisted.
+    assert result.guild_id == guild_id
+    assert result.discord_user_id == "123456789012345678"
+
+    repository.create.assert_awaited_once()
+    create_kwargs = repository.create.await_args.kwargs
+    assert create_kwargs["ip_hash"] == ip_protection_service.hash_ip(IP_ADDRESS)
+    assert create_kwargs["ip_encrypted"] != IP_ADDRESS.encode("ascii")
+    assert (
+        ip_protection_service.decrypt_ip(create_kwargs["ip_encrypted"]) == IP_ADDRESS
+    )
 
 
 @pytest.mark.anyio

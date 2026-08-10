@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useParams } from "next/navigation";
 import { cilClock, cilHeart, cilCheckCircle } from "@coreui/icons";
 import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { MetricWidget } from "@/components/ui/metric-widget";
 import { apiUrl } from "@/lib/api";
+import { formatDateTime } from "@/lib/datetime";
 
 type WorkerHealthResponse = {
   online: boolean;
@@ -14,6 +16,8 @@ type WorkerHealthResponse = {
 };
 
 export function WorkerHealthPanel() {
+  const params = useParams();
+  const lang = String(params?.lang || "en");
   const [health, setHealth] = useState<WorkerHealthResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -123,7 +127,7 @@ export function WorkerHealthPanel() {
         <div className="col-12 col-md-4">
           <MetricWidget
             label="Last Heartbeat"
-            value={health?.last_heartbeat || "—"}
+            value={formatDateTime(health?.last_heartbeat, lang)}
             accent={state.tone}
             icon={<Icon icon={cilHeart} size="lg" />}
           />
@@ -132,7 +136,7 @@ export function WorkerHealthPanel() {
         <div className="col-12 col-md-4">
           <MetricWidget
             label="Checked At"
-            value={health?.checked_at || "—"}
+            value={formatDateTime(health?.checked_at, lang)}
             accent="info"
             icon={<Icon icon={cilClock} size="lg" />}
           />

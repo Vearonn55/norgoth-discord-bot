@@ -17,6 +17,21 @@ from app.db.base import Base
 from app.models.base import TimestampMixin, UUIDPrimaryKeyMixin
 
 
+class DiscordLoggingEventType(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Seeded lookup of loggable Discord event types (from the catalog).
+
+    ``key`` matches the ``event_type`` string used across the API snapshot and
+    the bot's read contract; ``group_key`` mirrors the wizard grouping.
+    """
+
+    __tablename__ = "discord_logging_event_types"
+
+    key: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    group_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    label: Mapped[str] = mapped_column(String(120), nullable=False)
+    default_color: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
 class LoggingConfiguration(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """Top-level, per-guild logging configuration."""
 
@@ -88,6 +103,11 @@ class LoggingChannel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # Default embed colour (Discord decimal). Event overrides take precedence.
     default_color: Mapped[int | None] = mapped_column(Integer, nullable=True)
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Category-level gate: when false, events for this channel are omitted from
+    # the Redis routing snapshot without deleting mappings or channel rows.
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
 
     configuration: Mapped["LoggingConfiguration"] = relationship(
         back_populates="channels"
@@ -121,6 +141,17 @@ class LoggingEventMapping(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     guild_id: Mapped[str] = mapped_column(String(32), nullable=False)
     event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Soft reference to the seeded lookup. The `event_type` string stays
+    # authoritative for the bot snapshot; this FK links to the catalog row when
+    # the type is known/seeded (best-effort, nullable to tolerate new types).
+    event_type_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey(
+            "discord_logging_event_types.id",
+            ondelete="SET NULL",
+            name="fk_logging_event_type_id",
+        ),
+        nullable=True,
+    )
     logging_channel_id: Mapped[UUID | None] = mapped_column(
         ForeignKey(
             "logging_channels.id",

@@ -17,6 +17,8 @@ import {
   cilStar,
   cilTags,
 } from "@coreui/icons";
+import Link from "next/link";
+import { useParams } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,11 +26,15 @@ import { DataTable } from "@/components/ui/data-table";
 import { Icon } from "@/components/ui/icon";
 import { MetricWidget } from "@/components/ui/metric-widget";
 import { Slider } from "@/components/ui/slider";
+import { NumberInput } from "@/components/ui/number-input";
 import { EmbedEditor } from "@/components/discord/embed-editor";
 import { EmbedWorkbench } from "@/components/discord/embed-workbench";
 import { MessagePreview } from "@/components/discord/message-preview";
 import { RichMessageEditor } from "@/components/editors/rich-message-editor";
+import { PageHeader } from "@/components/layout/page-header";
+import { MutedSection } from "@/components/ui/feature-muting";
 import { useFirstGuild } from "@/lib/use-first-guild";
+import { useModulesStore } from "@/stores/modules-store";
 import {
   useLevelingStore,
   type LevelingConfig,
@@ -36,9 +42,22 @@ import {
   XP_PER_MESSAGE_MAX,
   XP_MULTIPLIER_MIN,
   XP_MULTIPLIER_MAX,
+  VOICE_XP_PER_MINUTE_MIN,
+  VOICE_XP_PER_MINUTE_MAX,
+  LEVEL_THRESHOLD_SCALE_MIN,
+  LEVEL_THRESHOLD_SCALE_MAX,
+  xpForLevel,
 } from "@/stores/leveling-store";
 
+const ANNOUNCE_MODE_LABELS: Record<LevelingConfig["announce_mode"], string> = {
+  current: "Member's channel",
+  channel: "Fixed channel",
+  off: "Disabled",
+};
+
 export function LevelingPanel() {
+  const params = useParams();
+  const lang = typeof params?.lang === "string" ? params.lang : "en";
   const { guildId, resources, loading, error, reload } = useFirstGuild();
 
   const config = useLevelingStore((s) => s.config);
@@ -50,24 +69,33 @@ export function LevelingPanel() {
   const newRewardRoleId = useLevelingStore((s) => s.newRewardRoleId);
   const rewardSearch = useLevelingStore((s) => s.rewardSearch);
   const rewardPage = useLevelingStore((s) => s.rewardPage);
-  const leaderboardSearch = useLevelingStore((s) => s.leaderboardSearch);
-  const leaderboardPage = useLevelingStore((s) => s.leaderboardPage);
   const setConfig = useLevelingStore((s) => s.setConfig);
   const setLevelUpMessage = useLevelingStore((s) => s.setLevelUpMessage);
   const setRewardSearch = useLevelingStore((s) => s.setRewardSearch);
   const setRewardPage = useLevelingStore((s) => s.setRewardPage);
-  const setLeaderboardSearch = useLevelingStore((s) => s.setLeaderboardSearch);
-  const setLeaderboardPage = useLevelingStore((s) => s.setLeaderboardPage);
   const setNewRewardLevel = useLevelingStore((s) => s.setNewRewardLevel);
   const setNewRewardRoleId = useLevelingStore((s) => s.setNewRewardRoleId);
+  const setFeedback = useLevelingStore((s) => s.setFeedback);
   const loadData = useLevelingStore((s) => s.load);
   const saveStore = useLevelingStore((s) => s.save);
   const addReward = useLevelingStore((s) => s.addReward);
 
+  const modules = useModulesStore((s) => s.modules);
+  const modulesPending = useModulesStore((s) => s.pendingKey);
+  const loadModules = useModulesStore((s) => s.load);
+  const toggleModule = useModulesStore((s) => s.toggleModule);
+
+  // The shared per-guild module flag is the authoritative on/off state for
+  // leveling; the bot already gates message + voice XP on it. Default to
+  // enabled (matching the backend default) until the flags load.
+  const levelingModule = modules.find((module) => module.key === "leveling");
+  const levelingEnabled = levelingModule?.enabled ?? true;
+
   useEffect(() => {
     if (!guildId) return;
     void loadData(guildId);
-  }, [guildId, loadData]);
+    void loadModules(guildId);
+  }, [guildId, loadData, loadModules]);
 
   async function save() {
     if (!guildId) return;
@@ -80,11 +108,61 @@ export function LevelingPanel() {
     () => new Map(roles.map((role) => [role.id, role.name])),
     [roles]
   );
+  const roleColors = useMemo(
+    () => new Map(roles.map((role) => [role.id, role.color])),
+    [roles]
+  );
 
   const effectiveXp = useMemo(
     () => Math.max(1, Math.round(config.xp_per_message * config.xp_multiplier)),
     [config.xp_per_message, config.xp_multiplier]
   );
+  // A per-minute value of 0 means voice XP is disabled, so the effective value
+  // is 0 (not floored to 1). Any positive base keeps the shared min-1 rule.
+  const voiceXpDisabled = config.voice_xp_per_minute <= 0;
+  const effectiveVoiceXp = useMemo(
+    () =>
+      voiceXpDisabled
+        ? 0
+        : Math.max(
+            1,
+            Math.round(config.voice_xp_per_minute * config.xp_multiplier)
+          ),
+    [voiceXpDisabled, config.voice_xp_per_minute, config.xp_multiplier]
+  );
+
+  const scale = config.level_threshold_scale;
+  const level2Step = useMemo(
+    () => xpForLevel(2, scale) - xpForLevel(1, scale),
+    [scale]
+  );
+  const totalToLevel5 = useMemo(() => xpForLevel(5, scale), [scale]);
+
+  function handleAddOrUpdateReward() {
+    if (!newRewardRoleId) {
+      setFeedback("Select a role to grant before adding a reward.", true);
+      return;
+    }
+    const replacing = config.reward_roles.some(
+      (reward) => reward.level === newRewardLevel
+    );
+    addReward();
+    setFeedback(
+      replacing
+        ? `Updated the reward for level ${newRewardLevel}.`
+        : `Added a reward at level ${newRewardLevel}.`,
+      false
+    );
+  }
+
+  function handleEditReward(level: number, roleId: string) {
+    setNewRewardLevel(level);
+    setNewRewardRoleId(roleId);
+    setFeedback(
+      `Editing the level ${level} reward — adjust the fields and click "Add Level Reward" to save.`,
+      false
+    );
+  }
 
   const filteredRewards = useMemo(() => {
     const query = rewardSearch.trim().toLowerCase();
@@ -98,14 +176,6 @@ export function LevelingPanel() {
       );
     });
   }, [config.reward_roles, rewardSearch, roleNames]);
-
-  const filteredLeaderboard = useMemo(() => {
-    const query = leaderboardSearch.trim().toLowerCase();
-    if (!query) return leaderboard;
-    return leaderboard.filter((entry) =>
-      entry.name.toLowerCase().includes(query)
-    );
-  }, [leaderboard, leaderboardSearch]);
 
   if (loading) {
     return (
@@ -136,6 +206,21 @@ export function LevelingPanel() {
 
   return (
     <div className="d-flex flex-column gap-4">
+      <PageHeader
+        title="Levels & Activity"
+        icon={<Icon icon={cilStar} size="xl" />}
+        category="leveling"
+        description="Message and voice XP with level progression, level-up announcements, and role rewards."
+        infoKey="leveling"
+        masterToggle={{
+          enabled: levelingEnabled,
+          onChange: (checked) =>
+            guildId && void toggleModule(guildId, "leveling", checked),
+          loading: modulesPending === "leveling",
+        }}
+      />
+
+      <MutedSection enabled={levelingEnabled} className="d-flex flex-column gap-4">
       <div className="row g-3">
         <div className="col-6 col-xl-3">
           <MetricWidget
@@ -156,7 +241,7 @@ export function LevelingPanel() {
         <div className="col-6 col-xl-3">
           <MetricWidget
             label="Announce Mode"
-            value={config.announce_mode}
+            value={ANNOUNCE_MODE_LABELS[config.announce_mode]}
             accent={config.announce_mode === "off" ? "danger" : "success"}
             icon={<Icon icon={cilBell} size="lg" />}
           />
@@ -180,52 +265,134 @@ export function LevelingPanel() {
             <div>
               <h2 className="h5 mb-0 fw-semibold">XP Configuration</h2>
               <p className="mt-1 mb-0 small text-body-secondary">
-                Members earn XP per eligible message (once per minute). Tune the
-                base amount and multiplier below.
+                Members earn XP for messages (once per minute) and, when enabled,
+                for time spent in voice. Tune the base amounts and the shared
+                multiplier below.
               </p>
             </div>
           </div>
 
           <CRow className="g-4 align-items-start">
             <CCol md={4}>
-              <CFormLabel htmlFor="xp-per-message">XP Per Message</CFormLabel>
-              <CFormInput
-                id="xp-per-message"
-                type="number"
-                min={XP_PER_MESSAGE_MIN}
-                max={XP_PER_MESSAGE_MAX}
-                step={1}
-                value={config.xp_per_message}
-                onChange={(event) => {
-                  const raw = Number(event.target.value);
-                  const clamped = Number.isFinite(raw)
-                    ? Math.min(
-                        XP_PER_MESSAGE_MAX,
-                        Math.max(XP_PER_MESSAGE_MIN, Math.round(raw)),
-                      )
-                    : XP_PER_MESSAGE_MIN;
-                  setConfig((current) => ({
-                    ...current,
-                    xp_per_message: clamped,
-                  }));
-                }}
-              />
-              <p className="small text-body-secondary mt-1 mb-0">
-                Base XP awarded per eligible message ({XP_PER_MESSAGE_MIN}–
-                {XP_PER_MESSAGE_MAX}).
-              </p>
+              <div className="d-flex flex-column gap-3">
+                <div>
+                  <CFormLabel htmlFor="xp-per-message" className="fw-semibold">
+                    Message XP per Message
+                  </CFormLabel>
+                  <NumberInput
+                    id="xp-per-message"
+                    value={config.xp_per_message}
+                    defaultValue={XP_PER_MESSAGE_MIN}
+                    min={XP_PER_MESSAGE_MIN}
+                    max={XP_PER_MESSAGE_MAX}
+                    step={1}
+                    aria-label="Message XP per message"
+                    onCommit={(next) =>
+                      setConfig((current) => ({
+                        ...current,
+                        xp_per_message: next,
+                      }))
+                    }
+                  />
+                  <p className="small text-body-secondary mt-1 mb-0">
+                    Base XP per eligible message ({XP_PER_MESSAGE_MIN}–
+                    {XP_PER_MESSAGE_MAX}).
+                  </p>
+                </div>
+              </div>
             </CCol>
 
-            <CCol md={5}>
+            <CCol md={4}>
+              <div className="d-flex flex-column gap-3">
+                <div>
+                  <CFormLabel
+                    htmlFor="voice-xp-per-minute"
+                    className="fw-semibold"
+                  >
+                    Voice XP per Minute
+                  </CFormLabel>
+                  <NumberInput
+                    id="voice-xp-per-minute"
+                    value={config.voice_xp_per_minute}
+                    defaultValue={VOICE_XP_PER_MINUTE_MIN}
+                    min={VOICE_XP_PER_MINUTE_MIN}
+                    max={VOICE_XP_PER_MINUTE_MAX}
+                    step={1}
+                    aria-label="Voice XP per minute"
+                    onCommit={(next) =>
+                      setConfig((current) => ({
+                        ...current,
+                        voice_xp_per_minute: next,
+                      }))
+                    }
+                  />
+                  {voiceXpDisabled ? (
+                    <p className="small text-body-tertiary mt-1 mb-0">
+                      Voice Chat XP is disabled when this value is 0.
+                    </p>
+                  ) : (
+                    <p className="small text-body-secondary mt-1 mb-0">
+                      XP per minute in voice. Bots, AFK, deafened and
+                      server-muted members are excluded.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </CCol>
+
+            <CCol md={4}>
+              <CFormLabel className="fw-semibold">Effective XP</CFormLabel>
+              <div className="d-flex flex-column gap-2">
+                <div className="border rounded px-3 py-3 text-center">
+                  <div className="h4 mb-0 fw-semibold text-info">
+                    {effectiveXp}
+                  </div>
+                  <div className="small text-body-secondary">per message</div>
+                </div>
+                <div className="border rounded px-3 py-3 text-center">
+                  <div
+                    className={`h4 mb-0 fw-semibold ${
+                      voiceXpDisabled ? "text-body-tertiary" : "text-info"
+                    }`}
+                  >
+                    {effectiveVoiceXp}
+                  </div>
+                  <div className="small text-body-secondary">
+                    {voiceXpDisabled ? "per minute (off)" : "per minute"}
+                  </div>
+                </div>
+                <div className="border rounded px-3 py-2">
+                  <div className="small text-body-secondary mb-1 fw-semibold">
+                    Level thresholds (scale {scale.toFixed(2)}x)
+                  </div>
+                  <div className="d-flex justify-content-between small">
+                    <span className="text-body-secondary">Level 2 needs</span>
+                    <span className="fw-semibold">
+                      {level2Step.toLocaleString()} XP
+                    </span>
+                  </div>
+                  <div className="d-flex justify-content-between small">
+                    <span className="text-body-secondary">Total to Level 5</span>
+                    <span className="fw-semibold">
+                      {totalToLevel5.toLocaleString()} XP
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </CCol>
+          </CRow>
+
+          <CRow className="g-4 align-items-start">
+            <CCol md={8}>
               <div className="d-flex align-items-center justify-content-between">
-                <CFormLabel htmlFor="xp-multiplier" className="mb-0">
+                <CFormLabel htmlFor="xp-multiplier" className="mb-0 fw-semibold">
                   XP Multiplier
                 </CFormLabel>
                 <span className="fw-semibold">
                   {config.xp_multiplier.toFixed(1)}x
                 </span>
               </div>
-              <div className="mt-2" style={{ maxWidth: 320 }}>
+              <div className="mt-2">
                 <Slider
                   id="xp-multiplier"
                   min={XP_MULTIPLIER_MIN}
@@ -249,19 +416,55 @@ export function LevelingPanel() {
                 </div>
               </div>
               <p className="small text-body-secondary mt-1 mb-0">
-                Scales reward magnitude only. It does not change the
+                Applies to both message and voice XP. It does not change the
                 once-per-minute cooldown or anti-spam eligibility.
               </p>
             </CCol>
+          </CRow>
 
-            <CCol md={3}>
-              <CFormLabel>Effective XP</CFormLabel>
-              <div className="border rounded px-3 py-3 text-center">
-                <div className="h4 mb-0 fw-semibold text-info">{effectiveXp}</div>
-                <div className="small text-body-secondary">
-                  XP per eligible message
+          <CRow className="g-4 align-items-start">
+            <CCol md={8}>
+              <div className="d-flex align-items-center justify-content-between">
+                <CFormLabel
+                  htmlFor="level-threshold-scale"
+                  className="mb-0 fw-semibold"
+                >
+                  Level Up Threshold Scale
+                </CFormLabel>
+                <span className="fw-semibold">{scale.toFixed(2)}x</span>
+              </div>
+              <div className="mt-2">
+                <Slider
+                  id="level-threshold-scale"
+                  min={LEVEL_THRESHOLD_SCALE_MIN}
+                  max={LEVEL_THRESHOLD_SCALE_MAX}
+                  step={0.05}
+                  value={scale}
+                  onChange={(next) =>
+                    setConfig((current) => ({
+                      ...current,
+                      level_threshold_scale: next,
+                    }))
+                  }
+                  aria-label="Level up threshold scale"
+                />
+                <div className="d-flex justify-content-between small text-body-tertiary">
+                  <span>{LEVEL_THRESHOLD_SCALE_MIN.toFixed(2)}x</span>
+                  <span>
+                    {(
+                      (LEVEL_THRESHOLD_SCALE_MIN + LEVEL_THRESHOLD_SCALE_MAX) /
+                      2
+                    ).toFixed(2)}
+                    x
+                  </span>
+                  <span>{LEVEL_THRESHOLD_SCALE_MAX.toFixed(2)}x</span>
                 </div>
               </div>
+              <p className="small text-body-secondary mt-1 mb-0">
+                Controls how fast level requirements grow. Higher values make
+                each level take more XP. Existing XP is preserved — members&apos;
+                levels are recalculated live from the new curve.
+              </p>
             </CCol>
           </CRow>
         </div>
@@ -366,7 +569,7 @@ export function LevelingPanel() {
                     "Server"
                   ),
                 }}
-                showEmbed
+                mode="embed"
               />
             }
           />
@@ -403,32 +606,61 @@ export function LevelingPanel() {
                   {
                     key: "role",
                     header: "Role",
-                    cell: (row) =>
-                      `@${roleNames.get(row.role_id) ?? row.role_id}`,
+                    cell: (row) => {
+                      const name = roleNames.get(row.role_id) ?? row.role_id;
+                      const color = roleColors.get(row.role_id);
+                      const hasColor = Boolean(color && color !== "#000000");
+                      return (
+                        <span className="d-inline-flex align-items-center gap-2">
+                          <span
+                            aria-hidden
+                            style={{
+                              width: 10,
+                              height: 10,
+                              borderRadius: "50%",
+                              display: "inline-block",
+                              backgroundColor: hasColor
+                                ? color
+                                : "var(--cui-border-color-translucent, #6b7280)",
+                            }}
+                          />
+                          @{name}
+                        </span>
+                      );
+                    },
                   },
                   {
                     key: "actions",
                     header: "",
                     className: "text-end",
                     cell: (row) => (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() =>
-                          setConfig((current) => ({
-                            ...current,
-                            reward_roles: current.reward_roles.filter(
-                              (item) =>
-                                !(
-                                  item.level === row.level &&
-                                  item.role_id === row.role_id
-                                )
-                            ),
-                          }))
-                        }
-                      >
-                        Remove
-                      </Button>
+                      <div className="d-inline-flex gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEditReward(row.level, row.role_id)}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            setConfig((current) => ({
+                              ...current,
+                              reward_roles: current.reward_roles.filter(
+                                (item) =>
+                                  !(
+                                    item.level === row.level &&
+                                    item.role_id === row.role_id
+                                  )
+                              ),
+                            }))
+                          }
+                        >
+                          Remove
+                        </Button>
+                      </div>
                     ),
                   },
                 ]}
@@ -449,20 +681,15 @@ export function LevelingPanel() {
                 <CFormLabel className="small text-body-secondary">
                   At level
                 </CFormLabel>
-                <CFormInput
-                  type="number"
+                <NumberInput
+                  value={newRewardLevel}
+                  defaultValue={1}
                   min={1}
                   max={1000}
-                  value={newRewardLevel}
-                  onChange={(event) => {
-                    const parsed = Number(event.target.value);
-                    if (!Number.isNaN(parsed)) {
-                      setNewRewardLevel(
-                        Math.min(1000, Math.max(1, Math.round(parsed)))
-                      );
-                    }
-                  }}
-                  style={{ width: 96 }}
+                  step={1}
+                  aria-label="Reward level"
+                  className="w-auto"
+                  onCommit={(next) => setNewRewardLevel(next)}
                 />
               </div>
 
@@ -483,8 +710,8 @@ export function LevelingPanel() {
                 </CFormSelect>
               </div>
 
-              <Button variant="secondary" onClick={addReward}>
-                Add Reward
+              <Button variant="secondary" onClick={handleAddOrUpdateReward}>
+                Add Level Reward
               </Button>
             </div>
           </div>
@@ -493,7 +720,7 @@ export function LevelingPanel() {
             <Button
               variant="primary"
               onClick={() => void save()}
-              disabled={saving}
+              disabled={saving || !levelingEnabled}
             >
               {saving ? "Saving…" : "Save Leveling Settings"}
             </Button>
@@ -511,71 +738,25 @@ export function LevelingPanel() {
       </Card>
 
       <Card>
-        <div className="d-flex flex-column gap-3">
-          <div className="d-flex align-items-center justify-content-between gap-3">
-            <div className="d-flex align-items-start gap-3">
-              <Icon icon={cilStar} size="lg" className="text-body-secondary mt-1" />
-              <div>
-                <h2 className="h5 mb-0 fw-semibold">Leaderboard</h2>
-                <p className="mt-1 mb-0 small text-body-secondary">
-                  Top members by XP. Members can also use /rank, /leaderboard, and
-                  /give-xp (Manage Server) in Discord.
-                </p>
-              </div>
-            </div>
-
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => guildId && void loadData(guildId)}
-            >
-              Refresh
-            </Button>
+        <div className="d-flex flex-wrap align-items-center justify-content-between gap-3">
+          <div>
+            <h2 className="h5 mb-1 fw-semibold">Leaderboard</h2>
+            <p className="mb-0 small text-body-secondary">
+              Top members by XP live on a dedicated page.{" "}
+              {leaderboard.length
+                ? `${leaderboard.length} ranked · top level ${leaderboard[0]?.level ?? 0}.`
+                : "Nobody has earned XP yet."}
+            </p>
           </div>
-
-          {leaderboard.length === 0 ? (
-            <CAlert color="secondary" className="mb-0">
-              Nobody has earned XP yet. XP is granted as members chat.
-            </CAlert>
-          ) : (
-            <DataTable
-              columns={[
-                {
-                  key: "rank",
-                  header: "#",
-                  cell: (row) => `#${row.rank}`,
-                },
-                {
-                  key: "name",
-                  header: "Member",
-                  cell: (row) => row.name,
-                },
-                {
-                  key: "level",
-                  header: "Level",
-                  cell: (row) => (
-                    <Badge variant="info">Level {row.level}</Badge>
-                  ),
-                },
-                {
-                  key: "xp",
-                  header: "XP",
-                  cell: (row) => row.xp.toLocaleString(),
-                },
-              ]}
-              rows={filteredLeaderboard}
-              rowKey={(row) => row.user_id}
-              emptyMessage="No matching members."
-              search={leaderboardSearch}
-              onSearchChange={setLeaderboardSearch}
-              searchPlaceholder="Search members…"
-              page={leaderboardPage}
-              pageSize={10}
-              onPageChange={setLeaderboardPage}
-            />
-          )}
+          <Link
+            href={`/${lang}/community/leaderboard`}
+            className="btn btn-outline-secondary btn-sm"
+          >
+            View Leaderboard
+          </Link>
         </div>
       </Card>
+      </MutedSection>
     </div>
   );
 }

@@ -13,18 +13,37 @@ export type EmbedDeliveryStatus =
   | "pending"
   | "error";
 
+/** Per-deployment reconciliation state derived by the backend. */
+export type EmbedDeliveryState =
+  | "synced"
+  | "out_of_date"
+  | "missing"
+  | "needs_feature_repair"
+  | "error";
+
 export type EmbedMessageDelivery = {
   id: string;
   channel_id: string;
   discord_message_id: string | null;
   delivery_type: string;
   status: EmbedDeliveryStatus;
+  state: EmbedDeliveryState;
+  owner_feature: string;
   error: string | null;
   deployed_version: number | null;
   stale: boolean;
   last_synced_at: string | null;
   created_at: string | null;
+  published_at: string | null;
 };
+
+export type EmbedSyncStatus =
+  | "draft_only"
+  | "synced"
+  | "out_of_date"
+  | "missing"
+  | "needs_feature_repair"
+  | "error";
 
 export type EmbedMessage = {
   id: string;
@@ -33,12 +52,13 @@ export type EmbedMessage = {
   description: string;
   content: string;
   embed_json: DiscordEmbedPayload | null;
-  target_channel_ids: string[];
   version: number;
   has_published: boolean;
+  deployment_count: number;
   synced_count: number;
-  target_count: number;
+  current_count: number;
   needs_resync: boolean;
+  sync_status: EmbedSyncStatus;
   created_by: string | null;
   created_at: string | null;
   updated_at: string | null;
@@ -50,7 +70,6 @@ export type EmbedMessageInput = {
   description: string;
   content: string;
   embed_json: DiscordEmbedPayload | null;
-  target_channel_ids: string[];
 };
 
 type EmbedMessagesState = {
@@ -71,16 +90,26 @@ type EmbedMessagesState = {
   remove: (
     guildId: string,
     id: string,
-    deleteDiscordMessages?: boolean
+    options?: { deleteDiscordMessages?: boolean; force?: boolean }
   ) => Promise<boolean>;
+  /** Post the draft to a channel now, creating a library-owned deployment. */
+  deploy: (
+    guildId: string,
+    id: string,
+    channelId: string
+  ) => Promise<EmbedMessage | null>;
+  /** Alias of {@link deploy} kept for feature hosts (e.g. role menus). */
   send: (
     guildId: string,
     id: string,
     channelId: string
   ) => Promise<EmbedMessage | null>;
-  sync: (guildId: string, id: string) => Promise<EmbedMessage | null>;
-  publish: (guildId: string, id: string) => Promise<EmbedMessage | null>;
   resync: (guildId: string, id: string) => Promise<EmbedMessage | null>;
+  resyncDelivery: (
+    guildId: string,
+    id: string,
+    deliveryId: string
+  ) => Promise<EmbedMessage | null>;
   reconcile: (guildId: string, id: string) => Promise<EmbedMessage | null>;
 };
 
@@ -166,17 +195,42 @@ export const useEmbedMessagesStore = create<EmbedMessagesState>((set) => ({
     }
   },
 
-  remove: async (guildId, id, deleteDiscordMessages = false) => {
+  remove: async (guildId, id, options = {}) => {
+    set({ error: null });
     const response = await fetch(apiUrl(`${base(guildId)}/${id}`), {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ delete_discord_messages: deleteDiscordMessages }),
+      body: JSON.stringify({
+        delete_discord_messages: options.deleteDiscordMessages ?? false,
+        force: options.force ?? false,
+      }),
     });
-    if (!response.ok) return false;
+    if (!response.ok) {
+      set({ error: await readError(response) });
+      return false;
+    }
     set((state) => ({
       messages: state.messages.filter((m) => m.id !== id),
     }));
     return true;
+  },
+
+  deploy: async (guildId, id, channelId) => {
+    set({ error: null });
+    const response = await fetch(apiUrl(`${base(guildId)}/${id}/send`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ channel_id: channelId }),
+    });
+    if (!response.ok) {
+      set({ error: await readError(response) });
+      return null;
+    }
+    const updated = (await response.json()) as EmbedMessage;
+    set((state) => ({
+      messages: state.messages.map((m) => (m.id === id ? updated : m)),
+    }));
+    return updated;
   },
 
   send: async (guildId, id, channelId) => {
@@ -193,21 +247,9 @@ export const useEmbedMessagesStore = create<EmbedMessagesState>((set) => ({
     return updated;
   },
 
-  sync: async (guildId, id) => {
-    const response = await fetch(apiUrl(`${base(guildId)}/${id}/sync`), {
-      method: "POST",
-    });
-    if (!response.ok) return null;
-    const updated = (await response.json()) as EmbedMessage;
-    set((state) => ({
-      messages: state.messages.map((m) => (m.id === id ? updated : m)),
-    }));
-    return updated;
-  },
-
-  publish: async (guildId, id) => {
+  resync: async (guildId, id) => {
     set({ error: null });
-    const response = await fetch(apiUrl(`${base(guildId)}/${id}/publish`), {
+    const response = await fetch(apiUrl(`${base(guildId)}/${id}/resync`), {
       method: "POST",
     });
     if (!response.ok) {
@@ -221,11 +263,12 @@ export const useEmbedMessagesStore = create<EmbedMessagesState>((set) => ({
     return updated;
   },
 
-  resync: async (guildId, id) => {
+  resyncDelivery: async (guildId, id, deliveryId) => {
     set({ error: null });
-    const response = await fetch(apiUrl(`${base(guildId)}/${id}/resync`), {
-      method: "POST",
-    });
+    const response = await fetch(
+      apiUrl(`${base(guildId)}/${id}/deliveries/${deliveryId}/resync`),
+      { method: "POST" }
+    );
     if (!response.ok) {
       set({ error: await readError(response) });
       return null;

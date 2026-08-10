@@ -1,5 +1,6 @@
 "use client";
 
+import { CSpinner } from "@coreui/react";
 import {
   ROLE_MENU_INTERACTION_LABELS,
   ROLE_MENU_STYLE_SWATCHES,
@@ -7,10 +8,23 @@ import {
   type RoleMenuStyle,
 } from "@/lib/discord/role-menu-modes";
 import { emojiPreviewSrc } from "@/lib/discord/emoji-data";
+import { MessagePreview } from "@/components/discord/message-preview";
+import type { DiscordEmbedPayload } from "@/lib/discord/message-payload";
 import type { RoleMenu } from "@/stores/automation-store";
 
 type RoleAssignmentPreviewProps = {
-  menu: Pick<RoleMenu, "title" | "description" | "interaction" | "roles">;
+  menu: Pick<
+    RoleMenu,
+    "title" | "description" | "interaction" | "roles" | "binding_type"
+  >;
+  /** Full embed payload of the bound Embed Draft (when binding to one). */
+  embed?: DiscordEmbedPayload | null;
+  /** Optional plain message content that accompanies the embed. */
+  content?: string;
+  /** True while the bound Embed Draft is still being fetched. */
+  embedLoading?: boolean;
+  /** True when the bound Embed Draft id no longer resolves to a draft. */
+  embedMissing?: boolean;
 };
 
 function EmojiGlyph({ value }: { value?: string }) {
@@ -27,9 +41,16 @@ function EmojiGlyph({ value }: { value?: string }) {
   return null;
 }
 
-export function RoleAssignmentPreview({ menu }: RoleAssignmentPreviewProps) {
+export function RoleAssignmentPreview({
+  menu,
+  embed,
+  content,
+  embedLoading,
+  embedMissing,
+}: RoleAssignmentPreviewProps) {
   const interaction = (menu.interaction ??
     "buttons") as RoleMenuInteraction;
+  const isEmbedBound = menu.binding_type === "embed_message";
 
   return (
     <div className="norgoth-role-assignment-preview border rounded p-3">
@@ -37,16 +58,47 @@ export function RoleAssignmentPreview({ menu }: RoleAssignmentPreviewProps) {
         Member preview · {ROLE_MENU_INTERACTION_LABELS[interaction]}
       </div>
 
+      {isEmbedBound ? (
+        embedLoading ? (
+          <div className="d-flex align-items-center gap-2 text-body-secondary small py-4">
+            <CSpinner size="sm" /> Loading embed draft…
+          </div>
+        ) : embedMissing ? (
+          <div className="border rounded p-3 small text-warning mb-2">
+            <div className="fw-semibold">Embed Draft Missing</div>
+            <div className="text-body-secondary">
+              The bound Embed Message no longer exists. Re-select an Embed
+              Message to restore the preview.
+            </div>
+          </div>
+        ) : (
+          <div className="mb-2">
+            <MessagePreview content={content} embed={embed} mode="embed" showContentWithEmbed />
+          </div>
+        )
+      ) : (
+        <div
+          className="rounded p-3 mb-2"
+          style={{ background: "#313338", color: "#dbdee1" }}
+        >
+          <div className="fw-semibold text-white mb-1">
+            {menu.title || "Untitled menu"}
+          </div>
+          <div className="small" style={{ color: "#b5bac1" }}>
+            {menu.description || "Choose a role from the controls below."}
+          </div>
+        </div>
+      )}
+
       <div
         className="rounded p-3"
         style={{ background: "#313338", color: "#dbdee1" }}
       >
-        <div className="fw-semibold text-white mb-1">
-          {menu.title || "Untitled menu"}
-        </div>
-        <div className="small mb-3" style={{ color: "#b5bac1" }}>
-          {menu.description ||
-            "Choose a role from the controls below."}
+        <div
+          className="small text-uppercase fw-semibold mb-2"
+          style={{ color: "#949ba4" }}
+        >
+          Role controls
         </div>
 
         {interaction === "select" ? (

@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from app.api.v1.dependencies_auth import guild_manager_dependency
 from app.services.campaign_store import get_redis, now_iso
+from app.services.feature_config_store import read_raw, save_config
 
 router = APIRouter(
     tags=["Honeypot"],
@@ -83,7 +84,7 @@ async def get_honeypot_config(guild_id: str) -> dict[str, Any]:
     redis_client = await get_redis()
 
     try:
-        raw = await redis_client.get(honeypot_key(guild_id))
+        raw = await read_raw(guild_id, "honeypot", redis_client)
     finally:
         await redis_client.aclose()
 
@@ -116,7 +117,7 @@ async def update_honeypot_config(
     redis_client = await get_redis()
 
     try:
-        existing = load_stored_config(await redis_client.get(honeypot_key(guild_id)))
+        existing = load_stored_config(await read_raw(guild_id, "honeypot", redis_client))
         payload = config.model_dump()
         payload["trap_channel_ids"] = [
             channel_id
@@ -143,7 +144,7 @@ async def update_honeypot_config(
                 payload[extra] = existing[extra]
 
         payload["updated_at"] = now_iso()
-        await redis_client.set(honeypot_key(guild_id), json.dumps(payload))
+        await save_config(guild_id, "honeypot", payload, enabled=bool(payload.get("enabled", False)))
     finally:
         await redis_client.aclose()
 
@@ -160,7 +161,7 @@ async def request_honeypot_channel(
     redis_client = await get_redis()
 
     try:
-        existing = load_stored_config(await redis_client.get(honeypot_key(guild_id)))
+        existing = load_stored_config(await read_raw(guild_id, "honeypot", redis_client))
         config = HoneypotConfig(**{
             key: value
             for key, value in existing.items()
@@ -172,7 +173,7 @@ async def request_honeypot_channel(
             "requested_at": now_iso(),
         }
         payload["updated_at"] = now_iso()
-        await redis_client.set(honeypot_key(guild_id), json.dumps(payload))
+        await save_config(guild_id, "honeypot", payload, enabled=bool(payload.get("enabled", False)))
     finally:
         await redis_client.aclose()
 

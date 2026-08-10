@@ -19,13 +19,26 @@ function isPublicPath(pathname: string): boolean {
   const rest = "/" + parts.slice(1).join("/");
   if (PUBLIC_SUFFIXES.includes(rest)) return true;
   if (rest.startsWith("/tickets/transcript/")) return true;
-  if (pathname.startsWith("/api/auth/")) return true;
+  if (pathname.startsWith("/api/")) return true;
   if (pathname.startsWith("/norgoth-api/")) return true;
   return false;
 }
 
+function isLocaleExemptPath(pathname: string): boolean {
+  return (
+    pathname.startsWith("/api/") ||
+    pathname.startsWith("/norgoth-api/") ||
+    pathname.startsWith("/_next/")
+  );
+}
+
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // App Router API routes and the API rewrite must not get a /{lang} prefix.
+  if (isLocaleExemptPath(pathname)) {
+    return NextResponse.next();
+  }
 
   const pathnameHasLocale = locales.some(
     (locale) => pathname === `/${locale}` || pathname.startsWith(`/${locale}/`)
@@ -52,5 +65,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next|norgoth-api|api/auth|.*\\..*).*)"],
+  matcher: ["/((?!_next|norgoth-api|api|.*\\..*).*)"],
 };

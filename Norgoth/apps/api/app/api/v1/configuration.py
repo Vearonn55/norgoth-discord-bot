@@ -14,6 +14,8 @@ from app.schemas.configuration import (
     ConfigurationEnabledRequest,
     ConfigurationResponse,
     ConfigurationUpsertRequest,
+    DetectorConfigPatchRequest,
+    VerificationStatePatchRequest,
 )
 
 router = APIRouter(
@@ -87,18 +89,97 @@ async def create_or_update_configuration(
         guild_id=guild.id,
         verification_channel_id=payload.verification_channel_id,
         log_channel_id=payload.log_channel_id,
-        verified_role_id=payload.verified_role_id,
         unverified_role_id=payload.unverified_role_id,
         member_role_id=payload.member_role_id,
+        manual_review_role_id=payload.manual_review_role_id,
         minimum_account_age_days=payload.minimum_account_age_days,
         session_timeout_seconds=payload.session_timeout_seconds,
         deny_vpn_or_proxy=payload.deny_vpn_or_proxy,
         deny_shared_ip=payload.deny_shared_ip,
+        vpn_or_proxy_action=payload.vpn_or_proxy_action,
+        shared_ip_action=payload.shared_ip_action,
         enabled=payload.enabled,
     )
 
     await session.commit()
     await session.refresh(configuration)
+
+    return ConfigurationResponse.model_validate(configuration)
+
+
+@router.patch(
+    "/state",
+    response_model=ConfigurationResponse,
+)
+async def patch_verification_state(
+    discord_guild_id: DiscordGuildIdPath,
+    payload: VerificationStatePatchRequest,
+    guild_service: GuildServiceDependency,
+    configuration_service: ConfigurationServiceDependency,
+    session: DatabaseSession,
+) -> ConfigurationResponse:
+    """Apply one Member Verification master/detector state transition.
+
+    Creates a settings row on demand so the master and detector toggles work
+    before channels/roles are configured. Returns the normalized state.
+    """
+
+    guild = await guild_service.get_by_discord_guild_id(discord_guild_id)
+
+    if guild is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Discord guild not found.",
+        )
+
+    configuration = await configuration_service.apply_verification_state(
+        guild_id=guild.id,
+        enabled=payload.enabled,
+        deny_vpn_or_proxy=payload.deny_vpn_or_proxy,
+        deny_shared_ip=payload.deny_shared_ip,
+    )
+
+    await session.commit()
+
+    return ConfigurationResponse.model_validate(configuration)
+
+
+@router.patch(
+    "/detectors",
+    response_model=ConfigurationResponse,
+)
+async def patch_detectors(
+    discord_guild_id: DiscordGuildIdPath,
+    payload: DetectorConfigPatchRequest,
+    guild_service: GuildServiceDependency,
+    configuration_service: ConfigurationServiceDependency,
+    session: DatabaseSession,
+) -> ConfigurationResponse:
+    """Partially update the VPN/Proxy and Shared IP risk detectors."""
+
+    guild = await guild_service.get_by_discord_guild_id(discord_guild_id)
+
+    if guild is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Discord guild not found.",
+        )
+
+    configuration = await configuration_service.patch_detectors(
+        guild_id=guild.id,
+        deny_vpn_or_proxy=payload.deny_vpn_or_proxy,
+        vpn_or_proxy_action=payload.vpn_or_proxy_action,
+        deny_shared_ip=payload.deny_shared_ip,
+        shared_ip_action=payload.shared_ip_action,
+    )
+
+    if configuration is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Guild configuration not found.",
+        )
+
+    await session.commit()
 
     return ConfigurationResponse.model_validate(configuration)
 

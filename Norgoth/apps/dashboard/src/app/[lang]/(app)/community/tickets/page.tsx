@@ -19,7 +19,9 @@ export default async function TicketsPage({
       <PageHeader
         title="Support Tickets"
         icon={<Icon icon={cilEnvelopeClosed} size="xl" />}
+        category="support"
         description="Private support channels opened from a panel button, with transcripts saved when tickets are closed."
+        infoKey="tickets"
       />
 
       <TicketsPanel />

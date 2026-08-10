@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { colorToHex, hexToColor, sanitizeChannelName } from "@/lib/logging";
+import {
+  colorToHex,
+  composeCategoryName,
+  composeChannelName,
+  hexToColor,
+  sanitizeChannelName,
+  splitEmojiName,
+} from "@/lib/logging";
 
 describe("colorToHex", () => {
   it("formats a decimal colour as #RRGGBB", () => {
@@ -47,5 +54,61 @@ describe("sanitizeChannelName", () => {
 
   it("caps length at 90 characters", () => {
     expect(sanitizeChannelName("a".repeat(200)).length).toBe(90);
+  });
+});
+
+describe("composeChannelName", () => {
+  it("joins emoji directly to sanitized text with no separator", () => {
+    expect(composeChannelName("🔥", "Chat Logs")).toBe("🔥chat-logs");
+  });
+
+  it("preserves multi-word hyphenation inside the textual part", () => {
+    expect(composeChannelName("💬", "general chat logs")).toBe(
+      "💬general-chat-logs"
+    );
+  });
+
+  it("preserves multi-codepoint / skin-tone / ZWJ emoji intact", () => {
+    // Skin-tone modifier sequence
+    expect(composeChannelName("👍🏻", "chat logs")).toBe("👍🏻chat-logs");
+    // ZWJ family sequence
+    expect(composeChannelName("👨‍👩‍👧", "member log")).toBe("👨‍👩‍👧member-log");
+  });
+
+  it("returns sanitized name alone when emoji is empty", () => {
+    expect(composeChannelName("", "Chat Logs")).toBe("chat-logs");
+  });
+});
+
+describe("composeCategoryName", () => {
+  it("joins emoji to category name with a single space", () => {
+    expect(composeCategoryName("📋", "Norgoth Logs")).toBe("📋 Norgoth Logs");
+  });
+
+  it("returns the name alone when emoji is empty", () => {
+    expect(composeCategoryName("", "Norgoth Logs")).toBe("Norgoth Logs");
+  });
+});
+
+describe("splitEmojiName", () => {
+  it("splits the canonical no-separator form", () => {
+    expect(splitEmojiName("🔥chat-logs")).toEqual({
+      emoji: "🔥",
+      name: "chat-logs",
+    });
+  });
+
+  it("splits the legacy Discord-hyphenated form", () => {
+    expect(splitEmojiName("🔥-chat-logs")).toEqual({
+      emoji: "🔥",
+      name: "chat-logs",
+    });
+  });
+
+  it("returns empty emoji when the name has no leading emoji", () => {
+    expect(splitEmojiName("chat-logs")).toEqual({
+      emoji: "",
+      name: "chat-logs",
+    });
   });
 });

@@ -9,7 +9,7 @@ from pydantic import ValidationError
 from app.api.v1.router import api_router
 from app.models.enums import UserListType
 from app.schemas.security import (
-    BlacklistedGuildUpsertRequest,
+    HighRiskGuildUpsertRequest,
     UserListUpsertRequest,
 )
 
@@ -58,19 +58,29 @@ def test_v1_router_contains_user_list_routes() -> None:
     ) in operations
 
 
-def test_v1_router_contains_blacklisted_guild_routes() -> None:
-    """The V1 router should expose guild-blacklist endpoints."""
+def test_v1_router_has_no_blacklisted_guild_routes() -> None:
+    """The legacy guild-blacklist endpoints must be fully removed."""
 
     operations = _registered_operations()
-    base_path = "/guilds/{discord_guild_id}/blacklisted-guilds"
+
+    assert not any(
+        "/blacklisted-guilds" in path for path, _ in operations
+    )
+
+
+def test_v1_router_contains_high_risk_guild_routes() -> None:
+    """The V1 router should expose high-risk-guild endpoints."""
+
+    operations = _registered_operations()
+    base_path = "/guilds/{discord_guild_id}/high-risk-guilds"
 
     assert (base_path, "GET") in operations
     assert (
-        f"{base_path}/{{blacklisted_discord_guild_id}}",
+        f"{base_path}/{{high_risk_discord_guild_id}}",
         "PUT",
     ) in operations
     assert (
-        f"{base_path}/{{blacklisted_discord_guild_id}}",
+        f"{base_path}/{{high_risk_discord_guild_id}}",
         "DELETE",
     ) in operations
 
@@ -121,19 +131,19 @@ def test_user_list_upsert_request_rejects_long_reason() -> None:
         )
 
 
-def test_blacklisted_guild_request_accepts_reason() -> None:
-    """A valid blacklist reason should pass validation."""
+def test_high_risk_guild_request_accepts_reason() -> None:
+    """A valid high-risk reason should pass validation."""
 
-    payload = BlacklistedGuildUpsertRequest(
-        reason="Blocked community",
+    payload = HighRiskGuildUpsertRequest(
+        reason="Known raid community",
     )
 
-    assert payload.reason == "Blocked community"
+    assert payload.reason == "Known raid community"
 
 
-def test_blacklisted_guild_request_allows_empty_reason() -> None:
-    """A guild blacklist entry may omit its reason."""
+def test_high_risk_guild_request_allows_empty_reason() -> None:
+    """A high-risk guild entry may omit its reason."""
 
-    payload = BlacklistedGuildUpsertRequest()
+    payload = HighRiskGuildUpsertRequest()
 
     assert payload.reason is None

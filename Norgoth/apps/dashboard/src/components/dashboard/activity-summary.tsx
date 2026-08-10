@@ -6,6 +6,7 @@ import { useEffect, useMemo } from "react";
 import { useDashboardStore } from "@/stores/dashboard-store";
 import { SectionCard } from "@/components/ui/section-card";
 import { Button } from "@/components/ui/button";
+import { formatDateTime } from "@/lib/datetime";
 
 /** Compact dashboard activity summary — no nested scroll feed. */
 export function ActivitySummary() {
@@ -69,12 +70,12 @@ export function ActivitySummary() {
 
         <p className="mb-0 small text-body-secondary">
           {summary.latestAt
-            ? `Latest: ${new Date(summary.latestAt).toLocaleString()}`
+            ? `Latest: ${formatDateTime(summary.latestAt, lang)}`
             : "No recent campaign events yet."}
         </p>
 
         <Button asChild variant="primary">
-          <Link href={`/${lang}/security/logs`}>Open Audit Log</Link>
+          <Link href={`/${lang}/audit/discord-logs`}>Open Discord Logs</Link>
         </Button>
       </div>
     </SectionCard>

@@ -36,4 +36,4 @@ class DiscordVerificationCallbackResponse(BaseModel):
     allowed: bool
     reason: VerificationDecisionReason
     shared_ip_detected: bool
-    blacklisted_guild_detected: bool
+    high_risk_guild_detected: bool

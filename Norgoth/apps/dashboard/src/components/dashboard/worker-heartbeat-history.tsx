@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { apiUrl } from "@/lib/api";
+import { formatDateTime } from "@/lib/datetime";
 
 
 type WorkerHealthResponse = {
@@ -19,6 +21,8 @@ type HeartbeatSample = {
 };
 
 export function WorkerHeartbeatHistory() {
+  const params = useParams();
+  const lang = String(params?.lang || "en");
   const [samples, setSamples] = useState<HeartbeatSample[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -134,7 +138,7 @@ export function WorkerHeartbeatHistory() {
           <div className="row g-3">
             {samples.map((sample) => (
               <div key={sample.id} className="col-12 col-md-6 col-xl-4">
-                <HeartbeatSampleCard sample={sample} />
+                <HeartbeatSampleCard sample={sample} lang={lang} />
               </div>
             ))}
           </div>
@@ -144,7 +148,13 @@ export function WorkerHeartbeatHistory() {
   );
 }
 
-function HeartbeatSampleCard({ sample }: { sample: HeartbeatSample }) {
+function HeartbeatSampleCard({
+  sample,
+  lang,
+}: {
+  sample: HeartbeatSample;
+  lang: string;
+}) {
   return (
     <div
       className={`rounded border p-3 h-100 ${sample.online
@@ -157,7 +167,9 @@ function HeartbeatSampleCard({ sample }: { sample: HeartbeatSample }) {
           {sample.online ? "ONLINE" : "OFFLINE"}
         </Badge>
 
-        <span className="small text-body-secondary">{sample.checkedAt}</span>
+        <span className="small text-body-secondary">
+          {formatDateTime(sample.checkedAt, lang)}
+        </span>
       </div>
 
       <div className="small text-body-secondary text-uppercase">
@@ -165,7 +177,7 @@ function HeartbeatSampleCard({ sample }: { sample: HeartbeatSample }) {
       </div>
 
       <div className="mt-2 text-break small">
-        {sample.lastHeartbeat || "—"}
+        {formatDateTime(sample.lastHeartbeat, lang)}
       </div>
     </div>
   );

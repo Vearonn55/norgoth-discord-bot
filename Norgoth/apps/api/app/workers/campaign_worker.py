@@ -29,6 +29,10 @@ from app.services.campaign_store import (
     unschedule_campaign,
 )
 from app.services.discord.embed_builder import build_embed_dict
+from app.services.template_variables import (
+    USER_NAME_FALLBACK,
+    resolve_user_name_from_recipient,
+)
 
 load_dotenv(Path(__file__).resolve().parents[4] / ".env")
 
@@ -381,7 +385,9 @@ async def execute_channel_campaign(
 
     payload = build_message_payload(
         campaign,
-        user_name="there",
+        # Channel campaigns have no per-recipient context; use the shared
+        # neutral fallback (never a greeting like "there").
+        user_name=USER_NAME_FALLBACK,
         server_name=server_name,
     )
     attempt = 0
@@ -508,11 +514,7 @@ async def execute_dm_campaign(
 
             payload = build_message_payload(
                 campaign,
-                user_name=str(
-                    recipient.get("display_name")
-                    or recipient.get("name")
-                    or "member"
-                ),
+                user_name=resolve_user_name_from_recipient(recipient),
                 server_name=server_name,
                 guild_id=guild_id,
                 include_unsubscribe=True,

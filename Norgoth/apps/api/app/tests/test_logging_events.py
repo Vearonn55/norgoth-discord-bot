@@ -34,7 +34,7 @@ def test_thread_and_security_events_resolve_to_groups() -> None:
     assert group_for_event("honeypot_triggered") == "security"
     assert group_for_event("automod_action") == "security"
     assert group_for_event("raid_detected") == "security"
-    assert group_for_event("member_kick") == "moderation"
+    assert group_for_event("member_kick") == "member"
 
 
 def test_new_groups_have_default_colors() -> None:
@@ -44,6 +44,24 @@ def test_new_groups_have_default_colors() -> None:
     for event_type in all_event_types():
         group = group_for_event(event_type)
         assert group in GROUP_DEFAULT_COLORS
+
+
+def test_tickets_group_is_registered() -> None:
+    # Ticket open/close now flow through the central logging wizard.
+    assert "tickets" in EVENT_GROUPS
+    assert "tickets" in GROUP_DEFAULT_COLORS
+    assert group_for_event("ticket_opened") == "tickets"
+    assert group_for_event("ticket_closed") == "tickets"
+
+
+def test_invites_group_is_registered() -> None:
+    assert "invites" in EVENT_GROUPS
+    assert "invites" in GROUP_DEFAULT_COLORS
+    assert group_for_event("invite_member_joined") == "invites"
+    assert group_for_event("invite_member_left") == "invites"
+    labels = dict(EVENT_GROUPS["invites"]["events"])
+    assert "invite_member_joined" in labels
+    assert "invite_member_left" in labels
 
 
 def test_catalog_payload_shape_matches_wizard_contract() -> None:

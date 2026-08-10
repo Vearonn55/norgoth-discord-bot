@@ -44,20 +44,21 @@ class UserListEntryResponse(BaseModel):
     updated_at: datetime
 
 
-class BlacklistedGuildUpsertRequest(BaseModel):
-    """Payload used to create or update a blacklisted Discord guild."""
+class HighRiskGuildUpsertRequest(BaseModel):
+    """Payload used to create or update a high-risk Discord guild."""
 
     reason: OptionalReason = None
 
 
-class BlacklistedGuildResponse(BaseModel):
-    """Public representation of a blacklisted Discord guild."""
+class HighRiskGuildResponse(BaseModel):
+    """Public representation of a high-risk Discord guild."""
 
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
     guild_id: UUID
-    blacklisted_discord_guild_id: DiscordSnowflakeValue
+    high_risk_discord_guild_id: DiscordSnowflakeValue
     reason: str | None
+    created_by: str | None
     created_at: datetime
     updated_at: datetime

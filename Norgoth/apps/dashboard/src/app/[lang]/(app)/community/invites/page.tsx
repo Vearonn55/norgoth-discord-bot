@@ -20,6 +20,7 @@ export default async function InvitesPage({
         title="Invite Tracking"
         icon={<Icon icon={cilLink} size="xl" />}
         description="Who invited whom: join attribution, inviter leaderboard, and leave/rejoin tracking."
+        infoKey="inviteTracking"
       />
 
       <InvitesPanel />

@@ -1,9 +1,25 @@
 """Business operations for registered Discord guilds."""
 
-from app.models.discord_guild import DiscordGuild
+from app.models.guild import Guild
 from app.repositories.discord_guild_repository import (
     DiscordGuildRepository,
 )
+from app.services.views import GuildView
+
+
+def _to_view(guild: Guild) -> GuildView:
+    """Assemble a flat ``GuildView`` from a ``Guild`` ORM row."""
+
+    owner_snowflake = guild.owner.discord_user_id if guild.owner is not None else ""
+
+    return GuildView(
+        id=guild.id,
+        discord_guild_id=guild.discord_guild_id,
+        discord_guild_name=guild.name,
+        discord_owner_id=owner_snowflake,
+        created_at=guild.created_at,
+        updated_at=guild.updated_at,
+    )
 
 
 class GuildService:
@@ -20,10 +36,12 @@ class GuildService:
     async def get_by_discord_guild_id(
         self,
         discord_guild_id: str,
-    ) -> DiscordGuild | None:
+    ) -> GuildView | None:
         """Return a registered guild by its Discord snowflake."""
 
-        return await self._guild_repository.get_by_discord_guild_id(discord_guild_id)
+        guild = await self._guild_repository.get_by_discord_guild_id(discord_guild_id)
+
+        return _to_view(guild) if guild is not None else None
 
     async def register_or_update(
         self,
@@ -31,24 +49,29 @@ class GuildService:
         discord_guild_id: str,
         discord_guild_name: str,
         discord_owner_id: str,
-    ) -> DiscordGuild:
+    ) -> GuildView:
         """Create a guild record or update its current Discord metadata."""
+
+        owner = await self._guild_repository.resolve_owner(discord_owner_id)
 
         guild = await self._guild_repository.get_by_discord_guild_id(discord_guild_id)
 
         if guild is None:
-            guild = DiscordGuild(
+            guild = Guild(
                 discord_guild_id=discord_guild_id,
-                discord_guild_name=discord_guild_name,
-                discord_owner_id=discord_owner_id,
+                name=discord_guild_name,
+                owner_user_id=owner.id,
             )
+            guild = await self._guild_repository.add(guild)
+            guild.owner = owner
+            return _to_view(guild)
 
-            return await self._guild_repository.add(guild)
+        guild.name = discord_guild_name
+        guild.owner_user_id = owner.id
+        guild = await self._guild_repository.save(guild)
+        guild.owner = owner
 
-        guild.discord_guild_name = discord_guild_name
-        guild.discord_owner_id = discord_owner_id
-
-        return await self._guild_repository.save(guild)
+        return _to_view(guild)
 
     async def remove(
         self,

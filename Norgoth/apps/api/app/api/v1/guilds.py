@@ -66,8 +66,9 @@ async def register_or_update_guild(
         discord_owner_id=payload.discord_owner_id,
     )
 
+    # ``register_or_update`` returns a detached ``GuildView`` whose server-side
+    # defaults were populated via RETURNING on flush, so only the commit remains.
     await session.commit()
-    await session.refresh(guild)
 
     return GuildResponse.model_validate(guild)
 

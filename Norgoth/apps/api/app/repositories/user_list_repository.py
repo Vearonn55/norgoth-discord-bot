@@ -1,16 +1,18 @@
-"""Database operations for Discord user whitelist and blacklist entries."""
+"""Database operations for guild moderation (whitelist/blacklist) entries."""
 
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
+from app.models.discord_user import DiscordUser
 from app.models.enums import UserListType
-from app.models.user_list_entry import UserListEntry
+from app.models.guild_moderation_entry import GuildModerationEntry
 
 
 class UserListRepository:
-    """Provide persistence operations for user list entries."""
+    """Provide persistence operations for guild moderation entries."""
 
     def __init__(self, session: AsyncSession) -> None:
         """Initialize the repository with an async database session."""
@@ -22,12 +24,17 @@ class UserListRepository:
         *,
         guild_id: UUID,
         discord_user_id: str,
-    ) -> UserListEntry | None:
-        """Return a user's whitelist or blacklist entry for a guild."""
+    ) -> GuildModerationEntry | None:
+        """Return a user's moderation entry for a guild, if any."""
 
-        statement = select(UserListEntry).where(
-            UserListEntry.guild_id == guild_id,
-            UserListEntry.discord_user_id == discord_user_id,
+        statement = (
+            select(GuildModerationEntry)
+            .join(DiscordUser, GuildModerationEntry.user_id == DiscordUser.id)
+            .where(
+                GuildModerationEntry.guild_id == guild_id,
+                DiscordUser.discord_user_id == discord_user_id,
+            )
+            .options(selectinload(GuildModerationEntry.user))
         )
         result = await self._session.execute(statement)
 
@@ -38,46 +45,63 @@ class UserListRepository:
         *,
         guild_id: UUID,
         list_type: UserListType | None = None,
-    ) -> list[UserListEntry]:
-        """Return user list entries belonging to a Discord guild."""
+    ) -> list[GuildModerationEntry]:
+        """Return moderation entries belonging to a Discord guild."""
 
-        statement = select(UserListEntry).where(UserListEntry.guild_id == guild_id)
+        statement = (
+            select(GuildModerationEntry)
+            .where(GuildModerationEntry.guild_id == guild_id)
+            .options(selectinload(GuildModerationEntry.user))
+        )
 
         if list_type is not None:
-            statement = statement.where(UserListEntry.list_type == list_type)
+            statement = statement.where(GuildModerationEntry.list_type == list_type)
 
-        statement = statement.order_by(UserListEntry.created_at.desc())
+        statement = statement.order_by(GuildModerationEntry.created_at.desc())
 
         result = await self._session.execute(statement)
 
         return list(result.scalars().all())
 
-    async def add(
+    async def set_entry(
         self,
-        entry: UserListEntry,
-    ) -> UserListEntry:
-        """Add a user list entry and flush it to the database."""
+        *,
+        guild_id: UUID,
+        discord_user_id: str,
+        list_type: UserListType,
+        reason: str | None,
+    ) -> GuildModerationEntry:
+        """Create or update a user's moderation entry (upserting the user)."""
 
-        self._session.add(entry)
+        from app.services.users import upsert_discord_user
+
+        user = await upsert_discord_user(self._session, discord_user_id)
+
+        entry = await self.get_by_guild_and_user(
+            guild_id=guild_id,
+            discord_user_id=discord_user_id,
+        )
+
+        if entry is None:
+            entry = GuildModerationEntry(
+                guild_id=guild_id,
+                user_id=user.id,
+                list_type=list_type,
+                reason=reason,
+            )
+            self._session.add(entry)
+            await self._session.flush()
+            entry.user = user
+            return entry
+
+        entry.list_type = list_type
+        entry.reason = reason
         await self._session.flush()
 
         return entry
 
-    async def save(
-        self,
-        entry: UserListEntry,
-    ) -> UserListEntry:
-        """Flush changes made to an existing user list entry."""
-
-        await self._session.flush()
-
-        return entry
-
-    async def delete(
-        self,
-        entry: UserListEntry,
-    ) -> None:
-        """Delete a user list entry and flush the change."""
+    async def delete(self, entry: GuildModerationEntry) -> None:
+        """Delete a moderation entry and flush the change."""
 
         await self._session.delete(entry)
         await self._session.flush()

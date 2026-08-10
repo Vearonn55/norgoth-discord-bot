@@ -28,6 +28,7 @@ from app.integrations.discord.bot_rest import (
     DiscordBotClient,
 )
 from app.models.logging_config import (
+    DiscordLoggingEventType,
     LoggingChannel,
     LoggingConfiguration,
     LoggingEventMapping,
@@ -82,6 +83,62 @@ _LEGACY_GROUP_EVENTS = {
     "server": ("server", ["guild_update"]),
 }
 
+# Canonical invite logging event codes (must match EVENT_GROUPS + bot emitter).
+INVITE_LOG_EVENTS = ("invite_member_joined", "invite_member_left")
+INVITES_GROUP_COLOR = GROUP_DEFAULT_COLORS.get("invites", 0x57F287)
+
+
+def _pick_invite_log_channel(
+    config: LoggingConfiguration,
+) -> LoggingChannel | None:
+    """Prefer invites channel, else member, else first provisioned Discord channel."""
+
+    provisioned = [channel for channel in config.channels if channel.channel_id]
+    if not provisioned:
+        return None
+    for key in ("invites", "member", "moderation"):
+        for channel in provisioned:
+            if channel.key == key:
+                return channel
+    return provisioned[0]
+
+
+def _heal_invite_event_mappings(config: LoggingConfiguration) -> bool:
+    """Append missing invite_member_* mappings for active configs.
+
+    Returns True when rows were added (caller must commit + rewrite snapshot).
+    """
+
+    if config.status != "active":
+        return False
+
+    existing = {mapping.event_type for mapping in config.event_mappings}
+    missing = [event for event in INVITE_LOG_EVENTS if event not in existing]
+    if not missing:
+        return False
+
+    channel = _pick_invite_log_channel(config)
+    if channel is None:
+        return False
+
+    for event_type in missing:
+        mapping = LoggingEventMapping(
+            guild_id=config.guild_id,
+            event_type=event_type,
+            color=INVITES_GROUP_COLOR,
+            enabled=True,
+        )
+        mapping.channel = channel
+        config.event_mappings.append(mapping)
+
+    logger.info(
+        "Healed invite logging mappings for guild %s: added %s → channel %s",
+        config.guild_id,
+        missing,
+        channel.key,
+    )
+    return True
+
 
 # ── Request bodies ──────────────────────────────────────────────────────────
 class LoggingChannelBody(BaseModel):
@@ -91,6 +148,7 @@ class LoggingChannelBody(BaseModel):
     norgoth_managed: bool = False
     default_color: Optional[int] = Field(default=None, ge=0, le=0xFFFFFF)
     position: int = 0
+    enabled: bool = True
 
 
 class LoggingEventBody(BaseModel):
@@ -115,6 +173,43 @@ class LoggingStateBody(BaseModel):
     enabled: bool
 
 
+class LoggingChannelStateBody(BaseModel):
+    """Per-category enable without rewriting the full config."""
+
+    enabled: bool
+
+
+class LoggingChannelUpdateBody(BaseModel):
+    """Per-category settings (name/emoji compose, colour, event routing)."""
+
+    name: str = Field(min_length=1, max_length=100)
+    default_color: Optional[int] = Field(default=None, ge=0, le=0xFFFFFF)
+    events: list[LoggingEventBody] = Field(default_factory=list, max_length=200)
+
+
+def _discord_mutation_http_error(
+    error: DiscordBotAPIError,
+    *,
+    action: str,
+) -> HTTPException:
+    if error.status_code == 403:
+        return HTTPException(
+            status_code=403,
+            detail=f"Bot lacks permission to {action}. Grant Manage Channels.",
+        )
+    if error.status_code == 404:
+        return HTTPException(
+            status_code=404,
+            detail=f"Discord channel not found while trying to {action}.",
+        )
+    if error.status_code == 400:
+        return HTTPException(status_code=400, detail=str(error))
+    return HTTPException(
+        status_code=502,
+        detail=f"Could not {action} on Discord: {error}",
+    )
+
+
 # ── Serialisation ────────────────────────────────────────────────────────────
 def _serialize(config: LoggingConfiguration) -> dict[str, Any]:
     channels_by_id = {channel.id: channel for channel in config.channels}
@@ -135,6 +230,7 @@ def _serialize(config: LoggingConfiguration) -> dict[str, Any]:
                 "norgoth_managed": channel.norgoth_managed,
                 "default_color": channel.default_color,
                 "position": channel.position,
+                "enabled": bool(getattr(channel, "enabled", True)),
             }
             for channel in sorted(config.channels, key=lambda c: c.position)
         ],
@@ -201,6 +297,8 @@ async def _write_routing_snapshot(config: LoggingConfiguration) -> None:
             continue
         channel = channels_by_id.get(mapping.logging_channel_id)
         if not channel or not channel.channel_id:
+            continue
+        if not bool(getattr(channel, "enabled", True)):
             continue
         events[mapping.event_type] = {
             "channel_id": channel.channel_id,
@@ -334,6 +432,26 @@ async def _import_legacy_config(
                 )
             )
 
+    # Legacy Redis never had an invites group — attach invite events to the
+    # best available provisioned channel so upgrades are not permanently mute.
+    invite_channel = (
+        channels_by_key.get("member")
+        or channels_by_key.get("moderation")
+        or next(iter(channels_by_key.values()), None)
+    )
+    if invite_channel is not None:
+        for event_type in INVITE_LOG_EVENTS:
+            session.add(
+                LoggingEventMapping(
+                    logging_configuration_id=config.id,
+                    guild_id=guild_id,
+                    event_type=event_type,
+                    logging_channel_id=invite_channel.id,
+                    color=INVITES_GROUP_COLOR,
+                    enabled=True,
+                )
+            )
+
     await session.commit()
     imported = await _load(session, guild_id)
     if imported is not None:
@@ -361,6 +479,11 @@ async def get_logging_config(
         config = await _import_legacy_config(session, guild_id)
     if config is None:
         return {"guild_id": guild_id, "config": None}
+    if _heal_invite_event_mappings(config):
+        await session.commit()
+        config = await _load(session, guild_id)
+        assert config is not None
+        await _write_routing_snapshot(config)
     return {"guild_id": guild_id, "config": _serialize(config)}
 
 
@@ -382,6 +505,275 @@ async def set_logging_state(
         raise HTTPException(status_code=404, detail="No logging configuration.")
 
     config.enabled = body.enabled
+    await session.commit()
+    config = await _load(session, guild_id)
+    assert config is not None
+    await _write_routing_snapshot(config)
+    return {"guild_id": guild_id, "config": _serialize(config)}
+
+
+@router.patch("/guilds/{guild_id}/logging/channels/{channel_key}")
+async def set_logging_channel_state(
+    body: LoggingChannelStateBody,
+    guild_id: str = Path(pattern=SNOWFLAKE),
+    channel_key: str = Path(min_length=1, max_length=64),
+    session: AsyncSession = Depends(get_database_session),
+) -> dict[str, Any]:
+    """Toggle a logging category without deleting its channel or event mappings."""
+
+    config = await _load(session, guild_id, for_update=True)
+    if config is None:
+        raise HTTPException(status_code=404, detail="No logging configuration.")
+
+    channel = next((c for c in config.channels if c.key == channel_key), None)
+    if channel is None:
+        raise HTTPException(status_code=404, detail="Logging category not found.")
+
+    channel.enabled = body.enabled
+    await session.commit()
+    config = await _load(session, guild_id)
+    assert config is not None
+    await _write_routing_snapshot(config)
+    return {"guild_id": guild_id, "config": _serialize(config)}
+
+
+@router.put("/guilds/{guild_id}/logging/channels/{channel_key}")
+async def update_logging_channel(
+    body: LoggingChannelUpdateBody,
+    guild_id: str = Path(pattern=SNOWFLAKE),
+    channel_key: str = Path(min_length=1, max_length=64),
+    session: AsyncSession = Depends(get_database_session),
+) -> dict[str, Any]:
+    """Update one category's name/colour/events; Discord-first rename when mapped."""
+
+    config = await _load(session, guild_id, for_update=True)
+    if config is None:
+        raise HTTPException(status_code=404, detail="No logging configuration.")
+
+    channel = next((c for c in config.channels if c.key == channel_key), None)
+    if channel is None:
+        # First-time configure for a catalog category omitted during setup.
+        catalog = catalog_payload()
+        known_keys = {group["key"] for group in catalog.get("groups", [])}
+        if channel_key not in known_keys:
+            raise HTTPException(status_code=404, detail="Logging category not found.")
+        group_meta = next(
+            (g for g in catalog.get("groups", []) if g["key"] == channel_key),
+            None,
+        )
+        max_position = max((c.position for c in config.channels), default=-1)
+        channel = LoggingChannel(
+            guild_id=guild_id,
+            key=channel_key,
+            name=body.name.strip()[:100] or channel_key,
+            channel_id=None,
+            norgoth_managed=True,
+            default_color=body.default_color
+            if body.default_color is not None
+            else (group_meta or {}).get("default_color")
+            or GROUP_DEFAULT_COLORS.get(channel_key),
+            position=max_position + 1,
+            enabled=True,
+        )
+        config.channels.append(channel)
+        await session.flush()
+
+    new_name = body.name.strip()[:100]
+    if not new_name:
+        raise HTTPException(status_code=400, detail="Channel name is required.")
+
+    discord_renamed = False
+    if channel.channel_id and new_name != channel.name:
+        settings = get_settings()
+        if not settings.discord_bot_token:
+            raise HTTPException(
+                status_code=503, detail="Discord bot token not configured."
+            )
+        async with httpx.AsyncClient(timeout=20.0) as http_client:
+            bot = DiscordBotClient(settings.discord_bot_token, http_client)
+            try:
+                remote = await bot.get_channel(channel.channel_id)
+                remote_guild = str(remote.get("guild_id") or "")
+                if remote_guild and remote_guild != guild_id:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Mapped Discord channel belongs to another guild.",
+                    )
+                await bot.edit_channel(
+                    channel.channel_id,
+                    name=new_name,
+                    reason="Norgoth logging category renamed",
+                )
+                discord_renamed = True
+            except DiscordBotAPIError as error:
+                raise _discord_mutation_http_error(
+                    error, action="rename the log channel"
+                ) from error
+
+    channel.name = new_name
+    channel.default_color = body.default_color
+
+    # Replace event mappings for this category only; leave other categories alone.
+    body_event_types = {event_body.event_type for event_body in body.events}
+    for mapping in list(config.event_mappings):
+        if (
+            mapping.logging_channel_id == channel.id
+            and mapping.event_type not in body_event_types
+        ):
+            await session.delete(mapping)
+    await session.flush()
+
+    existing_events: dict[str, LoggingEventMapping] = {
+        mapping.event_type: mapping
+        for mapping in config.event_mappings
+        if mapping.event_type in body_event_types
+        or mapping.logging_channel_id != channel.id
+    }
+    if body_event_types:
+        lookup_rows = await session.scalars(
+            select(DiscordLoggingEventType).where(
+                DiscordLoggingEventType.key.in_(body_event_types)
+            )
+        )
+        event_type_ids = {row.key: row.id for row in lookup_rows}
+    else:
+        event_type_ids = {}
+
+    for event_body in body.events:
+        # Events in this payload are always routed to the edited category.
+        mapping = existing_events.get(event_body.event_type)
+        if mapping is None:
+            mapping = LoggingEventMapping(
+                guild_id=guild_id, event_type=event_body.event_type
+            )
+            config.event_mappings.append(mapping)
+            existing_events[event_body.event_type] = mapping
+        mapping.color = event_body.color
+        mapping.enabled = event_body.enabled
+        mapping.channel = channel
+        mapping.event_type_id = event_type_ids.get(event_body.event_type)
+
+    _heal_invite_event_mappings(config)
+
+    async def _commit_and_snapshot() -> LoggingConfiguration:
+        await session.commit()
+        refreshed = await _load(session, guild_id)
+        assert refreshed is not None
+        await _write_routing_snapshot(refreshed)
+        return refreshed
+
+    try:
+        config = await _commit_and_snapshot()
+    except Exception as error:  # noqa: BLE001 - retry once after Discord rename
+        if not discord_renamed:
+            raise
+        logger.exception(
+            "Postgres persist failed after Discord rename for guild=%s channel=%s; retrying",
+            guild_id,
+            channel_key,
+        )
+        try:
+            await session.rollback()
+            config = await _load(session, guild_id, for_update=True)
+            if config is None:
+                raise HTTPException(
+                    status_code=502,
+                    detail=(
+                        "Discord channel was renamed but the database save failed. "
+                        "Re-save this category to sync Postgres."
+                    ),
+                ) from error
+            channel = next((c for c in config.channels if c.key == channel_key), None)
+            if channel is None:
+                raise HTTPException(
+                    status_code=502,
+                    detail=(
+                        "Discord channel was renamed but the database save failed. "
+                        "Re-save this category to sync Postgres."
+                    ),
+                ) from error
+            channel.name = new_name
+            channel.default_color = body.default_color
+            config = await _commit_and_snapshot()
+        except HTTPException:
+            raise
+        except Exception as retry_error:  # noqa: BLE001
+            logger.exception(
+                "Postgres retry failed after Discord rename for guild=%s channel=%s",
+                guild_id,
+                channel_key,
+            )
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "Discord channel was renamed but the database save failed. "
+                    "Re-save this category to sync Postgres."
+                ),
+            ) from retry_error
+
+    return {"guild_id": guild_id, "config": _serialize(config)}
+
+
+@router.delete("/guilds/{guild_id}/logging/channels/{channel_key}/discord-channel")
+async def delete_logging_discord_channel(
+    guild_id: str = Path(pattern=SNOWFLAKE),
+    channel_key: str = Path(min_length=1, max_length=64),
+    session: AsyncSession = Depends(get_database_session),
+) -> dict[str, Any]:
+    """Delete the Discord destination for one category; clear mapping and disable it.
+
+    Event mappings, name, and colour are retained so the category can be
+    re-provisioned later. Discord 404 is treated as success (already gone).
+    """
+
+    config = await _load(session, guild_id, for_update=True)
+    if config is None:
+        raise HTTPException(status_code=404, detail="No logging configuration.")
+
+    channel = next((c for c in config.channels if c.key == channel_key), None)
+    if channel is None:
+        raise HTTPException(status_code=404, detail="Logging category not found.")
+    if not channel.channel_id:
+        raise HTTPException(
+            status_code=400,
+            detail="This category has no Discord channel to delete.",
+        )
+
+    settings = get_settings()
+    if not settings.discord_bot_token:
+        raise HTTPException(
+            status_code=503, detail="Discord bot token not configured."
+        )
+
+    channel_id = channel.channel_id
+    async with httpx.AsyncClient(timeout=20.0) as http_client:
+        bot = DiscordBotClient(settings.discord_bot_token, http_client)
+        try:
+            try:
+                remote = await bot.get_channel(channel_id)
+                remote_guild = str(remote.get("guild_id") or "")
+                if remote_guild and remote_guild != guild_id:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Mapped Discord channel belongs to another guild.",
+                    )
+            except DiscordBotAPIError as error:
+                # Missing channel is fine — we still clear the mapping below.
+                if error.status_code != 404:
+                    raise
+            await bot.delete_channel(
+                channel_id,
+                reason="Norgoth logging category channel deleted",
+            )
+        except HTTPException:
+            raise
+        except DiscordBotAPIError as error:
+            raise _discord_mutation_http_error(
+                error, action="delete the log channel"
+            ) from error
+
+    channel.channel_id = None
+    channel.enabled = False
     await session.commit()
     config = await _load(session, guild_id)
     assert config is not None
@@ -441,6 +833,7 @@ async def upsert_logging_config(
         channel.norgoth_managed = channel_body.norgoth_managed
         channel.default_color = channel_body.default_color
         channel.position = channel_body.position
+        channel.enabled = bool(channel_body.enabled)
         channels_by_key[channel_body.key] = channel
     await session.flush()
 
@@ -458,6 +851,14 @@ async def upsert_logging_config(
             await session.delete(mapping)
             del existing_events[event_type]
 
+    # Resolve the seeded lookup ids for the requested event types (best-effort).
+    lookup_rows = await session.scalars(
+        select(DiscordLoggingEventType).where(
+            DiscordLoggingEventType.key.in_(body_event_types)
+        )
+    )
+    event_type_ids = {row.key: row.id for row in lookup_rows}
+
     for event_body in body.events:
         channel = channels_by_key.get(event_body.channel_key or "")
         mapping = existing_events.get(event_body.event_type)
@@ -469,6 +870,11 @@ async def upsert_logging_config(
         mapping.color = event_body.color
         mapping.enabled = event_body.enabled
         mapping.channel = channel
+        mapping.event_type_id = event_type_ids.get(event_body.event_type)
+
+    # Older wizard saves / partial PUTs may omit invite events — heal before
+    # rewriting the Redis routing snapshot the bot reads.
+    _heal_invite_event_mappings(config)
 
     await session.commit()
     config = await _load(session, guild_id)

@@ -40,6 +40,13 @@ type DataTableProps<T> = {
    * area (structured metadata / Advanced section) below the row.
    */
   expandable?: (row: T) => ReactNode;
+  /**
+   * Enable server-side pagination: `rows` is treated as the current page (not
+   * sliced locally) and `totalCount` drives the page count + range label.
+   */
+  serverSide?: boolean;
+  /** Total number of rows across all pages (server-side mode only). */
+  totalCount?: number;
 };
 
 export function DataTable<T>({
@@ -55,11 +62,15 @@ export function DataTable<T>({
   onPageChange,
   toolbar,
   expandable,
+  serverSide = false,
+  totalCount,
 }: DataTableProps<T>) {
-  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const total = serverSide ? (totalCount ?? rows.length) : rows.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(Math.max(1, page), totalPages);
   const start = (safePage - 1) * pageSize;
-  const pageRows = rows.slice(start, start + pageSize);
+  // In server-side mode the parent already fetched exactly this page.
+  const pageRows = serverSide ? rows : rows.slice(start, start + pageSize);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const totalColumns = columns.length + (expandable ? 1 : 0);
 
@@ -154,13 +165,13 @@ export function DataTable<T>({
         </CTable>
       </div>
 
-      {onPageChange && rows.length > pageSize ? (
+      {onPageChange && total > pageSize ? (
         <div className="d-flex align-items-center justify-content-between gap-3 flex-wrap norgoth-pagination-bar">
           <span className="small text-body-secondary">
-            {rows.length === 0
+            {total === 0
               ? "0"
-              : `${start + 1}–${Math.min(start + pageSize, rows.length)}`}{" "}
-            of {rows.length}
+              : `${start + 1}–${Math.min(start + pageSize, total)}`}{" "}
+            of {total}
           </span>
           <div className="d-flex align-items-center gap-2">
             <CButton

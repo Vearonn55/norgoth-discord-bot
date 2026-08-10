@@ -16,7 +16,13 @@ import { Stepper } from "@/components/ui/stepper";
 import { EmbedColorPicker } from "@/components/discord/embed-color-picker";
 import { DiscordEmojiPicker } from "@/components/discord/discord-emoji-picker";
 import type { GuildChannel } from "@/stores/guild-store";
-import { colorToHex, hexToColor, sanitizeChannelName } from "@/lib/logging";
+import {
+  colorToHex,
+  composeCategoryName,
+  composeChannelName,
+  hexToColor,
+  sanitizeChannelName,
+} from "@/lib/logging";
 import {
   useLoggingConfigStore,
   type LoggingCatalog,
@@ -69,16 +75,6 @@ function buildDraft(catalog: LoggingCatalog): GroupDraft[] {
       })),
     };
   });
-}
-
-/**
- * Compose the final Discord channel name from an optional (unicode) emoji icon
- * and the user-provided name. The text part is sanitised to Discord's rules;
- * the emoji is preserved and prefixed (Discord turns the space into a hyphen).
- */
-function composeChannelName(emoji: string, name: string): string {
-  const base = sanitizeChannelName(name);
-  return emoji ? `${emoji} ${base}` : base;
 }
 
 type Props = {
@@ -179,7 +175,7 @@ export function LoggingSetupWizard({ guildId, channels, onComplete }: Props) {
       enabled: true,
       category_id: null,
       category_name: categoryManaged
-        ? `${categoryEmoji ? `${categoryEmoji} ` : ""}${categoryName}`.trim()
+        ? composeCategoryName(categoryEmoji, categoryName)
         : null,
       norgoth_managed_category: categoryManaged,
       channels: includedGroups.map((group, index) => ({
@@ -193,6 +189,7 @@ export function LoggingSetupWizard({ guildId, channels, onComplete }: Props) {
         norgoth_managed: group.mode === "new",
         default_color: hexToColor(group.defaultColorHex),
         position: index,
+        enabled: true,
       })),
       events: includedGroups.flatMap((group) =>
         group.events.map((event) => ({
@@ -445,7 +442,7 @@ export function LoggingSetupWizard({ guildId, channels, onComplete }: Props) {
               <div className="fw-semibold mb-1">Category</div>
               <div className="small text-body-secondary">
                 {categoryManaged
-                  ? `Norgoth will create “${categoryEmoji ? `${categoryEmoji} ` : ""}${categoryName}”.`
+                  ? `Norgoth will create “${composeCategoryName(categoryEmoji, categoryName)}”.`
                   : "No managed category."}
               </div>
             </div>

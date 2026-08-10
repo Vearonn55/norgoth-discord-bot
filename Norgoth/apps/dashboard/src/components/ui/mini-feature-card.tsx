@@ -40,19 +40,26 @@ type MiniFeatureCardProps = {
   onClick: () => void;
   /**
    * When provided, an inline enable toggle is rendered on the card. Enabled
-   * cards use a green accent; disabled cards are neutral. The toggle text label
-   * (Enabled/Disabled) is always shown so color is not the only signal.
+   * cards use a green accent (or ``enabledAccent`` when set); disabled cards
+   * are neutral. The toggle text label (Enabled/Disabled) is always shown so
+   * color is not the only signal.
    */
   enabled?: boolean;
   onToggle?: (checked: boolean) => void;
   toggleDisabled?: boolean;
+  /**
+   * When set with a toggle, used as the left/icon accent while enabled instead
+   * of the default success green (e.g. Discord Logs category colours).
+   */
+  enabledAccent?: string;
 };
 
 /**
  * Compact, dense feature card. Shows an icon, name, short description and a
  * status dot/badge, and opens a configuration modal on click. Category color
  * drives the accent unless an enable toggle is present, in which case the
- * accent becomes green when enabled and neutral when disabled.
+ * accent becomes green (or ``enabledAccent``) when enabled and neutral when
+ * disabled.
  */
 export function MiniFeatureCard({
   icon,
@@ -65,18 +72,20 @@ export function MiniFeatureCard({
   enabled,
   onToggle,
   toggleDisabled = false,
+  enabledAccent,
 }: MiniFeatureCardProps) {
   const hasToggle = typeof onToggle === "function";
   const categoryColor = category ? categoryAccent(category) : undefined;
+  const onAccent = enabledAccent || "var(--cui-success)";
   const accent = hasToggle
     ? enabled
-      ? "var(--cui-success)"
+      ? onAccent
       : "rgba(241, 244, 250, 0.28)"
     : categoryColor;
 
   const iconColor = hasToggle
     ? enabled
-      ? "var(--cui-success)"
+      ? onAccent
       : "var(--cui-secondary)"
     : categoryColor;
 
@@ -109,7 +118,7 @@ export function MiniFeatureCard({
           ) : null}
         </span>
         {description ? (
-          <span className="d-block small text-body-secondary mt-1">
+          <span className="norgoth-mini-card-description d-block small text-body-secondary mt-1">
             {description}
           </span>
         ) : null}
@@ -122,7 +131,7 @@ export function MiniFeatureCard({
       <button
         type="button"
         onClick={onClick}
-        className="norgoth-mini-card text-start w-100 d-flex align-items-start gap-3 p-3"
+        className="norgoth-mini-card text-start w-100 h-100 d-flex align-items-start gap-3 p-3"
         style={accentStyle}
       >
         {body}
@@ -132,7 +141,7 @@ export function MiniFeatureCard({
 
   return (
     <div
-      className="norgoth-mini-card d-flex align-items-start gap-3 p-3"
+      className="norgoth-mini-card h-100 d-flex align-items-start gap-3 p-3"
       style={accentStyle}
     >
       <button
@@ -147,10 +156,10 @@ export function MiniFeatureCard({
         <span
           className="small flex-shrink-0"
           style={{
-            color: enabled ? "var(--cui-success)" : "var(--cui-secondary)",
+            color: enabled ? onAccent : "var(--cui-secondary)",
           }}
         >
-          {enabled ? "Enabled" : "Disabled"}
+          {statusLabel ?? (enabled ? "Enabled" : "Disabled")}
         </span>
         <Switch
           checked={!!enabled}

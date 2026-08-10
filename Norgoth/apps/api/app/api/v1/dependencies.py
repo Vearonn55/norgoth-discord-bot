@@ -12,14 +12,14 @@ from app.db.session import get_database_session
 from app.integrations.discord.bot_rest import DiscordBotClient
 from app.integrations.discord.oauth import DiscordOAuthClient
 from app.integrations.proxycheck import ProxycheckClient
-from app.repositories.blacklisted_guild_repository import (
-    BlacklistedGuildRepository,
-)
 from app.repositories.configuration_repository import (
     ConfigurationRepository,
 )
 from app.repositories.discord_guild_repository import (
     DiscordGuildRepository,
+)
+from app.repositories.high_risk_guild_repository import (
+    HighRiskGuildRepository,
 )
 from app.repositories.user_list_repository import (
     UserListRepository,
@@ -29,13 +29,11 @@ from app.repositories.verification_log_repository import (
 )
 from app.security.ip_protection import IPProtectionService
 from app.security.oauth_state import DiscordOAuthStateService
-from app.services.blacklisted_guild_service import (
-    BlacklistedGuildService,
-)
 from app.services.configuration_service import (
     ConfigurationService,
 )
 from app.services.guild_service import GuildService
+from app.services.high_risk_guild_service import HighRiskGuildService
 from app.services.user_list_service import UserListService
 from app.services.verification_decision_service import (
     VerificationDecisionService,
@@ -233,13 +231,13 @@ def get_user_list_service(
     )
 
 
-def get_blacklisted_guild_service(
+def get_high_risk_guild_service(
     session: DatabaseSession,
-) -> BlacklistedGuildService:
-    """Create a blacklisted-guild service for the current request."""
+) -> HighRiskGuildService:
+    """Create a high-risk-guild service for the current request."""
 
-    return BlacklistedGuildService(
-        BlacklistedGuildRepository(session),
+    return HighRiskGuildService(
+        HighRiskGuildRepository(session),
     )
 
 
@@ -270,9 +268,9 @@ UserListServiceDependency = Annotated[
     Depends(get_user_list_service),
 ]
 
-BlacklistedGuildServiceDependency = Annotated[
-    BlacklistedGuildService,
-    Depends(get_blacklisted_guild_service),
+HighRiskGuildServiceDependency = Annotated[
+    HighRiskGuildService,
+    Depends(get_high_risk_guild_service),
 ]
 
 VerificationLogServiceDependency = Annotated[
@@ -283,14 +281,14 @@ VerificationLogServiceDependency = Annotated[
 
 def get_verification_service(
     user_list_service: UserListServiceDependency,
-    blacklisted_guild_service: BlacklistedGuildServiceDependency,
+    high_risk_guild_service: HighRiskGuildServiceDependency,
     verification_log_service: VerificationLogServiceDependency,
 ) -> VerificationService:
     """Create the complete Discord verification workflow."""
 
     return VerificationService(
         user_list_service=user_list_service,
-        blacklisted_guild_service=blacklisted_guild_service,
+        high_risk_guild_service=high_risk_guild_service,
         verification_log_service=verification_log_service,
         verification_decision_service=VerificationDecisionService(),
     )

@@ -2,12 +2,15 @@ import type { ReactNode } from "react";
 import type { NorgothCategory } from "@/lib/design/category";
 import { categoryAccent } from "@/lib/design/category";
 import { HeaderMasterToggle } from "@/components/layout/header-master-toggle";
+import { FeatureInfo } from "@/components/ui/feature-info";
+import type { FeatureInfoContent, FeatureInfoKey } from "@/lib/feature-info";
 
 export type PageHeaderMasterToggle = {
   enabled: boolean;
   onChange: (checked: boolean) => void;
   loading?: boolean;
   label?: string;
+  showLabel?: boolean;
 };
 
 type PageHeaderProps = {
@@ -21,6 +24,13 @@ type PageHeaderProps = {
    * header. Use for main features that have a true page-level enabled state.
    */
   masterToggle?: PageHeaderMasterToggle;
+  /**
+   * Feature-level contextual help. Provide `infoKey` to resolve localized
+   * content from the `featureInfo` dictionary, or pass `info` directly. An
+   * accessible info icon + popover renders beside the title.
+   */
+  infoKey?: FeatureInfoKey | string;
+  info?: FeatureInfoContent;
 };
 
 export function PageHeader({
@@ -30,6 +40,8 @@ export function PageHeader({
   icon,
   category,
   masterToggle,
+  infoKey,
+  info,
 }: PageHeaderProps) {
   return (
     <header
@@ -54,6 +66,9 @@ export function PageHeader({
             </div>
           ) : null}
           <h1 className="h2 mb-0 fw-semibold">{title}</h1>
+          {infoKey || info ? (
+            <FeatureInfo featureKey={infoKey} content={info ?? null} />
+          ) : null}
         </div>
         {description ? (
           <p className="text-body-secondary mt-2 mb-0" style={{ maxWidth: 42 * 16 }}>
@@ -71,6 +86,7 @@ export function PageHeader({
               onChange={masterToggle.onChange}
               loading={masterToggle.loading}
               label={masterToggle.label}
+              showLabel={masterToggle.showLabel}
             />
           ) : null}
         </div>

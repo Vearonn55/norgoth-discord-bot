@@ -16,8 +16,8 @@ export default async function EmbedMessageEditorPage({
   return (
     <div className="d-flex flex-column gap-4">
       <PageHeader
-        title={isNew ? "New Embed Message" : "Edit Embed Message"}
-        description="Design the embed, preview it live, then send or update it on Discord."
+        title={isNew ? "New Embed" : "Edit Embed"}
+        description="Design the reusable embed content and preview it live. Deploy and re-sync from the Embed Library."
         category="messages"
       />
       <EmbedMessageEditor lang={lang} messageId={id} />

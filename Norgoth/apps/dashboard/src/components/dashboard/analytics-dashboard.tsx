@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useMemo } from "react";
 import { DashboardAutoRefresh } from "@/components/dashboard/dashboard-auto-refresh";
-import { RetryHeatmapPanel } from "@/components/dashboard/retry-heatmap-panel";
 import { KpiStrip } from "@/components/analytics/kpi-strip";
 import { TrendChart } from "@/components/analytics/trend-chart";
 import { PageHeader } from "@/components/layout/page-header";
@@ -21,6 +20,7 @@ import {
   computeEngagementMetrics,
   type EngagementRange,
 } from "@/lib/analytics/engagement";
+import { formatDateTime } from "@/lib/datetime";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import {
   campaignDateStamp,
@@ -262,7 +262,7 @@ export function AnalyticsDashboard({ lang }: { lang: string }) {
         />
 
         <SectionCard level="secondary">
-          <div className="d-flex flex-wrap align-items-end justify-content-between gap-3">
+          <div className="d-flex flex-wrap align-items-start justify-content-between gap-3">
             <div>
               <div className="fw-semibold">Date range</div>
               <p className="mb-0 small text-body-secondary">
@@ -389,7 +389,7 @@ export function AnalyticsDashboard({ lang }: { lang: string }) {
                   ? communityKpis.messagesPerActiveMember.toFixed(1)
                   : "—",
               helper: engagement
-                ? `${engagement.totals.messages} msgs · ${communityKpis?.activeMembers ?? 0} authors`
+                ? `${engagement.totals.messages} msgs · ${communityKpis?.activeMembers ?? 0} active members`
                 : "Guild required",
               tone: communityKpis ? "success" : "default",
             },
@@ -400,9 +400,12 @@ export function AnalyticsDashboard({ lang }: { lang: string }) {
                 communityKpis != null
                   ? `${communityKpis.netGrowth >= 0 ? "+" : ""}${communityKpis.netGrowth}`
                   : "—",
-              helper: engagement
-                ? `${engagement.totals.joins} joins · ${engagement.totals.leaves} leaves`
-                : "Guild required",
+              helper:
+                communityKpis?.netGrowthRate != null
+                  ? `${(communityKpis.netGrowthRate * 100).toFixed(1)}% · ${communityKpis.newMembers} new · ${engagement?.totals.leaves ?? 0} left`
+                  : engagement
+                    ? `${engagement.totals.joins} new · ${engagement.totals.rejoins} rejoin · ${engagement.totals.leaves} leaves`
+                    : "Guild required",
               tone:
                 communityKpis == null
                   ? "default"
@@ -411,11 +414,38 @@ export function AnalyticsDashboard({ lang }: { lang: string }) {
                     : "warning",
             },
             {
+              key: "retention",
+              label: "Retention",
+              value:
+                communityKpis?.retentionRate != null
+                  ? `${Math.round(communityKpis.retentionRate * 100)}%`
+                  : "—",
+              helper:
+                communityKpis?.churnRate != null
+                  ? `${(communityKpis.churnRate * 100).toFixed(1)}% churn over window`
+                  : "Population snapshot required",
+              tone:
+                communityKpis?.retentionRate == null
+                  ? "default"
+                  : communityKpis.retentionRate >= 0.9
+                    ? "success"
+                    : communityKpis.retentionRate >= 0.75
+                      ? "info"
+                      : "warning",
+            },
+            {
+              key: "rejoins",
+              label: "Rejoins",
+              value: communityKpis != null ? communityKpis.rejoins : "—",
+              helper: "Members who left and returned",
+              tone: "default",
+            },
+            {
               key: "voice-uniques",
               label: "Voice participants",
               value:
                 communityKpis != null ? communityKpis.voiceUniques : "—",
-              helper: "Unique members in voice",
+              helper: "Unique members in voice (window)",
               tone: "info",
             },
           ]}
@@ -477,11 +507,7 @@ export function AnalyticsDashboard({ lang }: { lang: string }) {
                           {String(campaign.status)}
                         </Badge>
                         <span>
-                          {campaignDateStamp(campaign)
-                            ? new Date(
-                                campaignDateStamp(campaign)!
-                              ).toLocaleString()
-                            : "—"}
+                          {formatDateTime(campaignDateStamp(campaign), lang)}
                         </span>
                       </div>
                     </Link>
@@ -492,15 +518,6 @@ export function AnalyticsDashboard({ lang }: { lang: string }) {
           </div>
         </div>
 
-        <CategoryHeader
-          category="operations"
-          title="Diagnostics"
-          description="Retry pressure heatmap from campaign delivery."
-          as="h3"
-        />
-        <SectionCard level="secondary">
-          <RetryHeatmapPanel />
-        </SectionCard>
       </div>
     </>
   );

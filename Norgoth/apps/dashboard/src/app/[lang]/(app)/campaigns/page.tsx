@@ -26,6 +26,7 @@ export default async function CampaignsPage({
           title="Campaign Messaging"
           icon={<Icon icon={cilSend} size="xl" />}
           description="Create and monitor Discord campaigns: channel broadcasts and member DM sends, queue execution, and delivery results."
+          infoKey="campaigns"
           actions={
             <>
               <Button variant="secondary" asChild>

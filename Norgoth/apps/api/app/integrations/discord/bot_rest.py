@@ -17,6 +17,63 @@ DISCORD_API_BASE_URL = "https://discord.com/api/v10"
 CHANNEL_TYPE_TEXT = 0
 CHANNEL_TYPE_CATEGORY = 4
 
+# Permission bits used for Feed Channel send restrictions.
+PERM_VIEW_CHANNEL = 1 << 10
+PERM_SEND_MESSAGES = 1 << 11
+PERM_MANAGE_MESSAGES = 1 << 13
+PERM_EMBED_LINKS = 1 << 14
+PERM_ATTACH_FILES = 1 << 15
+PERM_READ_MESSAGE_HISTORY = 1 << 16
+PERM_ADD_REACTIONS = 1 << 6
+PERM_CREATE_PUBLIC_THREADS = 1 << 35
+PERM_CREATE_PRIVATE_THREADS = 1 << 36
+PERM_SEND_MESSAGES_IN_THREADS = 1 << 38
+
+# @everyone: deny sending / thread creation; keep view+history so members can read.
+FEED_EVERYONE_DENY = (
+    PERM_SEND_MESSAGES
+    | PERM_SEND_MESSAGES_IN_THREADS
+    | PERM_CREATE_PUBLIC_THREADS
+    | PERM_CREATE_PRIVATE_THREADS
+)
+FEED_BOT_ALLOW = (
+    PERM_VIEW_CHANNEL
+    | PERM_SEND_MESSAGES
+    | PERM_MANAGE_MESSAGES
+    | PERM_EMBED_LINKS
+    | PERM_ATTACH_FILES
+    | PERM_READ_MESSAGE_HISTORY
+    | PERM_ADD_REACTIONS
+    | PERM_SEND_MESSAGES_IN_THREADS
+)
+
+
+def feed_channel_permission_overwrites(
+    guild_id: str,
+    *,
+    bot_user_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """Permission overwrites: members cannot send; bot retains manage/send."""
+
+    overwrites: list[dict[str, Any]] = [
+        {
+            "id": str(guild_id),
+            "type": 0,  # role (@everyone id == guild id)
+            "allow": "0",
+            "deny": str(FEED_EVERYONE_DENY),
+        }
+    ]
+    if bot_user_id:
+        overwrites.append(
+            {
+                "id": str(bot_user_id),
+                "type": 1,  # member
+                "allow": str(FEED_BOT_ALLOW),
+                "deny": "0",
+            }
+        )
+    return overwrites
+
 
 class DiscordBotAPIError(Exception):
     """Raised when a bot-authenticated Discord API call fails."""
@@ -72,13 +129,13 @@ class DiscordBotClient:
         channel_id: str,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
-        response = await self._http_client.post(
+        response = await self._request(
+            "POST",
             f"{DISCORD_API_BASE_URL}/channels/{channel_id}/messages",
-            headers=self._headers,
             json=payload,
         )
 
-        if response.status_code != 200:
+        if response.status_code not in (200, 201):
             raise DiscordBotAPIError(
                 f"Failed to send message: HTTP {response.status_code} {response.text}",
                 status_code=response.status_code,
@@ -92,9 +149,9 @@ class DiscordBotClient:
         message_id: str,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
-        response = await self._http_client.patch(
+        response = await self._request(
+            "PATCH",
             f"{DISCORD_API_BASE_URL}/channels/{channel_id}/messages/{message_id}",
-            headers=self._headers,
             json=payload,
         )
 
@@ -106,6 +163,52 @@ class DiscordBotClient:
 
         return response.json()
 
+    async def add_reaction(
+        self,
+        channel_id: str,
+        message_id: str,
+        emoji: str,
+    ) -> None:
+        """Put a reaction. ``emoji`` is unicode or ``name:id`` / ``a:name:id``."""
+
+        from urllib.parse import quote
+
+        encoded = quote(emoji, safe="")
+        response = await self._request(
+            "PUT",
+            (
+                f"{DISCORD_API_BASE_URL}/channels/{channel_id}/messages/"
+                f"{message_id}/reactions/{encoded}/@me"
+            ),
+        )
+        if response.status_code not in (200, 204):
+            raise DiscordBotAPIError(
+                f"Failed to add reaction: HTTP {response.status_code} {response.text}",
+                status_code=response.status_code,
+            )
+
+    async def remove_user_reaction(
+        self,
+        channel_id: str,
+        message_id: str,
+        emoji: str,
+        user_id: str,
+    ) -> None:
+        from urllib.parse import quote
+
+        encoded = quote(emoji, safe="")
+        response = await self._request(
+            "DELETE",
+            (
+                f"{DISCORD_API_BASE_URL}/channels/{channel_id}/messages/"
+                f"{message_id}/reactions/{encoded}/{user_id}"
+            ),
+        )
+        if response.status_code not in (200, 204, 404):
+            raise DiscordBotAPIError(
+                f"Failed to remove reaction: HTTP {response.status_code} {response.text}",
+                status_code=response.status_code,
+            )
     async def get_channel_message(
         self,
         channel_id: str,
@@ -161,9 +264,8 @@ class DiscordBotClient:
         return response.json()
 
     async def get_channel(self, channel_id: str) -> dict[str, Any]:
-        response = await self._http_client.get(
-            f"{DISCORD_API_BASE_URL}/channels/{channel_id}",
-            headers=self._headers,
+        response = await self._request(
+            "GET", f"{DISCORD_API_BASE_URL}/channels/{channel_id}"
         )
         if response.status_code != 200:
             raise DiscordBotAPIError(
@@ -283,6 +385,7 @@ class DiscordBotClient:
         channel_type: int = CHANNEL_TYPE_TEXT,
         parent_id: str | None = None,
         topic: str | None = None,
+        permission_overwrites: list[dict[str, Any]] | None = None,
         reason: str | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {"name": name[:100], "type": channel_type}
@@ -290,6 +393,8 @@ class DiscordBotClient:
             payload["parent_id"] = parent_id
         if topic:
             payload["topic"] = topic[:1024]
+        if permission_overwrites:
+            payload["permission_overwrites"] = permission_overwrites
 
         headers = {"X-Audit-Log-Reason": reason} if reason else None
         response = await self._request(
@@ -301,6 +406,65 @@ class DiscordBotClient:
         if response.status_code not in (200, 201):
             raise DiscordBotAPIError(
                 f"Failed to create channel: HTTP {response.status_code} {response.text}",
+                status_code=response.status_code,
+            )
+        return response.json()
+
+    async def edit_channel(
+        self,
+        channel_id: str,
+        *,
+        name: str | None = None,
+        parent_id: str | None | object = ...,
+        permission_overwrites: list[dict[str, Any]] | None = None,
+        reason: str | None = None,
+    ) -> dict[str, Any]:
+        """PATCH a Discord channel (rename, parent category, and/or overwrites).
+
+        Pass ``parent_id=None`` explicitly to move a channel to guild root.
+        Omit ``parent_id`` (default) to leave the parent unchanged.
+        """
+
+        payload: dict[str, Any] = {}
+        if name is not None:
+            # Discord accepts 1–100 chars; emoji prefixes are part of the name.
+            cleaned = name.strip()[:100]
+            if not cleaned:
+                raise DiscordBotAPIError(
+                    "Channel name must be 1–100 characters",
+                    status_code=400,
+                )
+            payload["name"] = cleaned
+        # Use ellipsis sentinel so callers can clear parent with parent_id=None.
+        if parent_id is not ...:
+            payload["parent_id"] = parent_id
+        if permission_overwrites is not None:
+            payload["permission_overwrites"] = permission_overwrites
+        if not payload:
+            raise DiscordBotAPIError(
+                "edit_channel requires at least one field",
+                status_code=400,
+            )
+
+        headers = {"X-Audit-Log-Reason": reason} if reason else None
+        response = await self._request(
+            "PATCH",
+            f"{DISCORD_API_BASE_URL}/channels/{channel_id}",
+            headers=headers,
+            json=payload,
+        )
+        if response.status_code != 200:
+            raise DiscordBotAPIError(
+                f"Failed to edit channel: HTTP {response.status_code} {response.text}",
+                status_code=response.status_code,
+            )
+        return response.json()
+
+    async def get_bot_user(self) -> dict[str, Any]:
+        response = await self._request("GET", f"{DISCORD_API_BASE_URL}/users/@me")
+        if response.status_code != 200:
+            raise DiscordBotAPIError(
+                f"Failed to get bot user: HTTP {response.status_code} {response.text}",
                 status_code=response.status_code,
             )
         return response.json()

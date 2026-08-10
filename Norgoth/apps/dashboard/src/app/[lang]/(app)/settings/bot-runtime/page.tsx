@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { apiUrl } from "@/lib/api";
+import { formatDateTime } from "@/lib/datetime";
 import { getDictionary, hasLocale } from "../../../dictionaries";
 
 type BotGuild = {
@@ -101,11 +102,7 @@ export default async function BotRuntimeSettingsPage({
           <CCol md={6} xl={3}>
             <MetricCard
               label="Last Heartbeat"
-              value={
-                health?.heartbeat_at
-                  ? new Date(health.heartbeat_at).toLocaleTimeString()
-                  : "—"
-              }
+              value={formatDateTime(health?.heartbeat_at, lang)}
               tone="neutral"
             />
           </CCol>

@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   CAlert,
   CCol,
   CFormLabel,
   CFormSelect,
+  CModal,
+  CModalBody,
+  CModalHeader,
+  CModalTitle,
   CRow,
   CSpinner,
 } from "@coreui/react";
@@ -16,8 +20,17 @@ import { Switch } from "@/components/ui/switch";
 import { RoleMultiPicker } from "@/components/ui/role-multi-picker";
 import { RichMessageEditor } from "@/components/editors/rich-message-editor";
 import { MessagePreview } from "@/components/discord/message-preview";
+import { EmbedDraftCreator } from "@/components/embed-messages/embed-draft-creator";
 import { useFirstGuild } from "@/lib/use-first-guild";
-import { useAutomationStore } from "@/stores/automation-store";
+import {
+  useAutomationStore,
+  type AutomationConfig,
+  type MessageSource,
+} from "@/stores/automation-store";
+import {
+  useEmbedMessagesStore,
+  type EmbedMessage,
+} from "@/stores/embed-messages-store";
 
 type Section = "welcome" | "autorole" | "modlog";
 
@@ -37,6 +50,7 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
   const config = useAutomationStore((s) => s.config);
   const savedConfig = useAutomationStore((s) => s.savedConfig);
   const welcomeStatus = useAutomationStore((s) => s.welcomeStatus);
+  const autoroleStatus = useAutomationStore((s) => s.autoroleStatus);
   const loading = useAutomationStore((s) => s.loading);
   const saving = useAutomationStore((s) => s.saving);
   const savingSection = useAutomationStore((s) => s.savingSection);
@@ -45,6 +59,10 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
   const editorSeed = useAutomationStore((s) => s.editorSeed);
   const error = useAutomationStore((s) => s.error);
   const savedAt = useAutomationStore((s) => s.savedAt);
+  const welcomeSavedAt = useAutomationStore((s) => s.welcomeSavedAt);
+  const welcomeError = useAutomationStore((s) => s.welcomeError);
+  const leaveSavedAt = useAutomationStore((s) => s.leaveSavedAt);
+  const leaveError = useAutomationStore((s) => s.leaveError);
   const testResult = useAutomationStore((s) => s.testResult);
   const testError = useAutomationStore((s) => s.testError);
   const leaveTesting = useAutomationStore((s) => s.leaveTesting);
@@ -57,10 +75,21 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
   const sendTestWelcome = useAutomationStore((s) => s.sendTestWelcome);
   const sendTestLeave = useAutomationStore((s) => s.sendTestLeave);
 
+  const embedMessages = useEmbedMessagesStore((s) => s.messages);
+  const loadEmbedMessages = useEmbedMessagesStore((s) => s.load);
+  const [creatorFor, setCreatorFor] = useState<"welcome" | "leave" | null>(
+    null
+  );
+
   useEffect(() => {
     if (!guildId) return;
     void load(guildId);
   }, [guildId, load]);
+
+  useEffect(() => {
+    if (!guildId || section !== "welcome") return;
+    void loadEmbedMessages(guildId);
+  }, [guildId, section, loadEmbedMessages]);
 
   if (guildLoading || loading) {
     return (
@@ -100,11 +129,15 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
   const welcomeDirty =
     config.welcome_enabled !== savedConfig.welcome_enabled ||
     config.welcome_channel_id !== savedConfig.welcome_channel_id ||
-    config.welcome_message !== savedConfig.welcome_message;
+    config.welcome_message !== savedConfig.welcome_message ||
+    config.welcome_source !== savedConfig.welcome_source ||
+    config.welcome_embed_message_id !== savedConfig.welcome_embed_message_id;
   const leaveDirty =
     config.leave_enabled !== savedConfig.leave_enabled ||
     config.leave_channel_id !== savedConfig.leave_channel_id ||
-    config.leave_message !== savedConfig.leave_message;
+    config.leave_message !== savedConfig.leave_message ||
+    config.leave_source !== savedConfig.leave_source ||
+    config.leave_embed_message_id !== savedConfig.leave_embed_message_id;
 
   const previewSubstitute = (text: string) =>
     text
@@ -174,31 +207,17 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
                   placeholder="Select a channel"
                 />
 
-                <div>
-                  <CFormLabel>Welcome message</CFormLabel>
-                  <RichMessageEditor
-                    key={`welcome-${editorSeed}`}
-                    value={config.welcome_message}
-                    onChange={(markdown) =>
-                      updateConfig((current) => ({
-                        ...current,
-                        welcome_message: markdown,
-                      }))
-                    }
-                    variables={WELCOME_VARIABLES}
-                    height={180}
-                    placeholder="Welcome to {server}, {user}!"
-                  />
-                </div>
-
-                <div>
-                  <div className="small text-uppercase fw-semibold text-body-secondary mb-2">
-                    Preview
-                  </div>
-                  <MessagePreview
-                    content={previewSubstitute(config.welcome_message)}
-                  />
-                </div>
+                <MessageComposer
+                  section="welcome"
+                  label="Welcome message"
+                  placeholder="Welcome to {server}, {user}!"
+                  config={config}
+                  updateConfig={updateConfig}
+                  editorSeed={editorSeed}
+                  embedMessages={embedMessages}
+                  previewSubstitute={previewSubstitute}
+                  onCreateNew={() => setCreatorFor("welcome")}
+                />
 
                 {welcomeStatus ? (
                   <CAlert
@@ -234,8 +253,11 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
                     </Button>
                     {welcomeDirty ? (
                       <span className="small text-warning">Unsaved changes</span>
-                    ) : savedAt ? (
+                    ) : welcomeSavedAt ? (
                       <span className="small text-success">Saved</span>
+                    ) : null}
+                    {welcomeError ? (
+                      <span className="small text-danger">{welcomeError}</span>
                     ) : null}
                     {testResult ? (
                       <span className="small text-success">{testResult}</span>
@@ -294,31 +316,17 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
                   placeholder="Same as welcome channel"
                 />
 
-                <div>
-                  <CFormLabel>Leave message</CFormLabel>
-                  <RichMessageEditor
-                    key={`leave-${editorSeed}`}
-                    value={config.leave_message}
-                    onChange={(markdown) =>
-                      updateConfig((current) => ({
-                        ...current,
-                        leave_message: markdown,
-                      }))
-                    }
-                    variables={WELCOME_VARIABLES}
-                    height={180}
-                    placeholder="{username} left {server}."
-                  />
-                </div>
-
-                <div>
-                  <div className="small text-uppercase fw-semibold text-body-secondary mb-2">
-                    Preview
-                  </div>
-                  <MessagePreview
-                    content={previewSubstitute(config.leave_message)}
-                  />
-                </div>
+                <MessageComposer
+                  section="leave"
+                  label="Leave message"
+                  placeholder="{username} left {server}."
+                  config={config}
+                  updateConfig={updateConfig}
+                  editorSeed={editorSeed}
+                  embedMessages={embedMessages}
+                  previewSubstitute={previewSubstitute}
+                  onCreateNew={() => setCreatorFor("leave")}
+                />
 
                 <div className="mt-auto">
                   <hr className="norgoth-divider-strong my-1" />
@@ -346,8 +354,11 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
                     </Button>
                     {leaveDirty ? (
                       <span className="small text-warning">Unsaved changes</span>
-                    ) : savedAt ? (
+                    ) : leaveSavedAt ? (
                       <span className="small text-success">Saved</span>
+                    ) : null}
+                    {leaveError ? (
+                      <span className="small text-danger">{leaveError}</span>
                     ) : null}
                     {leaveTestResult ? (
                       <span className="small text-success">
@@ -365,6 +376,47 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
         </div>
       )}
 
+      {section === "welcome" && creatorFor ? (
+        <CModal
+          size="xl"
+          visible
+          onClose={() => setCreatorFor(null)}
+          alignment="center"
+        >
+          <CModalHeader>
+            <CModalTitle>Create embed draft</CModalTitle>
+          </CModalHeader>
+          <CModalBody>
+            <EmbedDraftCreator
+              guildId={guildId}
+              channels={channels}
+              mode="create"
+              compact
+              onCancel={() => setCreatorFor(null)}
+              cancelLabel="Cancel"
+              onCreated={(created) => {
+                const target = creatorFor;
+                setCreatorFor(null);
+                if (guildId) void loadEmbedMessages(guildId);
+                updateConfig((current) =>
+                  target === "welcome"
+                    ? {
+                        ...current,
+                        welcome_source: "embed",
+                        welcome_embed_message_id: created.id,
+                      }
+                    : {
+                        ...current,
+                        leave_source: "embed",
+                        leave_embed_message_id: created.id,
+                      }
+                );
+              }}
+            />
+          </CModalBody>
+        </CModal>
+      ) : null}
+
       {section === "autorole" && (
         <CRow className="g-3">
           <CCol xl={8} lg={10}>
@@ -374,8 +426,9 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
                   <div className="min-w-0">
                     <h2 className="h5 mb-1">Auto-role on join</h2>
                     <p className="mb-0 small text-body-secondary">
-                      Grant one or more roles to every new member. The bot role
-                      must sit above these roles in Discord.
+                      Grant one or more roles to every new member. Enable both
+                      this switch and the Auto Role module. The bot role must
+                      sit above these roles in Discord (Manage Roles).
                     </p>
                   </div>
                   <div className="d-flex align-items-center gap-2">
@@ -417,6 +470,23 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
                   }
                   searchPlaceholder="Search roles to grant…"
                 />
+
+                {autoroleStatus ? (
+                  <CAlert
+                    color={autoroleStatus.ok ? "success" : "warning"}
+                    className="mb-0 py-2"
+                  >
+                    <strong>
+                      {autoroleStatus.ok
+                        ? "Last assignment succeeded"
+                        : "Last assignment issue"}
+                    </strong>
+                    : {autoroleStatus.reason}
+                    {autoroleStatus.member_name
+                      ? ` (${autoroleStatus.member_name})`
+                      : ""}
+                  </CAlert>
+                ) : null}
               </div>
             </Card>
           </CCol>
@@ -482,6 +552,139 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
         </CAlert>
       )}
     </div>
+  );
+}
+
+function MessageComposer({
+  section,
+  label,
+  placeholder,
+  config,
+  updateConfig,
+  editorSeed,
+  embedMessages,
+  previewSubstitute,
+  onCreateNew,
+}: {
+  section: "welcome" | "leave";
+  label: string;
+  placeholder: string;
+  config: AutomationConfig;
+  updateConfig: (updater: (current: AutomationConfig) => AutomationConfig) => void;
+  editorSeed: number;
+  embedMessages: EmbedMessage[];
+  previewSubstitute: (text: string) => string;
+  onCreateNew: () => void;
+}) {
+  const source: MessageSource =
+    section === "welcome" ? config.welcome_source : config.leave_source;
+  const message =
+    section === "welcome" ? config.welcome_message : config.leave_message;
+  const embedId =
+    section === "welcome"
+      ? config.welcome_embed_message_id
+      : config.leave_embed_message_id;
+  const selected = embedMessages.find((m) => m.id === embedId) ?? null;
+
+  const setSource = (next: MessageSource) =>
+    updateConfig((c) =>
+      section === "welcome"
+        ? { ...c, welcome_source: next }
+        : { ...c, leave_source: next }
+    );
+  const setMessage = (markdown: string) =>
+    updateConfig((c) =>
+      section === "welcome"
+        ? { ...c, welcome_message: markdown }
+        : { ...c, leave_message: markdown }
+    );
+  const setEmbedId = (id: string | null) =>
+    updateConfig((c) =>
+      section === "welcome"
+        ? { ...c, welcome_embed_message_id: id }
+        : { ...c, leave_embed_message_id: id }
+    );
+
+  return (
+    <>
+      <div>
+        <div className="d-flex align-items-center justify-content-between gap-2 mb-2">
+          <CFormLabel className="mb-0">{label}</CFormLabel>
+          <div className="btn-group btn-group-sm" role="group">
+            <Button
+              variant={source === "text" ? "primary" : "secondary"}
+              size="sm"
+              onClick={() => setSource("text")}
+            >
+              Plain text
+            </Button>
+            <Button
+              variant={source === "embed" ? "primary" : "secondary"}
+              size="sm"
+              onClick={() => setSource("embed")}
+            >
+              Embed draft
+            </Button>
+          </div>
+        </div>
+
+        {source === "text" ? (
+          <RichMessageEditor
+            key={`${section}-${editorSeed}`}
+            value={message}
+            onChange={setMessage}
+            variables={WELCOME_VARIABLES}
+            height={180}
+            placeholder={placeholder}
+          />
+        ) : (
+          <div className="d-flex flex-column gap-2">
+            <CFormSelect
+              value={embedId ?? ""}
+              onChange={(e) => setEmbedId(e.target.value || null)}
+            >
+              <option value="">Select an embed draft…</option>
+              {embedMessages.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </CFormSelect>
+            <div>
+              <Button variant="secondary" size="sm" onClick={onCreateNew}>
+                Create new embed
+              </Button>
+            </div>
+            {embedId && !selected ? (
+              <p className="small text-warning mb-0">
+                The selected embed draft no longer exists. Pick another or
+                create a new one.
+              </p>
+            ) : null}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <div className="small text-uppercase fw-semibold text-body-secondary mb-2">
+          Preview
+        </div>
+        {source === "text" ? (
+          <MessagePreview content={previewSubstitute(message)} mode="text" />
+        ) : selected ? (
+          <MessagePreview
+            content={previewSubstitute(selected.content)}
+            embed={selected.embed_json ?? undefined}
+            mode="embed"
+            showContentWithEmbed
+          />
+        ) : (
+          <p className="small text-body-secondary mb-0">
+            Select an embed draft to preview it here.
+          </p>
+        )}
+      </div>
+    </>
   );
 }
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -15,8 +15,17 @@ from app.api.v1.dependencies_auth import (
     guild_manager_dependency,
     require_operator_session,
 )
+from app.core.config import get_settings
+from app.db.session import get_database_session
+from app.models.embed_messages import EmbedMessage
 from app.security.session import OperatorSession
 from app.services.campaign_store import get_redis, now_iso
+from app.services.discord.embed_builder import build_embed_dict
+from app.services.feature_config_store import read_raw, save_config
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+from uuid import UUID
 
 # Guild-scoped admin routes require guild-manager auth.
 router = APIRouter(
@@ -120,7 +129,7 @@ async def get_tickets_config(guild_id: str) -> dict[str, Any]:
     redis_client = await get_redis()
 
     try:
-        raw = await redis_client.get(tickets_config_key(guild_id))
+        raw = await read_raw(guild_id, "tickets", redis_client)
     finally:
         await redis_client.aclose()
 
@@ -156,7 +165,7 @@ async def update_tickets_config(
     redis_client = await get_redis()
 
     try:
-        await redis_client.set(tickets_config_key(guild_id), json.dumps(payload))
+        await save_config(guild_id, "tickets", payload, enabled=True)
     finally:
         await redis_client.aclose()
 
@@ -242,9 +251,11 @@ async def get_shared_ticket_transcript(token: str) -> dict[str, Any]:
         "ticket_id": payload.get("ticket_id"),
         "ticket_number": payload.get("ticket_number"),
         "opener_name": payload.get("opener_name"),
+        "opened_at": payload.get("opened_at"),
         "closed_by": payload.get("closed_by"),
         "closed_at": payload.get("closed_at"),
         "channel_name": payload.get("channel_name"),
+        "panel_name": payload.get("panel_name"),
         "transcript": payload.get("transcript") or "",
     }
 
@@ -302,8 +313,10 @@ async def get_own_ticket_transcript(
         "ticket_id": ticket_id,
         "ticket_number": record.get("number"),
         "opener_name": record.get("opener_name"),
+        "opened_at": record.get("opened_at"),
         "closed_by": record.get("closed_by"),
         "closed_at": record.get("closed_at"),
+        "panel_name": record.get("panel_name"),
         "viewer_role": "opener" if is_opener else "support",
         "transcript": transcript,
     }
@@ -325,6 +338,17 @@ class TicketPanel(BaseModel):
         max_length=2000,
     )
     button_label: str = Field(default="Open Ticket", max_length=80)
+    # text = RichMessageEditor body; embed = Embed Library draft.
+    message_source: Literal["text", "embed"] = "embed"
+    text_content: str = Field(default="", max_length=2000)
+    # Central Embed Library draft id. When set (and message_source=embed),
+    # publish uses the draft's content/embed.
+    embed_message_id: Optional[str] = Field(default=None, max_length=64)
+    # Panel-specific ticket routing. Tickets opened from this panel are created
+    # under `open_category_id` (falls back to the guild's legacy global tickets
+    # config when unset). Closed-ticket logging is handled centrally by the
+    # Logging Configurations wizard (Tickets group), not per-panel.
+    open_category_id: Optional[str] = Field(default=None, pattern=SNOWFLAKE_PATTERN)
     message_id: Optional[str] = None
     published_at: Optional[str] = None
     updated_at: Optional[str] = None
@@ -336,11 +360,52 @@ class TicketPanelsUpdate(BaseModel):
     )
 
 
+async def _global_ticket_defaults(guild_id: str) -> dict[str, Any]:
+    """Legacy global open-category / closed-log channel used as backfill source."""
+
+    redis_client = await get_redis()
+    try:
+        raw = await read_raw(guild_id, "tickets", redis_client)
+    finally:
+        await redis_client.aclose()
+
+    if not raw:
+        return {}
+    try:
+        stored = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(stored, dict):
+        return {}
+    return {
+        "category_id": stored.get("category_id"),
+    }
+
+
+def _normalize_panel_message_source(panel: dict[str, Any]) -> None:
+    """Infer message_source for legacy panels that predate the text/embed toggle."""
+
+    if panel.get("message_source") in ("text", "embed"):
+        return
+    if panel.get("embed_message_id"):
+        panel["message_source"] = "embed"
+        return
+    if panel.get("text_content") or panel.get("title") or panel.get("description"):
+        panel["message_source"] = "text"
+        if not panel.get("text_content"):
+            # Prefer description body for legacy text-like panels.
+            desc = str(panel.get("description") or "").strip()
+            title = str(panel.get("title") or "").strip()
+            panel["text_content"] = desc or title
+        return
+    panel["message_source"] = "embed"
+
+
 async def read_ticket_panels(guild_id: str) -> list[dict[str, Any]]:
     redis_client = await get_redis()
 
     try:
-        raw = await redis_client.get(ticket_panels_key(guild_id))
+        raw = await read_raw(guild_id, "ticket_panels", redis_client)
     finally:
         await redis_client.aclose()
 
@@ -353,21 +418,38 @@ async def read_ticket_panels(guild_id: str) -> list[dict[str, Any]]:
         return []
 
     panels = stored.get("panels") if isinstance(stored, dict) else None
-    return panels if isinstance(panels, list) else []
+    if not isinstance(panels, list):
+        return []
+
+    # Lazy migration: panels created before per-panel routing existed have no
+    # `open_category_id` key — inherit the guild's legacy global value so they
+    # keep routing correctly until the admin saves a panel-specific choice.
+    # Only backfill the absent key (never override an explicit null). Any legacy
+    # `closed_log_channel_id` is dropped: closed-ticket logging is now handled by
+    # the central Logging Configurations wizard.
+    defaults = await _global_ticket_defaults(guild_id)
+    for panel in panels:
+        if not isinstance(panel, dict):
+            continue
+        if "open_category_id" not in panel:
+            panel["open_category_id"] = defaults.get("category_id")
+        panel.pop("closed_log_channel_id", None)
+        _normalize_panel_message_source(panel)
+        if "text_content" not in panel:
+            panel["text_content"] = ""
+
+    return panels
 
 
 async def write_ticket_panels(
     guild_id: str, panels: list[dict[str, Any]]
 ) -> None:
-    redis_client = await get_redis()
-
-    try:
-        await redis_client.set(
-            ticket_panels_key(guild_id),
-            json.dumps({"panels": panels, "updated_at": now_iso()}),
-        )
-    finally:
-        await redis_client.aclose()
+    await save_config(
+        guild_id,
+        "ticket_panels",
+        {"panels": panels, "updated_at": now_iso()},
+        enabled=True,
+    )
 
 
 @router.get("/guilds/{guild_id}/tickets/panels")
@@ -401,16 +483,22 @@ async def update_ticket_panels(
 
 @router.post("/guilds/{guild_id}/tickets/panels/{panel_id}/publish")
 async def publish_ticket_panel_by_id(
-    guild_id: str, panel_id: str
+    guild_id: str,
+    panel_id: str,
+    session: AsyncSession = Depends(get_database_session),
 ) -> dict[str, Any]:
     """Post (or edit) a specific ticket panel with an Open Ticket button."""
 
-    bot_token = os.getenv("DISCORD_BOT_TOKEN", "").strip()
+    # Prefer the app settings token (single source of truth used across the API,
+    # e.g. logging provisioning) and fall back to the raw env var for parity
+    # with older deployments.
+    settings = get_settings()
+    bot_token = (settings.discord_bot_token or os.getenv("DISCORD_BOT_TOKEN", "")).strip()
 
     if not bot_token:
         raise HTTPException(
             status_code=503,
-            detail="DISCORD_BOT_TOKEN is not configured in Norgoth/.env.",
+            detail="Discord bot token is not configured in Norgoth/.env.",
         )
 
     panels = await read_ticket_panels(guild_id)
@@ -428,14 +516,6 @@ async def publish_ticket_panel_by_id(
         )
 
     message_payload: dict[str, Any] = {
-        "embeds": [
-            {
-                "title": panel.get("title") or "Need help?",
-                "description": panel.get("description")
-                or "Click the button below to open a private support ticket.",
-                "color": 0x5865F2,
-            }
-        ],
         "components": [
             {
                 "type": 1,
@@ -453,6 +533,66 @@ async def publish_ticket_panel_by_id(
             }
         ],
     }
+
+    draft_id = str(panel.get("embed_message_id") or "").strip()
+    message_source = panel.get("message_source") or (
+        "embed" if draft_id else "text"
+    )
+
+    if message_source == "text":
+        text_body = str(panel.get("text_content") or "").strip()
+        if not text_body:
+            # Legacy panels stored body in description/title.
+            text_body = (
+                str(panel.get("description") or "").strip()
+                or str(panel.get("title") or "").strip()
+                or "Click the button below to open a private support ticket."
+            )
+        message_payload["content"] = text_body[:2000]
+    elif draft_id:
+        try:
+            draft_uuid = UUID(draft_id)
+        except ValueError as error:
+            raise HTTPException(
+                status_code=422,
+                detail="Embed Draft Missing: invalid embed_message_id.",
+            ) from error
+
+        draft = await session.scalar(
+            select(EmbedMessage)
+            .where(
+                EmbedMessage.id == draft_uuid,
+                EmbedMessage.guild_id == guild_id,
+            )
+            .options(selectinload(EmbedMessage.deliveries))
+        )
+        if draft is None:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Embed Draft Missing: the selected Embed Library draft no "
+                    "longer exists. Re-select or create a draft before publishing."
+                ),
+            )
+
+        content = (draft.content or "").strip()
+        if content:
+            message_payload["content"] = content[:2000]
+        embed = build_embed_dict(draft.embed_json)
+        if embed:
+            message_payload["embeds"] = [embed]
+        if "content" not in message_payload and "embeds" not in message_payload:
+            message_payload["content"] = (draft.name or "Support")[:2000]
+    else:
+        # Legacy panels without an Embed Library binding.
+        message_payload["embeds"] = [
+            {
+                "title": panel.get("title") or "Need help?",
+                "description": panel.get("description")
+                or "Click the button below to open a private support ticket.",
+                "color": 0x5865F2,
+            }
+        ]
 
     auth_headers = {"Authorization": f"Bot {bot_token}"}
     existing_message_id = str(panel.get("message_id") or "").strip() or None
@@ -503,24 +643,25 @@ async def publish_ticket_panel_by_id(
                     detail=f"Could not reach Discord: {error}",
                 ) from error
 
-            if response.status_code != 200:
-                raise HTTPException(
-                    status_code=502,
-                    detail=(
-                        f"Discord rejected the panel message "
-                        f"(HTTP {response.status_code}): {response.text[:200]}"
-                    ),
-                )
+        if response.status_code not in (200, 201):
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    f"Discord rejected the panel message "
+                    f"(HTTP {response.status_code}): {response.text[:200]}"
+                ),
+            )
 
-    message_body = response.json()
-    panel["message_id"] = str(message_body.get("id") or "") or None
-    panel["published_at"] = now_iso()
+        sent = response.json()
+        message_id = str(sent.get("id") or "")
+        if not message_id:
+            raise HTTPException(
+                status_code=502,
+                detail="Discord did not return a message id for the panel.",
+            )
 
-    await write_ticket_panels(guild_id, panels)
-
-    return {
-        "ok": True,
-        "channel_id": channel_id,
-        "message_id": panel.get("message_id"),
-        "published_at": panel["published_at"],
-    }
+        panel["message_id"] = message_id
+        panel["published_at"] = now_iso()
+        panel["updated_at"] = now_iso()
+        await write_ticket_panels(guild_id, panels)
+        return {"panel": panel}

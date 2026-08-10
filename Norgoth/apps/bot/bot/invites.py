@@ -15,6 +15,14 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.state import now_iso
+from bot.invite_log_render import (
+    DEFAULT_JOIN_MESSAGE,
+    DEFAULT_LEAVE_MESSAGE,
+    attribution_status,
+    build_invite_log_fields,
+    build_template_context,
+    render_invite_log_description,
+)
 
 if TYPE_CHECKING:
     from bot.client import NorgothBot
@@ -181,7 +189,7 @@ class InvitesCog(commands.Cog):
         inviter_id: str | None,
         inviter_name: str | None,
         code: str | None,
-    ) -> None:
+    ) -> dict[str, Any]:
         redis = self.bot.state.redis
         guild = member.guild
 
@@ -220,16 +228,205 @@ class InvitesCog(commands.Cog):
             pause_credit = await redis.get(
                 f"norgoth:guild:{guild.id}:raid:pause_invite_credit"
             )
-            if pause_credit:
-                # Raid protection: still attribute for logs, skip counters.
-                return
+            if not pause_credit:
+                await self.bump_counter(
+                    guild.id,
+                    inviter_id,
+                    inviter_name or inviter_id,
+                    joins=1,
+                    rejoins=1 if is_rejoin else 0,
+                )
 
+        return record
+
+    async def _log_invite_event(
+        self,
+        guild: discord.Guild,
+        *,
+        kind: str,
+        event_type: str,
+        action: str,
+        member_id: str,
+        member_name: str,
+        member_username: str | None,
+        inviter_id: str | None,
+        inviter_name: str | None,
+        invite_code: str | None,
+        joined_at: str | None,
+        left_at: str | None = None,
+    ) -> None:
+        """Route an invite attribution event through central logging."""
+
+        if not await self.bot.state.is_module_enabled(guild.id, "invites"):
+            return
+
+        cog = self.bot.get_cog("ServerLoggingCog")
+        if cog is None:
+            return
+
+        inviter_count: int | None = None
+        inviter_in_guild: bool | None = None
+        if inviter_id:
+            inviter_count = await self.get_inviter_count(guild.id, str(inviter_id))
+            try:
+                inviter_in_guild = guild.get_member(int(inviter_id)) is not None
+            except (TypeError, ValueError):
+                inviter_in_guild = None
+
+        template = (
+            DEFAULT_JOIN_MESSAGE if kind == "join" else DEFAULT_LEAVE_MESSAGE
+        )
+        context = build_template_context(
+            kind="join" if kind == "join" else "leave",
+            guild_name=guild.name,
+            member_id=member_id,
+            member_name=member_name,
+            member_username=member_username,
+            inviter_id=str(inviter_id) if inviter_id else None,
+            inviter_name=inviter_name,
+            inviter_count=inviter_count,
+            invite_code=invite_code,
+            joined_at=joined_at,
+            left_at=left_at,
+            inviter_in_guild=inviter_in_guild,
+        )
+        description = render_invite_log_description(
+            kind="join" if kind == "join" else "leave",
+            template=template,
+            context=context,
+        )
+        fields = build_invite_log_fields(
+            kind="join" if kind == "join" else "leave",
+            member_name=member_name,
+            member_id=member_id,
+            inviter_id=str(inviter_id) if inviter_id else None,
+            inviter_name=inviter_name,
+            inviter_count=inviter_count,
+            invite_code=invite_code,
+            joined_at=joined_at,
+            left_at=left_at,
+            inviter_in_guild=inviter_in_guild,
+        )
+        status = attribution_status(invite_code, inviter_id)
+        fields["Attribution"] = status
+
+        try:
+            await cog.record_event(
+                guild,
+                "invites",
+                action,
+                description,
+                fields,
+                event_type=event_type,
+                actor_id=member_id,
+                actor_name=member_name,
+            )
+        except Exception:  # noqa: BLE001 - logging must never break invite tracking
+            logger.exception("Failed to record invite log event %s", event_type)
+
+    # ---- join/leave listeners --------------------------------------------
+
+    @commands.Cog.listener()
+    async def on_member_join(self, member: discord.Member) -> None:
+        if member.bot:
+            return
+
+        if not await self.bot.state.is_module_enabled(member.guild.id, "invites"):
+            return
+
+        inviter_id, code = await self.attribute_join(member)
+
+        # Prefer the freshly stored Redis record for joined_at / inviter_name.
+        raw = await self.bot.state.redis.hget(
+            invite_members_key(member.guild.id), str(member.id)
+        )
+        record: dict[str, Any] = {}
+        if raw:
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, dict):
+                    record = parsed
+            except json.JSONDecodeError:
+                pass
+
+        await self._log_invite_event(
+            member.guild,
+            kind="join",
+            event_type="invite_member_joined",
+            action="Member joined via invite",
+            member_id=str(member.id),
+            member_name=str(member),
+            member_username=getattr(member, "name", None),
+            inviter_id=record.get("inviter_id") or inviter_id,
+            inviter_name=record.get("inviter_name"),
+            invite_code=record.get("code") or code,
+            joined_at=record.get("joined_at"),
+        )
+
+    @commands.Cog.listener()
+    async def on_member_remove(self, member: discord.Member) -> None:
+        if member.bot:
+            return
+
+        guild = member.guild
+        redis = self.bot.state.redis
+
+        raw = await redis.hget(invite_members_key(guild.id), str(member.id))
+
+        if not raw:
+            return
+
+        try:
+            record = json.loads(raw)
+        except json.JSONDecodeError:
+            return
+
+        if not isinstance(record, dict):
+            return
+
+        # Idempotency: already-closed leave must not re-bump or re-log.
+        if record.get("left_at"):
+            return
+
+        # Leave attribution logs require Invite Tracking to be enabled so we
+        # do not emit stale attribution while the module is off.
+        module_on = await self.bot.state.is_module_enabled(guild.id, "invites")
+
+        left_at = now_iso()
+        record["left_at"] = left_at
+        await redis.hset(
+            invite_members_key(guild.id),
+            str(member.id),
+            json.dumps(record),
+        )
+
+        inviter_id = record.get("inviter_id")
+
+        if inviter_id:
             await self.bump_counter(
                 guild.id,
-                inviter_id,
-                inviter_name or inviter_id,
-                joins=1,
-                rejoins=1 if is_rejoin else 0,
+                str(inviter_id),
+                str(record.get("inviter_name") or inviter_id),
+                leaves=1,
+            )
+
+        # Allow re-attribution if the member rejoins in this session.
+        self._attributed.pop((guild.id, member.id), None)
+
+        if module_on:
+            await self._log_invite_event(
+                guild,
+                kind="leave",
+                event_type="invite_member_left",
+                action="Member left — invite attribution",
+                member_id=str(member.id),
+                member_name=str(record.get("member_name") or member),
+                member_username=getattr(member, "name", None),
+                inviter_id=str(inviter_id) if inviter_id else None,
+                inviter_name=record.get("inviter_name"),
+                invite_code=record.get("code"),
+                joined_at=record.get("joined_at"),
+                left_at=left_at,
             )
 
     async def bump_counter(
@@ -317,59 +514,6 @@ class InvitesCog(commands.Cog):
 
         count = await self.get_inviter_count(member.guild.id, inviter_id)
         return (name or inviter_id, count)
-
-    # ---- join/leave listeners --------------------------------------------
-
-    @commands.Cog.listener()
-    async def on_member_join(self, member: discord.Member) -> None:
-        if member.bot:
-            return
-
-        if not await self.bot.state.is_module_enabled(member.guild.id, "invites"):
-            return
-
-        await self.attribute_join(member)
-
-    @commands.Cog.listener()
-    async def on_member_remove(self, member: discord.Member) -> None:
-        if member.bot:
-            return
-
-        guild = member.guild
-        redis = self.bot.state.redis
-
-        raw = await redis.hget(invite_members_key(guild.id), str(member.id))
-
-        if not raw:
-            return
-
-        try:
-            record = json.loads(raw)
-        except json.JSONDecodeError:
-            return
-
-        if not isinstance(record, dict):
-            return
-
-        record["left_at"] = now_iso()
-        await redis.hset(
-            invite_members_key(guild.id),
-            str(member.id),
-            json.dumps(record),
-        )
-
-        inviter_id = record.get("inviter_id")
-
-        if inviter_id:
-            await self.bump_counter(
-                guild.id,
-                str(inviter_id),
-                str(record.get("inviter_name") or inviter_id),
-                leaves=1,
-            )
-
-        # Allow re-attribution if the member rejoins in this session.
-        self._attributed.pop((guild.id, member.id), None)
 
     # ---- slash command ------------------------------------------------------
 

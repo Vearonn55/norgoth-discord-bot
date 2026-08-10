@@ -15,8 +15,10 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { NumberInput } from "@/components/ui/number-input";
 import { DataTable } from "@/components/ui/data-table";
 import { MiniFeatureCard } from "@/components/ui/mini-feature-card";
+import { Icon } from "@/components/ui/icon";
 import { PageHeader } from "@/components/layout/page-header";
 import { PageActionFooter } from "@/components/layout/page-action-footer";
 import { MutedSection } from "@/components/ui/feature-muting";
@@ -156,8 +158,10 @@ export function AutomodPanel() {
     <div className="d-flex flex-column gap-4">
       <PageHeader
         title="Auto-Moderation"
+        icon={<Icon icon={cilBan} size="xl" />}
         category="moderation"
         description="Rule-based moderation: prohibited words, spam and repeated-content detection, invite-link and mass-mention blocking, with per-rule actions and exemptions."
+        infoKey="autoModeration"
         masterToggle={{
           enabled: config.enabled,
           onChange: (checked) => void setEnabledAndSave(checked),
@@ -680,27 +684,26 @@ function NumberField({
   min,
   max,
   onChange,
+  defaultValue,
 }: {
   label: string;
   value: number;
   min: number;
   max: number;
   onChange: (value: number) => void;
+  defaultValue?: number;
 }) {
   return (
     <div>
       <CFormLabel>{label}</CFormLabel>
-      <CFormInput
-        type="number"
+      <NumberInput
         value={value}
+        defaultValue={defaultValue ?? min}
         min={min}
         max={max}
-        onChange={(event) => {
-          const parsed = Number(event.target.value);
-          if (!Number.isNaN(parsed)) {
-            onChange(Math.min(max, Math.max(min, Math.round(parsed))));
-          }
-        }}
+        step={1}
+        aria-label={label}
+        onCommit={onChange}
       />
     </div>
   );

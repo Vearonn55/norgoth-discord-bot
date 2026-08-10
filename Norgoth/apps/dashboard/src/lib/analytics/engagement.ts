@@ -15,8 +15,11 @@ export type EngagementDayPoint = {
   messages: number;
   unique_authors: number;
   joins: number;
+  rejoins: number;
   leaves: number;
   voice_uniques: number;
+  /** Total member population recorded that day; null when no snapshot. */
+  member_count: number | null;
   has_data: boolean;
 };
 
@@ -24,9 +27,22 @@ export type EngagementTotals = {
   messages: number;
   unique_authors: number;
   joins: number;
+  rejoins: number;
   leaves: number;
   voice_uniques: number;
   days_with_data: number;
+  /**
+   * Snapshot-derived population KPIs. All null when the window has no
+   * member_count snapshots (bot was offline / feature just enabled).
+   */
+  start_members: number | null;
+  end_members: number | null;
+  net_member_change: number | null;
+  net_growth_rate: number | null;
+  churn_rate: number | null;
+  retention_rate: number | null;
+  /** First-time joins only (rejoins excluded). */
+  new_members: number;
 };
 
 export type EngagementResponse = {
@@ -107,11 +123,15 @@ export function computeEngagementMetrics(
 }
 
 /**
- * Community KPIs derived from the same five daily primitives, using the exact
- * formulas defined in the plan:
+ * Community KPIs derived from the daily primitives:
  * - Engagement rate = unique_authors / member_count (needs member_count)
  * - Messages per active member = messages / unique_authors
- * - Net growth = joins − leaves
+ * - Net growth: prefer the snapshot-derived population delta (end − start of
+ *   window), which reflects reality even when events were missed. Falls back to
+ *   first-time joins − leaves when no snapshots exist. Rejoins are always
+ *   excluded from "new members" and surfaced separately.
+ * - Churn / retention: normalized against the starting population when
+ *   snapshots exist, otherwise null (unknown).
  */
 export function computeCommunityKpis(
   totals: EngagementTotals,
@@ -120,10 +140,22 @@ export function computeCommunityKpis(
   engagementRate: number | null;
   messagesPerActiveMember: number;
   netGrowth: number;
+  netGrowthRate: number | null;
+  churnRate: number | null;
+  retentionRate: number | null;
+  newMembers: number;
+  rejoins: number;
   activeMembers: number;
   voiceUniques: number;
+  memberCount: number | null;
 } {
-  const members = memberCountHint && memberCountHint > 0 ? memberCountHint : null;
+  // Denominator preference: explicit hint → end-of-window snapshot → unknown.
+  const members =
+    memberCountHint && memberCountHint > 0
+      ? memberCountHint
+      : totals.end_members && totals.end_members > 0
+        ? totals.end_members
+        : null;
 
   const engagementRate =
     members != null ? clampScore((totals.unique_authors / members) * 100) : null;
@@ -131,12 +163,24 @@ export function computeCommunityKpis(
   const messagesPerActiveMember =
     totals.unique_authors > 0 ? totals.messages / totals.unique_authors : 0;
 
+  // Prefer the true population delta from snapshots; fall back to joins−leaves.
+  const netGrowth =
+    totals.net_member_change != null
+      ? totals.net_member_change
+      : totals.joins - totals.leaves;
+
   return {
     engagementRate,
     messagesPerActiveMember,
-    netGrowth: totals.joins - totals.leaves,
+    netGrowth,
+    netGrowthRate: totals.net_growth_rate,
+    churnRate: totals.churn_rate,
+    retentionRate: totals.retention_rate,
+    newMembers: totals.new_members ?? totals.joins,
+    rejoins: totals.rejoins,
     activeMembers: totals.unique_authors,
     voiceUniques: totals.voice_uniques,
+    memberCount: members,
   };
 }
 

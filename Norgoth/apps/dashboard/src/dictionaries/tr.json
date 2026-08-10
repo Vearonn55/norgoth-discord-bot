@@ -9,7 +9,8 @@
     "live": "Canlı",
     "overview": "Genel Bakış",
     "guildSelector": "Sunucu Seçici",
-    "searchPlaceholder": "Ara...",
+    "searchPlaceholder": "Özellik ara…",
+    "notConfigured": "Yapılandırılmadı",
     "filters": "Filtreler",
     "clearAll": "Temizle",
     "status": "Durum",
@@ -22,7 +23,7 @@
     "serverHealth": "Sunucu Sağlığı",
     "activitySummary": "Aktivite Özeti",
     "automation": "Otomasyon",
-    "welcomeGoodbyeInvite": "Karşılama ve Ayrılma Mesajları",
+    "welcomeGoodbyeInvite": "Karşılama ve Ayrılma",
     "autoRole": "Otomatik Rol",
     "autoNickname": "Otomatik Takma Ad",
     "emojiRole": "Emoji Rol",
@@ -32,6 +33,8 @@
     "community": "Topluluk",
     "onboarding": "Üye Doğrulama",
     "leveling": "Seviye Sistemi",
+    "feedChannels": "Top Trending",
+    "leaderboard": "Sıralamalar",
     "support": "Destek",
     "tickets": "Biletler",
     "supportTeams": "Destek Ekipleri",
@@ -51,6 +54,7 @@
     "permissions": "Yetkiler",
     "templates": "Şablonlar",
     "auditLogs": "Denetim Kayıtları",
+    "discordLogs": "Discord Kayıtları",
     "workspace": "Çalışma Alanı",
     "workspaceStatus": "Çekirdek panel iskeleti aktif"
   },
@@ -206,5 +210,110 @@
     "finalRiskLevel": "Son risk seviyesi",
     "launchNote": "Bu özet, çalıştırma öncesi mevcut wizard durumunu yansıtır.",
     "launchCampaign": "Kampanyayı Başlat"
+  },
+  "featureInfo": {
+    "memberVerification": {
+      "title": "Üye Doğrulama",
+      "description": "Sunucunuza katılan üyeleri denetler ve erişim vermeden önce doğrulama politikanızı uygular.",
+      "usage": "Rolleri, kanalları, risk kontrollerini, Yüksek Riskli Sunucuları ve Beyaz Listedeki Kullanıcıları yapılandırmak için Doğrulama Ayarları'nı açın."
+    },
+    "manualVerification": {
+      "title": "Manuel Doğrulama",
+      "description": "Risk politikanızca işaretlenen üyeler — örneğin yapılandırılmış bir Yüksek Riskli Sunucuya üye olanlar — burada insan kararını bekler.",
+      "usage": "Risk analizini ve tetikleyiciyi görmek için bir üyenin incelemesini açın; ardından erişim vermek için Onayla veya doğrulanmamış bırakmak için Reddet'i seçin."
+    },
+    "leveling": {
+      "title": "Seviye ve Etkinlik",
+      "description": "Mesaj ve sesten kazanılan XP ve seviyelerle üye etkinliğini ödüllendirir; isteğe bağlı rol ödülleri sunar.",
+      "usage": "XP oranlarını ve çarpanı ayarlayın, seviye atlama duyurularını yapılandırın ve aşağıdan rol ödülleri ekleyin."
+    },
+    "leaderboard": {
+      "title": "Sıralamalar",
+      "description": "Üyeleri Metin XP, Ses XP veya Top Trending All-Time net upvote’a göre sıralar.",
+      "usage": "Metin XP, Ses XP ve Top Net Upvote sekmeleri arasında geçiş yapın. Net upvote sıralaması için Top Trending’i yapılandırın."
+    },
+    "feedChannels": {
+      "title": "Top Trending",
+      "description": "Kaynak mesajlardaki upvote/downvote tepkilerini izler ve en iyi gönderileri Günlük, Haftalık, Aylık ve All-Time Top Trending kanallarına yansıtır.",
+      "usage": "Upvote/downvote emojilerini ve kaynak kanalları seçin, her UTC penceresi için bir hedef kanal atayın, ardından başlıktan Top Trending’i etkinleştirin. Eksik kanalları yeniden oluşturmak için Repair kullanın. Kartların altından Feed Category ve Refresh Interval ayarlayın. Next Refresh geri sayımı bir sonraki otomatik senkrona kalan süreyi gösterir.",
+      "feedCategory": "Akış Kategorisi",
+      "selectCategory": "Kategori seç",
+      "noCategory": "Kategori yok (üst seviye)",
+      "nextRefresh": "Sonraki yenileme",
+      "refreshInterval": "Akış Yenileme Aralığı",
+      "repair": "Onar"
+    },
+    "autoModeration": {
+      "title": "Otomatik Moderasyon",
+      "description": "Yasaklı kelimeler, spam, davetler ve toplu etiketleme gibi içerik kurallarını mesajlarda otomatik uygular.",
+      "usage": "Aşağıdaki kuralları tek tek yapılandırın, ardından sayfa başlığından Otomatik Moderasyon'u etkinleştirin."
+    },
+    "raidProtection": {
+      "title": "Baskın Koruması",
+      "description": "Koordineli katılım baskınlarını ve ani şüpheli etkinlikleri tespit eder ve azaltır.",
+      "usage": "Katılım eşiklerini ve otomatik yanıtları ayarlayın, ardından başlıktan korumayı etkinleştirin."
+    },
+    "honeypot": {
+      "title": "Bal Küpü (Honeypot)",
+      "description": "Gizli tuzak kanalları veya rolleri kullanarak kötü niyetli hesapları yakalar ve işaretler.",
+      "usage": "Tuzağı ve eylemini yapılandırın, ardından başlıktan bal küpünü etkinleştirin.",
+      "alertActive": "Bal küpü aktif. Meşru üyeler tuzak kanalını asla kullanmamaları konusunda uyarılmalıdır. Yöneticiler ve yapılandırılmış istisnalar korunur. Mesaj göndermek anında otomatik cezaya yol açabilir. Tetiklemeler Logging Configurations (Security olay grubu) üzerinden kaydedilir.",
+      "alertInactive": "Bal küpü tuzağı şu anda pasif. Spam botlarını yakalamaya başlamak için başlıktan etkinleştirin. Etkinleştirildiğinde meşru üyeler tuzak kanalını asla kullanmamaları konusunda uyarılmalıdır."
+    },
+    "selfAssignableRoles": {
+      "title": "Kendi Kendine Atanan Roller",
+      "description": "Üyelerin yayınlanmış bir mesajdan buton, açılır liste veya tepkilerle kendi rollerini seçmesini sağlar.",
+      "usage": "Önce mesajı Embed Kitaplığı'nda oluşturun, ardından buraya bir menü ekleyip rol kontrollerini o yayınlanmış mesaja bağlayın."
+    },
+    "welcomeLeave": {
+      "title": "Karşılama ve Ayrılma",
+      "description": "Üyeler katıldığında veya ayrıldığında mesaj gönderir; canlı teslim durumu ve test gönderimi sunar.",
+      "usage": "Katılma ve ayrılma mesajlarını hazırlayın ve hedef kanallarını seçin."
+    },
+    "embedMessages": {
+      "title": "Embed Kitaplığı",
+      "description": "Zengin Discord embed taslaklarını merkezi bir şablon kitaplığı olarak oluşturun, kaydedin ve yeniden kullanın.",
+      "usage": "Burada bir embed taslağı tasarlayın; bir kanala dağıtın veya diğer özelliklerden yeniden kullanın, düzenlemeden sonra dağıtılan kopyaları yeniden eşitleyin."
+    },
+    "tickets": {
+      "title": "Destek Talepleri",
+      "description": "Panel butonundan özel destek kanalları açar; talep kapandığında dökümleri kaydeder.",
+      "usage": "Kendi kategorisi ve kayıt kanalı olan bir panel oluşturun, yayınlayın ve açık talepleri buradan yönetin."
+    },
+    "auditLogs": {
+      "title": "Denetim Kayıtları",
+      "description": "Bu sunucu için moderasyon işlemleri ve sunucu olaylarını tek bir zaman çizelgesinde gösterir.",
+      "usage": "Moderasyon veya Sunucu Olayları ile filtreleyin, tarih aralığı seçin ve en son kayıtlar için yenileyin."
+    },
+    "discordLogs": {
+      "title": "Discord Kayıtları",
+      "description": "Hangi Discord olaylarının sunucunuzdaki kayıt kanallarına yönlendirileceğini yapılandırın.",
+      "usage": "Üst bilgiden ana kayıt anahtarını açın/kapatın; ardından kategorileri etkinleştirip her kategorinin kanalını ve olaylarını düzenleyin."
+    },
+    "contentNotifications": {
+      "title": "İçerik Bildirimleri",
+      "description": "YouTube, Twitch, Kick, X ve TikTok içerik üreticilerinden gelen yeni içerikleri doğrudan Discord'a duyurur.",
+      "usage": "İzlenecek içerik üreticilerini ekleyin ve uyarıları gönderecek kanalları yapılandırın."
+    },
+    "campaigns": {
+      "title": "Kampanya Mesajlaşması",
+      "description": "Hedeflenen üyelere yönelik DM kampanyalarını tam teslim takibiyle oluşturun ve yönetin.",
+      "usage": "Bir hedef kitle ve mesaj oluşturun, kampanyayı doğrulayın, ardından başlatın ve teslimatı izleyin."
+    },
+    "inviteTracking": {
+      "title": "Davet Takibi",
+      "description": "Her üyeyi kimin davet ettiğini takip eder ve katılımları belirli davet bağlantılarına atfeder.",
+      "usage": "Bu sunucu için davet sıralamalarını ve üye bazlı atıfları inceleyin."
+    },
+    "autoRole": {
+      "title": "Otomatik Rol",
+      "description": "Sunucuya katılan her üyeye seçilen bir rolü otomatik olarak verir.",
+      "usage": "Katılımda verilecek rolü seçin ve etkinleştirin."
+    },
+    "autoResponses": {
+      "title": "Otomatik Yanıtlar",
+      "description": "Anahtar kelime tetikleyicilerine, yapılandırılabilir eşleşme modları ve bekleme süreleriyle otomatik yanıt verir.",
+      "usage": "Tetikleyici kelimeler ve yanıtlar ekleyin, ardından eşleşme modlarını ve kural başına bekleme sürelerini ayarlayın."
+    }
   }
 }

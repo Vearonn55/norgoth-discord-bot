@@ -3,6 +3,8 @@
 type EmbedImagePlaceholderProps = {
   label: string;
   banner?: boolean;
+  /** Force the compact (thumbnail) card height even for banner slots. */
+  equalizeToThumbnail?: boolean;
   onClick: () => void;
 };
 
@@ -13,14 +15,16 @@ type EmbedImagePlaceholderProps = {
 export function EmbedImagePlaceholder({
   label,
   banner = false,
+  equalizeToThumbnail = false,
   onClick,
 }: EmbedImagePlaceholderProps) {
+  const minHeight = equalizeToThumbnail ? 72 : banner ? 96 : 72;
   return (
     <button
       type="button"
       onClick={onClick}
       className="norgoth-embed-placeholder btn btn-outline-secondary border-dashed d-flex flex-column align-items-center justify-content-center text-body-secondary w-100"
-      style={{ minHeight: banner ? 96 : 72 }}
+      style={{ minHeight }}
       title={`Add ${label.toLowerCase()}`}
     >
       <span className="small fw-semibold">{label}</span>

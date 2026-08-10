@@ -14,6 +14,11 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.state import now_iso
+from bot.ticket_log_fields import (
+    build_closed_ticket_log_fields,
+    build_opened_ticket_log_fields,
+    is_ticket_already_closed,
+)
 
 if TYPE_CHECKING:
     from bot.client import NorgothBot
@@ -29,6 +34,10 @@ SHARE_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 90  # 90 days
 
 def tickets_config_key(guild_id: int | str) -> str:
     return f"norgoth:guild:{guild_id}:tickets:config"
+
+
+def ticket_panels_key(guild_id: int | str) -> str:
+    return f"norgoth:guild:{guild_id}:tickets:panels"
 
 
 def tickets_records_key(guild_id: int | str) -> str:
@@ -104,6 +113,116 @@ class TicketsCog(commands.Cog):
     async def get_config(self, guild_id: int) -> dict[str, Any]:
         return await self.bot.state.get_json(tickets_config_key(guild_id))
 
+    async def read_panels(self, guild_id: int) -> list[dict[str, Any]]:
+        raw = await self.bot.state.redis.get(ticket_panels_key(guild_id))
+        if not raw:
+            return []
+        try:
+            stored = json.loads(raw)
+        except json.JSONDecodeError:
+            return []
+        panels = stored.get("panels") if isinstance(stored, dict) else None
+        return panels if isinstance(panels, list) else []
+
+    async def resolve_panel_for_message(
+        self, guild_id: int, message_id: int | None
+    ) -> dict[str, Any] | None:
+        """Match the clicked panel message to its stored panel config.
+
+        The open button uses a static custom_id, so the panel is identified by
+        the message it was posted on rather than the interaction data.
+        """
+
+        if message_id is None:
+            return None
+        for panel in await self.read_panels(guild_id):
+            if (
+                isinstance(panel, dict)
+                and str(panel.get("message_id")) == str(message_id)
+            ):
+                return panel
+        return None
+
+    @staticmethod
+    def _format_member_identity(user: discord.abc.User) -> str:
+        """Human-readable Discord identity: Display Name (@username)."""
+
+        display = getattr(user, "display_name", None) or getattr(user, "global_name", None)
+        username = getattr(user, "name", None) or str(user)
+        if display and display != username:
+            return f"{display} (@{username})"
+        return f"@{username}" if username else str(user)
+
+    @staticmethod
+    def _closed_ticket_embed(
+        guild: discord.Guild,
+        record: dict[str, Any],
+        closed_by: str,
+        *,
+        audience: str,
+    ) -> discord.Embed:
+        """Build the closed-ticket embed shared by the opener DM and log post.
+
+        Both use the same visual format; the log variant adds opener/closer
+        fields useful to staff.
+        """
+
+        number = record.get("number")
+        if audience == "dm":
+            description = (
+                f"Your support ticket in **{guild.name}** was closed by "
+                f"{closed_by}."
+            )
+        else:
+            description = (
+                f"Support ticket opened by "
+                f"{record.get('opener_name') or 'a member'} in "
+                f"**{guild.name}** was closed by {closed_by}."
+            )
+
+        embed = discord.Embed(
+            title=f"Ticket #{number} closed",
+            description=description,
+            color=discord.Color.dark_grey(),
+        )
+        embed.add_field(
+            name="Channel",
+            value=record.get("channel_name") or "ticket",
+            inline=True,
+        )
+        if audience != "dm":
+            embed.add_field(
+                name="Opened by",
+                value=record.get("opener_name") or "unknown",
+                inline=True,
+            )
+            embed.add_field(name="Closed by", value=closed_by, inline=True)
+            if record.get("opened_at"):
+                embed.add_field(
+                    name="Opened at",
+                    value=str(record["opened_at"]),
+                    inline=True,
+                )
+            if record.get("closed_at"):
+                embed.add_field(
+                    name="Closed at",
+                    value=str(record["closed_at"]),
+                    inline=True,
+                )
+        return embed
+
+    @staticmethod
+    def _transcript_view(transcript_url: str) -> discord.ui.View:
+        view = discord.ui.View()
+        view.add_item(
+            discord.ui.Button(
+                label="View transcript",
+                style=discord.ButtonStyle.link,
+                url=transcript_url,
+            )
+        )
+        return view
+
     async def find_open_ticket_by_channel(
         self,
         guild_id: int,
@@ -155,6 +274,37 @@ class TicketsCog(commands.Cog):
             json.dumps(record),
         )
 
+    async def _log_ticket_event(
+        self,
+        guild: discord.Guild,
+        *,
+        event_type: str,
+        action: str,
+        description: str,
+        fields: dict[str, str],
+    ) -> None:
+        """Route a ticket event through the central logging wizard.
+
+        Ticket open/close now flow through the same config-driven logging as
+        every other server event, so admins pick the destination channel in the
+        Logging Configurations wizard rather than a per-panel field.
+        """
+
+        cog = self.bot.get_cog("ServerLoggingCog")
+        if cog is None:
+            return
+        try:
+            await cog.record_event(
+                guild,
+                "tickets",
+                action,
+                description,
+                fields,
+                event_type=event_type,
+            )
+        except Exception:  # noqa: BLE001 - logging must never break tickets
+            logger.exception("Failed to record ticket log event %s", event_type)
+
     # ---- open ---------------------------------------------------------
 
     async def handle_open_ticket(self, interaction: discord.Interaction) -> None:
@@ -183,11 +333,20 @@ class TicketsCog(commands.Cog):
 
         config = await self.get_config(guild.id)
 
-        category: discord.CategoryChannel | None = None
-        category_id = config.get("category_id")
+        # Resolve the panel that was clicked to get panel-specific routing.
+        # Fall back to the legacy global config for un-migrated panels.
+        panel = await self.resolve_panel_for_message(
+            guild.id,
+            interaction.message.id if interaction.message else None,
+        )
+        open_category_id = (panel or {}).get("open_category_id") or config.get(
+            "category_id"
+        )
 
-        if category_id:
-            channel = guild.get_channel(int(category_id))
+        category: discord.CategoryChannel | None = None
+
+        if open_category_id:
+            channel = guild.get_channel(int(open_category_id))
             if isinstance(channel, discord.CategoryChannel):
                 category = channel
 
@@ -246,6 +405,11 @@ class TicketsCog(commands.Cog):
             )
             return
 
+        opener_identity = self._format_member_identity(interaction.user)
+        panel_name = None
+        if isinstance(panel, dict):
+            panel_name = panel.get("name") or panel.get("title") or panel.get("id")
+
         record = {
             "id": str(uuid.uuid4()),
             "number": number,
@@ -253,11 +417,16 @@ class TicketsCog(commands.Cog):
             "channel_id": str(ticket_channel.id),
             "channel_name": channel_name,
             "opener_id": str(interaction.user.id),
-            "opener_name": str(interaction.user),
+            "opener_name": opener_identity,
             "status": "open",
             "opened_at": now_iso(),
             "closed_at": None,
             "closed_by": None,
+            "panel_id": (panel or {}).get("id"),
+            "panel_name": panel_name,
+            "open_category_id": (
+                str(open_category_id) if open_category_id else None
+            ),
         }
         await self.save_record(guild.id, record)
 
@@ -282,6 +451,24 @@ class TicketsCog(commands.Cog):
             )
         except discord.HTTPException:
             logger.exception("Failed to send ticket intro message")
+
+        opened_fields = build_opened_ticket_log_fields(
+            number=number,
+            opener_identity=opener_identity,
+            opener_id=str(interaction.user.id),
+            opened_at=record["opened_at"],
+            panel_name=str(panel_name) if panel_name else None,
+        )
+
+        await self._log_ticket_event(
+            guild,
+            event_type="ticket_opened",
+            action="🎫 Ticket opened",
+            description=(
+                f"**{opener_identity}** opened ticket **#{number:04d}**."
+            ),
+            fields=opened_fields,
+        )
 
         await interaction.response.send_message(
             f"Your ticket is ready: {ticket_channel.mention}",
@@ -319,7 +506,7 @@ class TicketsCog(commands.Cog):
             guild,
             interaction.channel,
             record,
-            closed_by=str(interaction.user),
+            closed_by=self._format_member_identity(interaction.user),
         )
 
     async def close_ticket(
@@ -329,6 +516,16 @@ class TicketsCog(commands.Cog):
         record: dict[str, Any],
         closed_by: str,
     ) -> None:
+        # Idempotency: a retry must not regenerate transcripts or re-emit the
+        # Closed Ticket log for an already-closed ticket.
+        if is_ticket_already_closed(record):
+            logger.info(
+                "Ignoring duplicate close for ticket %s in guild %s",
+                record.get("id"),
+                guild.id,
+            )
+            return
+
         transcript_lines: list[str] = []
 
         if isinstance(channel, discord.TextChannel):
@@ -360,6 +557,7 @@ class TicketsCog(commands.Cog):
             transcript,
         )
 
+        closed_at = now_iso()
         share_token = secrets.token_urlsafe(24)
         share_payload = {
             "guild_id": str(guild.id),
@@ -368,9 +566,11 @@ class TicketsCog(commands.Cog):
             "ticket_number": record.get("number"),
             "opener_id": record.get("opener_id"),
             "opener_name": record.get("opener_name"),
+            "opened_at": record.get("opened_at"),
             "closed_by": closed_by,
-            "closed_at": now_iso(),
+            "closed_at": closed_at,
             "channel_name": record.get("channel_name"),
+            "panel_name": record.get("panel_name"),
             "transcript": transcript,
         }
         await self.bot.state.redis.set(
@@ -380,7 +580,7 @@ class TicketsCog(commands.Cog):
         )
 
         record["status"] = "closed"
-        record["closed_at"] = share_payload["closed_at"]
+        record["closed_at"] = closed_at
         record["closed_by"] = closed_by
         record["share_token"] = share_token
         await self.save_record(guild.id, record)
@@ -393,28 +593,12 @@ class TicketsCog(commands.Cog):
         if opener_id:
             try:
                 opener = await self.bot.fetch_user(int(opener_id))
-                dm_embed = discord.Embed(
-                    title=f"Ticket #{record.get('number')} closed",
-                    description=(
-                        f"Your support ticket in **{guild.name}** was closed "
-                        f"by {closed_by}."
+                await opener.send(
+                    embed=self._closed_ticket_embed(
+                        guild, record, closed_by, audience="dm"
                     ),
-                    color=discord.Color.dark_grey(),
+                    view=self._transcript_view(transcript_url),
                 )
-                dm_embed.add_field(
-                    name="Channel",
-                    value=record.get("channel_name") or "ticket",
-                    inline=True,
-                )
-                view = discord.ui.View()
-                view.add_item(
-                    discord.ui.Button(
-                        label="View transcript",
-                        style=discord.ButtonStyle.link,
-                        url=transcript_url,
-                    )
-                )
-                await opener.send(embed=dm_embed, view=view)
             except (discord.HTTPException, discord.Forbidden, ValueError):
                 logger.info(
                     "Could not DM ticket opener %s for closed ticket %s",
@@ -422,39 +606,31 @@ class TicketsCog(commands.Cog):
                     record.get("id"),
                 )
 
-        config = await self.get_config(guild.id)
-        log_channel_id = config.get("log_channel_id")
-        if log_channel_id:
-            log_channel = guild.get_channel(int(log_channel_id))
-            if isinstance(log_channel, discord.TextChannel):
-                log_embed = discord.Embed(
-                    title=f"Ticket #{record.get('number')} closed",
-                    color=discord.Color.orange(),
-                )
-                log_embed.add_field(
-                    name="Opened by",
-                    value=record.get("opener_name") or "unknown",
-                    inline=True,
-                )
-                log_embed.add_field(
-                    name="Closed by",
-                    value=closed_by,
-                    inline=True,
-                )
-                log_embed.add_field(
-                    name="Channel",
-                    value=record.get("channel_name") or "ticket",
-                    inline=True,
-                )
-                log_embed.add_field(
-                    name="Transcript",
-                    value=f"[Open transcript]({transcript_url})",
-                    inline=False,
-                )
-                try:
-                    await log_channel.send(embed=log_embed)
-                except discord.HTTPException:
-                    logger.exception("Failed to post closed-ticket log")
+        # Closed-ticket logging flows through the central logging wizard
+        # (Tickets group). The transcript deep-link reuses the same share
+        # token as the opener DM (single source of truth).
+        closed_fields = build_closed_ticket_log_fields(
+            number=record.get("number"),
+            opener_name=record.get("opener_name"),
+            closed_by=closed_by,
+            channel_name=record.get("channel_name"),
+            transcript_url=transcript_url,
+            opened_at=record.get("opened_at"),
+            closed_at=closed_at,
+            panel_name=record.get("panel_name"),
+        )
+
+        await self._log_ticket_event(
+            guild,
+            event_type="ticket_closed",
+            action="🔒 Ticket closed",
+            description=(
+                f"Ticket **#{record.get('number')}** opened by "
+                f"**{record.get('opener_name') or 'a member'}** was closed by "
+                f"**{closed_by}**."
+            ),
+            fields=closed_fields,
+        )
 
         if isinstance(channel, discord.TextChannel):
             try:

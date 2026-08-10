@@ -90,7 +90,7 @@ export default async function DashboardPage({
     {
       title: "Verification Settings",
       description: "Channels, roles, and policy for member verification.",
-      href: "/settings/guild-configuration",
+      href: "/community/onboarding",
     },
     {
       title: "Welcome & Leave Messages",
@@ -179,7 +179,7 @@ export default async function DashboardPage({
           </CCol>
           <CCol md={6} xl={3}>
             <Link
-              href={`/${lang}/settings/guild-configuration`}
+              href={`/${lang}/community/onboarding`}
               className="text-decoration-none d-block h-100"
             >
               <MetricWidget

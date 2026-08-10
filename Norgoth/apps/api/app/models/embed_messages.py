@@ -35,6 +35,10 @@ class EmbedMediaAsset(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     byte_size: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     width: Mapped[int | None] = mapped_column(Integer, nullable=True)
     height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    storage_provider: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="local"
+    )
+    storage_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
 
@@ -49,13 +53,8 @@ class EmbedMessage(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     content: Mapped[str] = mapped_column(Text, nullable=False, default="")
     embed_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
-    # Channels this embed should publish to. Editing/saving does not publish;
-    # the master table Publish action posts to these channels.
-    target_channel_ids: Mapped[list[str] | None] = mapped_column(
-        JSONB, nullable=True
-    )
-    # Desired revision. Bumped whenever publishable content (content/embed/
-    # targets) changes so deliveries can be flagged "edited — needs re-sync".
+    # Desired revision. Bumped whenever publishable content (content/embed)
+    # changes so deliveries can be flagged "edited — needs re-sync".
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
@@ -88,8 +87,17 @@ class EmbedMessageDelivery(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     delivery_type: Mapped[str] = mapped_column(
         String(16), nullable=False, default="bot"
     )
+    # Which Norgoth feature owns this deployment. Generic Re-Sync may recreate a
+    # missing message only for library-owned deployments; feature-owned ones
+    # (e.g. Self-Assignable Roles) require components and are flagged for feature
+    # repair instead. Runtime SAR detection (role-menu binding) is authoritative
+    # even when this column still reads the default.
+    # embed_library | self_assignable_role
+    owner_feature: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, default="embed_library"
+    )
     # synced | message_missing | channel_missing | permission_missing |
-    # webhook_missing | pending | error
+    # webhook_missing | needs_feature_repair | pending | error
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     # The embed version this delivery last reflected in Discord. When it lags

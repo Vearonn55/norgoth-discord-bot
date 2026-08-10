@@ -10,8 +10,6 @@ from app.schemas.guild import (
     GuildUpsertRequest,
 )
 from app.schemas.security import (
-    BlacklistedGuildResponse,
-    BlacklistedGuildUpsertRequest,
     UserListEntryResponse,
     UserListUpsertRequest,
 )
@@ -20,8 +18,6 @@ from app.schemas.verification_log import (
 )
 
 __all__ = [
-    "BlacklistedGuildResponse",
-    "BlacklistedGuildUpsertRequest",
     "ConfigurationEnabledRequest",
     "ConfigurationResponse",
     "ConfigurationUpsertRequest",

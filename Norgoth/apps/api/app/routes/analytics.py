@@ -23,6 +23,14 @@ def daily_key(guild_id: str, day: str) -> str:
     return f"norgoth:guild:{guild_id}:analytics:daily:{day}"
 
 
+def authors_key(guild_id: str, day: str) -> str:
+    return f"norgoth:guild:{guild_id}:analytics:authors:{day}"
+
+
+def voice_key(guild_id: str, day: str) -> str:
+    return f"norgoth:guild:{guild_id}:analytics:voice:{day}"
+
+
 def _day_list(days: int, *, end: datetime | None = None) -> list[str]:
     end = end or datetime.now(timezone.utc)
     return [
@@ -37,8 +45,12 @@ def _empty_point(day: str) -> dict[str, Any]:
         "messages": 0,
         "unique_authors": 0,
         "joins": 0,
+        "rejoins": 0,
         "leaves": 0,
         "voice_uniques": 0,
+        # Total member population recorded that day (last write wins). None when
+        # the bot recorded no snapshot for the day (e.g. it was offline).
+        "member_count": None,
         "has_data": False,
     }
 
@@ -54,28 +66,112 @@ async def _load_series(
         if not raw:
             series.append(_empty_point(day))
             continue
+        member_count_raw = raw.get("member_count")
         series.append(
             {
                 "date": day,
                 "messages": int(raw.get("messages") or 0),
                 "unique_authors": int(raw.get("unique_authors") or 0),
                 "joins": int(raw.get("joins") or 0),
+                "rejoins": int(raw.get("rejoins") or 0),
                 "leaves": int(raw.get("leaves") or 0),
                 "voice_uniques": int(raw.get("voice_uniques") or 0),
+                "member_count": (
+                    int(member_count_raw) if member_count_raw is not None else None
+                ),
                 "has_data": True,
             }
         )
     return series
 
 
-def _sum_totals(series: list[dict[str, Any]]) -> dict[str, int]:
+def _population_metrics(series: list[dict[str, Any]]) -> dict[str, Any]:
+    """Derive population-based KPIs from the per-day member_count snapshots.
+
+    Net growth is measured from the actual population delta (end minus start of
+    the window) rather than ``joins - leaves`` so it reflects reality even when
+    the bot missed some events. Rejoins are intentionally excluded from
+    "new members"; they still move the population and therefore show up in the
+    snapshot-derived net change.
+
+    Churn and retention are normalized against the starting population so they
+    are comparable across servers of different sizes. All fields are ``None``
+    when there are no member_count snapshots in the window (insufficient data).
+    """
+
+    counts = [p["member_count"] for p in series if p.get("member_count") is not None]
+    leaves = sum(p["leaves"] for p in series)
+    joins = sum(p["joins"] for p in series)
+
+    if not counts:
+        return {
+            "start_members": None,
+            "end_members": None,
+            "net_member_change": None,
+            "net_growth_rate": None,
+            "churn_rate": None,
+            "retention_rate": None,
+            "new_members": joins,
+        }
+
+    start_members = counts[0]
+    end_members = counts[-1]
+    net_member_change = end_members - start_members
+    net_growth_rate = net_member_change / start_members if start_members else None
+    churn_rate = leaves / start_members if start_members else None
+    retention_rate = (
+        max(0.0, 1.0 - churn_rate) if churn_rate is not None else None
+    )
+
     return {
+        "start_members": start_members,
+        "end_members": end_members,
+        "net_member_change": net_member_change,
+        "net_growth_rate": net_growth_rate,
+        "churn_rate": churn_rate,
+        "retention_rate": retention_rate,
+        # First-time joins only (rejoins excluded), for the "new members" KPI.
+        "new_members": joins,
+    }
+
+
+async def _distinct_count(redis_client: Any, keys: list[str]) -> int:
+    """Return the number of distinct members across the given day sets.
+
+    Uses SUNION so members active on multiple days are counted once (a true
+    window-distinct count), unlike summing each day's per-day distinct count.
+    Missing/expired day sets are treated as empty.
+    """
+    if not keys:
+        return 0
+    members = await redis_client.sunion(keys)
+    return len(members)
+
+
+async def _compute_totals(
+    redis_client: Any,
+    guild_id: str,
+    days: list[str],
+    series: list[dict[str, Any]],
+) -> dict[str, int]:
+    unique_authors = await _distinct_count(
+        redis_client, [authors_key(guild_id, day) for day in days]
+    )
+    voice_uniques = await _distinct_count(
+        redis_client, [voice_key(guild_id, day) for day in days]
+    )
+    return {
+        # Counting events is additive over the window.
         "messages": sum(p["messages"] for p in series),
-        "unique_authors": sum(p["unique_authors"] for p in series),
         "joins": sum(p["joins"] for p in series),
+        "rejoins": sum(p["rejoins"] for p in series),
         "leaves": sum(p["leaves"] for p in series),
-        "voice_uniques": sum(p["voice_uniques"] for p in series),
+        # Distinct members are unioned across the window, not summed per-day.
+        "unique_authors": unique_authors,
+        "voice_uniques": voice_uniques,
         "days_with_data": sum(1 for p in series if p["has_data"]),
+        # Snapshot-derived population KPIs (net growth, churn, retention).
+        **_population_metrics(series),
     }
 
 
@@ -96,11 +192,14 @@ async def get_engagement(
     try:
         series = await _load_series(redis_client, guild_id, current_days)
         previous_series = await _load_series(redis_client, guild_id, previous_days)
+        totals = await _compute_totals(
+            redis_client, guild_id, current_days, series
+        )
+        previous_totals = await _compute_totals(
+            redis_client, guild_id, previous_days, previous_series
+        )
     finally:
         await redis_client.aclose()
-
-    totals = _sum_totals(series)
-    previous_totals = _sum_totals(previous_series)
 
     return {
         "guild_id": guild_id,

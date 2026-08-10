@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import {
-  CFormInput,
   CFormLabel,
   CSpinner,
 } from "@coreui/react";
@@ -11,6 +10,7 @@ import { ChannelSelect } from "@/components/ui/channel-select";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
+import { NumberInput } from "@/components/ui/number-input";
 import { MutedSection } from "@/components/ui/feature-muting";
 import { PageHeader } from "@/components/layout/page-header";
 import { PageActionFooter } from "@/components/layout/page-action-footer";
@@ -75,6 +75,7 @@ export function RaidProtectionPanel() {
         category="security"
         icon={<Icon icon={cilShieldAlt} size="xl" />}
         description="Detect rapid joins and young-account floods, then respond automatically when configured."
+        infoKey="raidProtection"
         masterToggle={{
           enabled: draft.enabled,
           onChange: (checked) => void setEnabledAndSave(checked),
@@ -145,14 +146,14 @@ export function RaidProtectionPanel() {
           </div>
           <div>
             <CFormLabel>Response Duration (minutes)</CFormLabel>
-            <CFormInput
-              type="number"
+            <NumberInput
+              value={draft.response_duration_minutes}
+              defaultValue={5}
               min={1}
               max={1440}
-              value={draft.response_duration_minutes}
-              onChange={(e) =>
-                patch({ response_duration_minutes: Number(e.target.value) })
-              }
+              step={1}
+              aria-label="Response duration in minutes"
+              onCommit={(next) => patch({ response_duration_minutes: next })}
             />
           </div>
         </div>

@@ -1,8 +1,5 @@
 """Persistence repositories for Norgoth Verification."""
 
-from app.repositories.blacklisted_guild_repository import (
-    BlacklistedGuildRepository,
-)
 from app.repositories.configuration_repository import (
     ConfigurationRepository,
 )
@@ -17,7 +14,6 @@ from app.repositories.verification_log_repository import (
 )
 
 __all__ = [
-    "BlacklistedGuildRepository",
     "ConfigurationRepository",
     "DiscordGuildRepository",
     "UserListRepository",

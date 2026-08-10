@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { apiUrl } from "@/lib/api";
+import { formatDateTime } from "@/lib/datetime";
 
 type CampaignStatus =
   | "draft"
@@ -738,11 +739,17 @@ export default function CampaignDetailClient() {
                         </h2>
 
                         <div className="d-flex flex-column gap-3 small">
-                          <InfoRow label={t.createdAt} value={campaign.created_at} />
-                          <InfoRow label={t.updatedAt} value={campaign.updated_at} />
+                          <InfoRow
+                            label={t.createdAt}
+                            value={formatDateTime(campaign.created_at, lang)}
+                          />
+                          <InfoRow
+                            label={t.updatedAt}
+                            value={formatDateTime(campaign.updated_at, lang)}
+                          />
                           <InfoRow
                             label={t.executedAt}
-                            value={campaign.executed_at || "—"}
+                            value={formatDateTime(campaign.executed_at, lang)}
                           />
                         </div>
                       </div>
@@ -777,7 +784,7 @@ export default function CampaignDetailClient() {
                             <div className="col-5">
                               <p className="mb-0">{activity.message}</p>
                               <p className="mt-1 mb-0 small text-body-secondary">
-                                {activity.created_at}
+                                {formatDateTime(activity.created_at, lang)}
                               </p>
                             </div>
 

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { XP_MULTIPLIER_MIN, XP_MULTIPLIER_MAX } from "@/stores/leveling-store";
+import {
+  XP_MULTIPLIER_MIN,
+  XP_MULTIPLIER_MAX,
+  LEVEL_THRESHOLD_SCALE_MIN,
+  LEVEL_THRESHOLD_SCALE_MAX,
+  DEFAULT_LEVEL_THRESHOLD_SCALE,
+} from "@/stores/leveling-store";
 
 describe("XP multiplier slider tick labels", () => {
   it("uses the real 0.1x–5.0x scale bounds", () => {
@@ -14,5 +20,24 @@ describe("XP multiplier slider tick labels", () => {
     expect(`${midpoint.toFixed(1)}x`).toBe("2.5x");
     expect(`${XP_MULTIPLIER_MIN.toFixed(1)}x`).toBe("0.1x");
     expect(`${XP_MULTIPLIER_MAX.toFixed(1)}x`).toBe("5.0x");
+  });
+});
+
+describe("Level Up Threshold slider tick labels", () => {
+  it("uses the real 0.5x–2.0x scale bounds", () => {
+    expect(LEVEL_THRESHOLD_SCALE_MIN).toBe(0.5);
+    expect(LEVEL_THRESHOLD_SCALE_MAX).toBe(2.0);
+  });
+
+  it("labels the midpoint as 1.25x (arithmetic mean), not a hardcoded 1.00x", () => {
+    const midpoint =
+      (LEVEL_THRESHOLD_SCALE_MIN + LEVEL_THRESHOLD_SCALE_MAX) / 2;
+    expect(`${midpoint.toFixed(2)}x`).toBe("1.25x");
+    expect(`${LEVEL_THRESHOLD_SCALE_MIN.toFixed(2)}x`).toBe("0.50x");
+    expect(`${LEVEL_THRESHOLD_SCALE_MAX.toFixed(2)}x`).toBe("2.00x");
+  });
+
+  it("keeps the persisted default at classic 1.0 (independent of midpoint label)", () => {
+    expect(DEFAULT_LEVEL_THRESHOLD_SCALE).toBe(1.0);
   });
 });

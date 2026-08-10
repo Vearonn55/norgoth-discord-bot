@@ -5,21 +5,26 @@ import { useParams } from "next/navigation";
 import { CAlert, CSpinner } from "@/components/ui/coreui";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { TranscriptConversation } from "@/components/tickets/transcript-conversation";
 import { apiUrl } from "@/lib/api";
+import { formatDateTime } from "@/lib/datetime";
 
 type SharedTranscript = {
   token: string;
   guild_name?: string | null;
   ticket_number?: number | null;
   opener_name?: string | null;
+  opened_at?: string | null;
   closed_by?: string | null;
   closed_at?: string | null;
   channel_name?: string | null;
+  panel_name?: string | null;
   transcript: string;
 };
 
 export default function TicketTranscriptPage() {
   const params = useParams();
+  const lang = String(params?.lang || "en");
   const token = String(params?.token || "");
   const [data, setData] = useState<SharedTranscript | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -102,24 +107,64 @@ export default function TicketTranscriptPage() {
     );
   }
 
+  const metaItems: { label: string; value: string }[] = [
+    {
+      label: "Ticket",
+      value: `#${data.ticket_number ?? "—"}`,
+    },
+    {
+      label: "Server",
+      value: data.guild_name || "—",
+    },
+    {
+      label: "Channel",
+      value: data.channel_name || "ticket",
+    },
+  ];
+  if (data.panel_name) {
+    metaItems.push({ label: "Panel", value: data.panel_name });
+  }
+  metaItems.push(
+    { label: "Created by", value: data.opener_name || "unknown" },
+    { label: "Opened at", value: formatDateTime(data.opened_at, lang) },
+    { label: "Closed at", value: formatDateTime(data.closed_at, lang) },
+    { label: "Closed by", value: data.closed_by || "—" },
+    { label: "Status", value: "Closed" }
+  );
+
   return (
     <div className="d-flex flex-column gap-4">
       <div className="d-flex flex-column gap-2">
-        <h1 className="h3 mb-0 fw-semibold">
-          Ticket #{data.ticket_number ?? "—"} transcript
-        </h1>
+        <h1 className="h3 mb-0 fw-semibold">Ticket Transcript</h1>
         <p className="mb-0 small text-body-secondary">
-          {data.guild_name ? `${data.guild_name} · ` : ""}
-          {data.channel_name || "ticket"} · opened by{" "}
-          {data.opener_name || "unknown"}
-          {data.closed_by ? ` · closed by ${data.closed_by}` : ""}
+          A readable record of the closed support conversation.
         </p>
       </div>
 
       <Card>
-        <pre className="mb-0 overflow-auto font-monospace small text-break text-wrap" style={{ maxHeight: "70vh" }}>
-          {data.transcript}
-        </pre>
+        <div className="d-flex flex-column gap-3">
+          <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+            <h2 className="h5 mb-0 fw-semibold">
+              Ticket #{data.ticket_number ?? "—"}
+            </h2>
+            <Badge variant="neutral">Closed</Badge>
+          </div>
+          <div className="row g-2">
+            {metaItems.map((item) => (
+              <div key={item.label} className="col-6 col-md-4 col-lg-3">
+                <div className="small text-body-secondary">{item.label}</div>
+                <div className="fw-medium text-break">{item.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Card>
+
+      <Card>
+        <div className="d-flex flex-column gap-3">
+          <h2 className="h6 mb-0 fw-semibold">Conversation</h2>
+          <TranscriptConversation transcript={data.transcript} />
+        </div>
       </Card>
     </div>
   );

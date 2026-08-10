@@ -526,27 +526,6 @@ body {
   );
 }
 
-/* Retry heatmap intensity cells — dark tints, not Bootstrap *-subtle */
-.norgoth-heatmap-cell {
-  background: var(--norgoth-surface);
-  border-color: var(--norgoth-card-border-secondary) !important;
-}
-
-.norgoth-heatmap-cell[data-intensity="low"] {
-  background: rgba(94, 200, 255, 0.1);
-  border-color: rgba(94, 200, 255, 0.45) !important;
-}
-
-.norgoth-heatmap-cell[data-intensity="medium"] {
-  background: rgba(255, 200, 87, 0.1);
-  border-color: rgba(255, 200, 87, 0.5) !important;
-}
-
-.norgoth-heatmap-cell[data-intensity="high"] {
-  background: rgba(255, 107, 122, 0.12);
-  border-color: rgba(255, 107, 122, 0.55) !important;
-}
-
 .norgoth-metric-widget[data-accent="warning"] {
   --norgoth-accent: var(--cui-warning);
   background: linear-gradient(
@@ -743,7 +722,7 @@ body {
 }
 
 .norgoth-command-panel {
-  width: min(640px, calc(100vw - 2rem));
+  width: min(720px, calc(100vw - 2rem));
   max-height: min(420px, 70vh);
   overflow: hidden;
   display: flex;
@@ -761,9 +740,98 @@ body {
 }
 
 .norgoth-command-panel .list-group-item:hover,
-.norgoth-command-panel .list-group-item:focus {
+.norgoth-command-panel .list-group-item:focus,
+.norgoth-command-panel .list-group-item.norgoth-command-active {
   background: rgba(110, 168, 254, 0.12);
   color: #fff;
+}
+
+/* Topbar three-zone layout with centered search */
+.norgoth-topbar-nav {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(12rem, 36rem) minmax(0, 1fr);
+  align-items: center;
+  width: 100%;
+}
+
+.norgoth-topbar-left {
+  justify-self: start;
+  min-width: 0;
+}
+
+.norgoth-topbar-center {
+  justify-self: center;
+  width: 100%;
+  max-width: 36rem;
+  min-width: 0;
+}
+
+.norgoth-topbar-right {
+  justify-self: end;
+  min-width: 0;
+}
+
+.norgoth-topbar-search {
+  display: none;
+  width: 100%;
+  max-width: 36rem;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.45rem 0.85rem;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(180, 198, 230, 0.28);
+  background: rgba(18, 24, 38, 0.85);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.norgoth-topbar-search:hover,
+.norgoth-topbar-search:focus-visible {
+  border-color: rgba(110, 168, 254, 0.55);
+  background: rgba(24, 32, 50, 0.95);
+  outline: none;
+}
+
+.norgoth-topbar-search-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.9rem;
+}
+
+.norgoth-topbar-search-kbd {
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.3rem;
+  border: 1px solid rgba(180, 198, 230, 0.25);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+@media (min-width: 768px) {
+  .norgoth-topbar-search {
+    display: inline-flex;
+  }
+
+  .norgoth-topbar-search-compact {
+    display: none !important;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .norgoth-topbar-nav {
+    grid-template-columns: auto 1fr auto;
+  }
+
+  .norgoth-topbar-center {
+    justify-content: flex-end;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1199.98px) {
+  .norgoth-topbar-center,
+  .norgoth-topbar-search {
+    max-width: 28rem;
+  }
 }
 
 /* Generic bordered panels used outside Card */
@@ -974,6 +1042,17 @@ body {
   box-shadow: 0 0 0 0.2rem rgba(110, 168, 254, 0.35);
 }
 
+/* Hide native number spinners; NumberInput uses text+inputMode instead. */
+.norgoth-number-input::-webkit-outer-spin-button,
+.norgoth-number-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.norgoth-number-input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 /* ==========================================================================
    Mini feature card (dense, clickable → opens configuration modal)
    ========================================================================== */
@@ -1003,6 +1082,15 @@ body {
   border: 1px solid;
   border-radius: 0.5rem;
   background: rgba(241, 244, 250, 0.04);
+}
+
+.norgoth-mini-card-description {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  min-height: 2.5em;
 }
 
 .norgoth-mini-card-status {
@@ -1037,6 +1125,29 @@ body {
   .norgoth-embed-workbench-preview {
     position: sticky;
     top: 1rem;
+  }
+}
+
+/* Embed Draft Creator — preview left, sticky while editor scrolls */
+.norgoth-embed-create-modal-body {
+  max-height: min(80vh, 900px);
+  overflow: hidden;
+}
+
+.norgoth-embed-create-modal-body .norgoth-embed-draft-creator {
+  max-height: min(78vh, 880px);
+}
+
+.norgoth-embed-create-modal-body .norgoth-embed-creator-editor {
+  max-height: min(72vh, 820px);
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+@media (min-width: 992px) {
+  .norgoth-embed-creator-preview {
+    position: sticky;
+    top: 0.5rem;
   }
 }
 

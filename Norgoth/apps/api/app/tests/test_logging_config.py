@@ -89,13 +89,41 @@ def _unique_columns(model: Any) -> set[frozenset[str]]:
     }
 
 
-def test_channel_has_unique_constraint_on_config_and_key() -> None:
-    """Prevents duplicate channel rows per configuration (toggle-storm fix)."""
+def test_router_exposes_channel_sync_and_delete_endpoints() -> None:
+    """Per-category Discord rename + delete-log-channel use dedicated routes."""
 
-    assert (
-        frozenset({"logging_configuration_id", "key"})
-        in _unique_columns(LoggingChannel)
+    operations = _registered_operations()
+    channel_path = "/guilds/{guild_id}/logging/channels/{channel_key}"
+    delete_path = (
+        "/guilds/{guild_id}/logging/channels/{channel_key}/discord-channel"
     )
+    assert (channel_path, "PATCH") in operations
+    assert (channel_path, "PUT") in operations
+    assert (delete_path, "DELETE") in operations
+
+
+def test_channel_update_body_requires_name() -> None:
+    from app.routes.logging_config import LoggingChannelUpdateBody
+
+    with pytest.raises(ValidationError):
+        LoggingChannelUpdateBody.model_validate({})
+
+    body = LoggingChannelUpdateBody(name="🔥member-logs", default_color=0xFF0000)
+    assert body.name == "🔥member-logs"
+    assert body.events == []
+
+
+def test_catalog_payload_lists_all_supported_groups() -> None:
+    """UI merge depends on a complete catalog — not only configured guild rows."""
+
+    from app.services.logging_events import EVENT_GROUPS, catalog_payload
+
+    payload = catalog_payload()
+    keys = {group["key"] for group in payload["groups"]}
+    assert keys == set(EVENT_GROUPS.keys())
+    assert "voice" in keys
+    assert "invites" in keys
+
 
 
 def test_event_mapping_has_unique_constraint_on_config_and_event() -> None:

@@ -1,8 +1,5 @@
 """Business services for Norgoth Verification."""
 
-from app.services.blacklisted_guild_service import (
-    BlacklistedGuildService,
-)
 from app.services.configuration_service import (
     ConfigurationService,
 )
@@ -25,7 +22,6 @@ from app.services.verification_service import (
 )
 
 __all__ = [
-    "BlacklistedGuildService",
     "ConfigurationService",
     "GuildService",
     "UserListService",

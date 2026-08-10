@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo } from "react";
+import { useParams } from "next/navigation";
 import { CAlert, CButtonGroup, CFormSelect, CSpinner } from "@coreui/react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import {
   isInDateRange,
   type DateRangeValue,
 } from "@/components/ui/date-range-filter";
+import { formatDateTime } from "@/lib/datetime";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import { create } from "zustand";
 import { useModerationLogsStore } from "@/stores/moderation-logs-store";
@@ -72,6 +74,8 @@ const useAuditFilterStore = create<AuditFilterState>((set) => ({
 }));
 
 export function AuditLogsPanel() {
+  const params = useParams();
+  const lang = String(params?.lang || "en");
   const { guildId, loading: guildLoading, error: guildError } = useFirstGuild();
 
   const modEntries = useModerationLogsStore((s) => s.entries);
@@ -177,7 +181,7 @@ export function AuditLogsPanel() {
       <div className="d-flex flex-column gap-3">
         <div className="d-flex flex-wrap align-items-center justify-content-between gap-3">
           <div>
-            <h2 className="h5 mb-0 fw-semibold">Audit Logs</h2>
+            <h2 className="h5 mb-0 fw-semibold">Audit</h2>
             <p className="mt-1 mb-0 small text-body-secondary">
               Moderation actions and server events in one timeline.
             </p>
@@ -239,7 +243,7 @@ export function AuditLogsPanel() {
                 key: "when",
                 header: "When",
                 className: "text-nowrap",
-                cell: (row) => new Date(row.created_at).toLocaleString(),
+                cell: (row) => formatDateTime(row.created_at, lang),
               },
             ]}
             rows={filtered}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 import {
   CAlert,
   CFormInput,
@@ -15,6 +16,7 @@ import { RoleSelect } from "@/components/ui/role-select";
 import { MemberSelect } from "@/components/ui/member-select";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { NumberInput } from "@/components/ui/number-input";
 import { MiniFeatureCard } from "@/components/ui/mini-feature-card";
 import { FeatureConfigurationModal } from "@/components/ui/feature-modal";
 import { MutedSection } from "@/components/ui/feature-muting";
@@ -26,12 +28,16 @@ import { MessagePreview } from "@/components/discord/message-preview";
 import { useFirstGuild } from "@/stores/guild-store";
 import { useHoneypotStore, type HoneypotConfig } from "@/stores/honeypot-store";
 import { Icon } from "@/components/ui/icon";
-import { cilBan, cilBug, cilSettings, cilShieldAlt } from "@coreui/icons";
+import { cilBan, cilBug, cilSettings, cilShieldAlt, cilWarning } from "@coreui/icons";
 import type { DiscordEmbedPayload } from "@/lib/discord/message-payload";
+import { useFeatureInfo } from "@/lib/feature-info";
+import { formatDateTime } from "@/lib/datetime";
 
 type HoneypotFeature = "config" | "punishment" | "exemptions";
 
 export function HoneypotPanel() {
+  const params = useParams();
+  const lang = String(params?.lang || "en");
   const { guildId, resources, loading: guildLoading } = useFirstGuild();
   const config = useHoneypotStore((s) => s.config);
   const triggers = useHoneypotStore((s) => s.triggers);
@@ -42,6 +48,7 @@ export function HoneypotPanel() {
   const save = useHoneypotStore((s) => s.save);
   const loadTriggers = useHoneypotStore((s) => s.loadTriggers);
   const requestCreateChannel = useHoneypotStore((s) => s.requestCreateChannel);
+  const honeypotInfo = useFeatureInfo("honeypot");
   const [draft, setDraft] = useState<HoneypotConfig | null>(null);
   const [newChannelName, setNewChannelName] = useState("honeypot");
   const [activeModal, setActiveModal] = useState<HoneypotFeature | null>(null);
@@ -106,6 +113,7 @@ export function HoneypotPanel() {
         category="security"
         icon={<Icon icon={cilBug} size="xl" />}
         description="Trap channels that catch spam bots posting indiscriminately across every visible channel."
+        infoKey="honeypot"
         masterToggle={{
           enabled: draft.enabled,
           onChange: (checked) => void setEnabledAndSave(checked),
@@ -113,12 +121,20 @@ export function HoneypotPanel() {
         }}
       />
 
-      <CAlert color="info" className="mb-0">
-        The honeypot is a trap channel. Legitimate members must be warned never
-        to use it. Administrators and configured exemptions are protected.
-        Posting may cause immediate automated punishment. Honeypot triggers are
-        recorded through your central{" "}
-        <strong>Logging Configurations</strong> (the Security event group).
+      <CAlert
+        color={draft.enabled ? "info" : "warning"}
+        className="mb-0 d-flex align-items-start gap-2"
+      >
+        {!draft.enabled ? (
+          <Icon icon={cilWarning} className="flex-shrink-0 mt-1" />
+        ) : null}
+        <span>
+          {draft.enabled
+            ? honeypotInfo?.alertActive ||
+              "The honeypot is active. Legitimate members must be warned never to use the trap channel."
+            : honeypotInfo?.alertInactive ||
+              "The honeypot trap is currently inactive. Enable it from the header to start catching spam bots."}
+        </span>
       </CAlert>
 
       {error ? <p className="text-danger">{error}</p> : null}
@@ -194,7 +210,8 @@ export function HoneypotPanel() {
                 <MessagePreview
                   content={draft.warning_content}
                   embed={embed}
-                  showEmbed
+                  mode="embed"
+                  showContentWithEmbed
                 />
               }
             />
@@ -311,25 +328,26 @@ export function HoneypotPanel() {
           </div>
           <div>
             <CFormLabel>Delete Message History (Hours, max 24)</CFormLabel>
-            <CFormInput
-              type="number"
+            <NumberInput
+              value={draft.delete_history_hours}
+              defaultValue={0}
               min={0}
               max={24}
-              value={draft.delete_history_hours}
-              onChange={(e) =>
-                patch({ delete_history_hours: Number(e.target.value) })
-              }
+              step={1}
+              aria-label="Delete message history hours"
+              onCommit={(next) => patch({ delete_history_hours: next })}
             />
           </div>
           <div>
             <CFormLabel>Timeout Minutes</CFormLabel>
-            <CFormInput
-              type="number"
-              min={1}
+            <NumberInput
               value={draft.timeout_minutes}
-              onChange={(e) =>
-                patch({ timeout_minutes: Number(e.target.value) })
-              }
+              defaultValue={10}
+              min={1}
+              max={40320}
+              step={1}
+              aria-label="Timeout minutes"
+              onCommit={(next) => patch({ timeout_minutes: next })}
             />
           </div>
         </div>
@@ -394,7 +412,10 @@ export function HoneypotPanel() {
                 {triggers.map((item, index) => (
                   <tr key={String(item.id ?? index)}>
                     <td className="small">
-                      {String(item.triggered_at ?? item.created_at ?? "—")}
+                      {formatDateTime(
+                        String(item.triggered_at ?? item.created_at ?? ""),
+                        lang
+                      )}
                     </td>
                     <td className="small">
                       {String(

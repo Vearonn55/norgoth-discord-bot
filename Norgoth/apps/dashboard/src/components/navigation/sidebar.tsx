@@ -17,10 +17,12 @@ import {
   cilPeople,
   cilEnvelopeClosed,
   cilStar,
+  cilBarChart,
   cilLink,
   cilSend,
   cilPlus,
   cilHistory,
+  cilNotes,
   cilShieldAlt,
   cilBan,
   cilUserFollow,
@@ -32,29 +34,32 @@ import {
   cilCog,
   cilImage,
   cilBug,
+  cilTask,
+  cilRss,
 } from "@coreui/icons";
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { useUiStore } from "@/stores/ui-store";
+import { useGuildStore } from "@/stores/guild-store";
 
 type SidebarProps = {
   lang?: string;
   dict?: unknown;
 };
 
-type SidebarItem = {
+export type SidebarItem = {
   label: string;
   href: string;
   icon: string[];
 };
 
-type SidebarGroup = {
+export type SidebarGroup = {
   title: string;
   items: SidebarItem[];
 };
 
-const GROUPS: SidebarGroup[] = [
+export const SIDEBAR_GROUPS: SidebarGroup[] = [
   {
     title: "HOME",
     items: [
@@ -71,11 +76,26 @@ const GROUPS: SidebarGroup[] = [
         icon: cilPeople,
       },
       {
+        label: "Manual Verification",
+        href: "/community/manual-verification",
+        icon: cilTask,
+      },
+      {
         label: "Support Tickets",
         href: "/community/tickets",
         icon: cilEnvelopeClosed,
       },
       { label: "Levels & Activity", href: "/community/leveling", icon: cilStar },
+      {
+        label: "Top Trending",
+        href: "/community/feed-channels",
+        icon: cilRss,
+      },
+      {
+        label: "Leaderboards",
+        href: "/community/leaderboard",
+        icon: cilBarChart,
+      },
       { label: "Invite Tracking", href: "/community/invites", icon: cilLink },
     ],
   },
@@ -86,7 +106,7 @@ const GROUPS: SidebarGroup[] = [
       { label: "Create Campaign", href: "/campaigns/new", icon: cilPlus },
       { label: "Campaign History", href: "/campaigns/history", icon: cilHistory },
       {
-        label: "Embed Messages",
+        label: "Embed Library",
         href: "/messages/embed-messages",
         icon: cilImage,
       },
@@ -98,9 +118,19 @@ const GROUPS: SidebarGroup[] = [
     ],
   },
   {
+    title: "AUDIT",
+    items: [
+      { label: "Audit Logs", href: "/audit/logs", icon: cilNotes },
+      {
+        label: "Discord Logs",
+        href: "/audit/discord-logs",
+        icon: cilHistory,
+      },
+    ],
+  },
+  {
     title: "SECURITY",
     items: [
-      { label: "Audit Logs", href: "/security/logs", icon: cilShieldAlt },
       {
         label: "Auto-Moderation",
         href: "/security/auto-moderation",
@@ -123,7 +153,7 @@ const GROUPS: SidebarGroup[] = [
     items: [
       { label: "Auto Role", href: "/automation/auto-role", icon: cilUserFollow },
       {
-        label: "Welcome & Leave Messages",
+        label: "Welcome & Leave",
         href: "/automation/welcome-goodbye-invite",
         icon: cilCommentBubble,
       },
@@ -153,7 +183,7 @@ const GROUPS: SidebarGroup[] = [
 ];
 
 export function getSidebarNavItems(lang: string) {
-  return GROUPS.flatMap((group) =>
+  return SIDEBAR_GROUPS.flatMap((group) =>
     group.items.map((item) => ({
       ...item,
       href: `/${lang}${item.href}`,
@@ -207,7 +237,7 @@ export default function Sidebar({ lang: propLang }: SidebarProps) {
       </CSidebarHeader>
 
       <CSidebarNav ref={navRef} className="norgoth-sidebar-scroll">
-        {GROUPS.map((group) => (
+        {SIDEBAR_GROUPS.map((group) => (
           <div key={group.title}>
             <CNavTitle>{group.title}</CNavTitle>
             {group.items.map((item) => {
@@ -230,26 +260,57 @@ export default function Sidebar({ lang: propLang }: SidebarProps) {
         ))}
       </CSidebarNav>
 
-      <CSidebarFooter className="border-top">
-        <div className="d-flex align-items-center gap-3 px-2 py-1">
-          <div
-            className="d-flex align-items-center justify-content-center rounded-circle border fw-semibold"
-            style={{ width: 40, height: 40 }}
-          >
-            N
-          </div>
-          <div className="min-w-0">
-            <div className="text-truncate small fw-medium">Workspace</div>
-            <div
-              className="text-truncate text-body-secondary"
-              style={{ fontSize: 12 }}
-            >
-              Discord community tools
-            </div>
-          </div>
-        </div>
+      <CSidebarFooter className="border-top p-0">
+        <SidebarGuildFooter lang={lang} />
       </CSidebarFooter>
     </CSidebar>
+  );
+}
+
+function SidebarGuildFooter({ lang }: { lang: string }) {
+  const selectedGuild = useGuildStore((s) => s.selectedGuild);
+  const name = selectedGuild?.name ?? "No server selected";
+  const iconUrl = selectedGuild?.icon_url ?? null;
+  const initial = name.trim().charAt(0).toUpperCase() || "?";
+
+  return (
+    <Link
+      href={`/${lang}/servers`}
+      scroll={false}
+      className="norgoth-sidebar-guild d-flex align-items-center gap-3 px-3 py-2 text-decoration-none text-reset"
+      aria-label="Change selected server"
+    >
+      {iconUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={iconUrl}
+          alt=""
+          width={40}
+          height={40}
+          className="rounded-circle flex-shrink-0"
+          style={{ objectFit: "cover" }}
+        />
+      ) : (
+        <div
+          aria-hidden="true"
+          className="d-flex align-items-center justify-content-center rounded-circle border fw-semibold flex-shrink-0"
+          style={{ width: 40, height: 40 }}
+        >
+          {initial}
+        </div>
+      )}
+      <div className="min-w-0">
+        <div className="text-truncate small fw-medium" title={name}>
+          {name}
+        </div>
+        <div
+          className="text-truncate text-body-secondary"
+          style={{ fontSize: 12 }}
+        >
+          Server Selection
+        </div>
+      </div>
+    </Link>
   );
 }
 

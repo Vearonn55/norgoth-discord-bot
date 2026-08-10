@@ -6,10 +6,24 @@ import { parseEmbedColor } from "@/lib/discord/message-payload";
 
 type MediaSlot = "thumbnail" | "image";
 
+export type MessagePreviewMode = "text" | "embed" | "auto";
+
 type MessagePreviewProps = {
   content?: string;
   embed?: DiscordEmbedPayload | null;
   showEmbed?: boolean;
+  /**
+   * Controls which preview slots render.
+   * - text: content only
+   * - embed: embed card only (optional content above when showContentWithEmbed)
+   * - auto: legacy dual layout (content slot always, embed when showEmbed)
+   */
+  mode?: MessagePreviewMode;
+  /**
+   * When mode is "embed", allow non-empty Discord message content above the
+   * embed (Embed Library). Empty content never shows “No message content”.
+   */
+  showContentWithEmbed?: boolean;
   /**
    * When provided, empty media slots render as clickable placeholders and
    * existing media becomes clickable to replace. Enables in-preview uploads.
@@ -21,29 +35,49 @@ export function MessagePreview({
   content,
   embed,
   showEmbed = false,
+  mode = "auto",
+  showContentWithEmbed = false,
   onPickMedia,
 }: MessagePreviewProps) {
   const color = parseEmbedColor(embed?.color) ?? 0x5865f2;
   const colorHex = `#${color.toString(16).padStart(6, "0")}`;
   const interactive = typeof onPickMedia === "function";
+  const trimmed = content?.trim() ?? "";
+
+  const renderEmbed =
+    mode === "embed" ? Boolean(embed) : mode === "auto" && showEmbed && Boolean(embed);
+
+  // Embed-only mode never paints the empty “No message content” placeholder.
+  const showContentSlot =
+    mode === "text"
+      ? true
+      : mode === "embed"
+        ? showContentWithEmbed && Boolean(trimmed)
+        : true; // auto: legacy always-on content slot
 
   return (
     <div className="norgoth-discord-preview border rounded p-3">
       <div className="small text-uppercase fw-semibold text-body-secondary mb-2">
         Live preview
       </div>
-      {content?.trim() ? (
-        <div
-          className="prose-preview mb-3"
-          dangerouslySetInnerHTML={{
-            __html: discordMarkdownToHtml(content),
-          }}
-        />
-      ) : (
-        <p className="small text-body-secondary mb-3">No message content</p>
-      )}
+      {showContentSlot ? (
+        trimmed ? (
+          <div
+            className={`prose-preview ${renderEmbed ? "mb-3" : ""}`}
+            dangerouslySetInnerHTML={{
+              __html: discordMarkdownToHtml(trimmed),
+            }}
+          />
+        ) : mode === "auto" || mode === "text" ? (
+          <p
+            className={`small text-body-secondary ${renderEmbed ? "mb-3" : "mb-0"}`}
+          >
+            No message content
+          </p>
+        ) : null
+      ) : null}
 
-      {showEmbed && embed ? (
+      {renderEmbed && embed ? (
         <div
           className="norgoth-discord-embed rounded"
           style={{ borderLeft: `4px solid ${colorHex}` }}
@@ -127,6 +161,10 @@ export function MessagePreview({
             ) : null}
           </div>
         </div>
+      ) : null}
+
+      {mode === "embed" && !embed ? (
+        <p className="small text-body-secondary mb-0">No embed to preview.</p>
       ) : null}
     </div>
   );

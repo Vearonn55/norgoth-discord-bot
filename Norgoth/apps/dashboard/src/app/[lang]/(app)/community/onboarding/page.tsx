@@ -1,8 +1,5 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { PageHeader } from "@/components/layout/page-header";
-import { Button } from "@/components/ui/button";
-import { VerificationLogsPanel } from "@/components/verification/verification-logs-panel";
+import { MemberVerificationView } from "@/components/verification/member-verification-view";
 import { getDictionary, hasLocale } from "../../../dictionaries";
 
 export default async function OnboardingPage({
@@ -14,21 +11,5 @@ export default async function OnboardingPage({
 
   await getDictionary(lang);
 
-  return (
-    <div className="d-flex flex-column gap-4">
-        <PageHeader
-          title="Member Verification"
-          description="Verification outcomes for members joining this server."
-          actions={
-            <Button asChild variant="secondary">
-              <Link href={`/${lang}/settings/guild-configuration`}>
-                Verification Settings
-              </Link>
-            </Button>
-          }
-        />
-
-        <VerificationLogsPanel />
-      </div>
-  );
+  return <MemberVerificationView />;
 }

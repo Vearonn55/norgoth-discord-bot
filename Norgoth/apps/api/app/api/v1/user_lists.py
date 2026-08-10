@@ -9,12 +9,16 @@ from app.api.v1.dependencies import (
     GuildServiceDependency,
     UserListServiceDependency,
 )
-from app.api.v1.dependencies_auth import guild_manager_dependency
+from app.api.v1.dependencies_auth import (
+    OperatorSessionDependency,
+    guild_manager_dependency,
+)
 from app.models.enums import UserListType
 from app.schemas.security import (
     UserListEntryResponse,
     UserListUpsertRequest,
 )
+from app.services.audit import record_audit
 
 router = APIRouter(
     prefix="/guilds/{discord_guild_id}/user-list",
@@ -76,6 +80,7 @@ async def set_user_entry(
     guild_service: GuildServiceDependency,
     user_list_service: UserListServiceDependency,
     session: DatabaseSession,
+    operator: OperatorSessionDependency,
 ) -> UserListEntryResponse:
     """Create or update a user's whitelist or blacklist entry."""
 
@@ -94,8 +99,20 @@ async def set_user_entry(
         reason=payload.reason,
     )
 
+    await record_audit(
+        session,
+        entity_type=f"user_list_{payload.list_type.value}",
+        action="upsert",
+        guild_id=discord_guild_id,
+        entity_id=discord_user_id,
+        changes={
+            "actor_discord_id": operator.user_id,
+            "list_type": payload.list_type.value,
+            "reason": payload.reason,
+        },
+    )
+
     await session.commit()
-    await session.refresh(entry)
 
     return UserListEntryResponse.model_validate(entry)
 
@@ -110,6 +127,7 @@ async def remove_user_entry(
     guild_service: GuildServiceDependency,
     user_list_service: UserListServiceDependency,
     session: DatabaseSession,
+    operator: OperatorSessionDependency,
 ) -> Response:
     """Remove a user's whitelist or blacklist entry."""
 
@@ -131,6 +149,15 @@ async def remove_user_entry(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User list entry not found.",
         )
+
+    await record_audit(
+        session,
+        entity_type="user_list",
+        action="delete",
+        guild_id=discord_guild_id,
+        entity_id=discord_user_id,
+        changes={"actor_discord_id": operator.user_id},
+    )
 
     await session.commit()
 

@@ -15,9 +15,18 @@ export type TicketPanel = {
   id: string;
   name: string;
   channel_id: string | null;
+  /** @deprecated Prefer embed_message_id / text_content. */
   title: string;
+  /** @deprecated Prefer text_content; kept for legacy panels. */
   description: string;
   button_label: string;
+  /** text = RichMessageEditor body; embed = Embed Library draft. */
+  message_source: "text" | "embed";
+  text_content: string;
+  /** Central Embed Library draft used for the panel message visual. */
+  embed_message_id: string | null;
+  /** Discord category tickets from this panel are created under. */
+  open_category_id: string | null;
   message_id: string | null;
   published_at: string | null;
   updated_at: string | null;
@@ -31,9 +40,37 @@ export function newTicketPanel(): TicketPanel {
     title: "Need help?",
     description: "Click the button below to open a private support ticket.",
     button_label: "Open Ticket",
+    message_source: "embed",
+    text_content: "Click the button below to open a private support ticket.",
+    embed_message_id: null,
+    open_category_id: null,
     message_id: null,
     published_at: null,
     updated_at: null,
+  };
+}
+
+export function normalizeTicketPanel(
+  panel: Partial<TicketPanel> & { id?: string }
+): TicketPanel {
+  const base = { ...newTicketPanel(), ...panel };
+  const source =
+    panel.message_source === "text" || panel.message_source === "embed"
+      ? panel.message_source
+      : panel.embed_message_id
+        ? "embed"
+        : panel.text_content || panel.description || panel.title
+          ? "text"
+          : "embed";
+  return {
+    ...base,
+    message_source: source,
+    text_content:
+      panel.text_content ??
+      (source === "text"
+        ? panel.description || panel.title || base.text_content
+        : base.text_content),
+    embed_message_id: panel.embed_message_id ?? null,
   };
 }
 
@@ -136,11 +173,15 @@ export const useTicketsStore = create<TicketsState>((set, get) => ({
         set({ tickets: (await ticketsResponse.json()) as TicketRecord[] });
       }
 
-      if (panelsResponse.ok) {
+        if (panelsResponse.ok) {
         const body = (await panelsResponse.json()) as {
           panels: TicketPanel[];
         };
-        set({ panels: body.panels ?? [] });
+        set({
+          panels: (body.panels ?? []).map((panel) =>
+            normalizeTicketPanel(panel)
+          ),
+        });
       }
     } catch {
       set({
@@ -159,7 +200,11 @@ export const useTicketsStore = create<TicketsState>((set, get) => ({
       );
       if (response.ok) {
         const body = (await response.json()) as { panels: TicketPanel[] };
-        set({ panels: body.panels ?? [] });
+        set({
+          panels: (body.panels ?? []).map((panel) =>
+            normalizeTicketPanel(panel)
+          ),
+        });
       }
     } catch {
       /* non-fatal: keep existing panels */
@@ -203,6 +248,17 @@ export const useTicketsStore = create<TicketsState>((set, get) => ({
 
     if (!editing.name.trim()) {
       set({ feedback: "Panel name is required.", feedbackIsError: true });
+      return false;
+    }
+
+    // A panel is only useful once it has a target channel, and publishing
+    // requires one. Enforce it at save time so every stored panel is
+    // publishable (no silently un-publishable drafts).
+    if (!editing.channel_id) {
+      set({
+        feedback: "Select a channel before saving this panel.",
+        feedbackIsError: true,
+      });
       return false;
     }
 

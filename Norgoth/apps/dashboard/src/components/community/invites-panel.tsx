@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo } from "react";
+import { useParams } from "next/navigation";
 import { CAlert, CSpinner } from "@coreui/react";
 import {
   cilLink,
@@ -19,10 +20,13 @@ import {
 } from "@/components/ui/date-range-filter";
 import { Icon } from "@/components/ui/icon";
 import { SectionCard } from "@/components/ui/section-card";
+import { formatDateTime } from "@/lib/datetime";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import { useInvitesStore } from "@/stores/invites-store";
 
 export function InvitesPanel() {
+  const params = useParams();
+  const lang = String(params?.lang || "en");
   const { guildId, loading, error, reload } = useFirstGuild();
 
   const leaderboard = useInvitesStore((s) => s.leaderboard);
@@ -298,7 +302,7 @@ export function InvitesPanel() {
                 key: "when",
                 header: "Joined",
                 className: "text-nowrap",
-                cell: (row) => new Date(row.joined_at).toLocaleString(),
+                cell: (row) => formatDateTime(row.joined_at, lang),
               },
             ]}
             rows={filteredRecent}

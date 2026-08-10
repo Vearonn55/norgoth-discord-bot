@@ -4,8 +4,10 @@ from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from app.models.discord_guild import DiscordGuild
+from app.models.discord_user import DiscordUser
+from app.models.guild import Guild
 
 
 class DiscordGuildRepository:
@@ -16,39 +18,55 @@ class DiscordGuildRepository:
 
         self._session = session
 
-    async def get_by_id(self, guild_id: UUID) -> DiscordGuild | None:
-        """Return a Discord guild by its internal UUID."""
+    async def get_by_id(self, guild_id: UUID) -> Guild | None:
+        """Return a guild by its internal UUID (owner eager-loaded)."""
 
-        return await self._session.get(DiscordGuild, guild_id)
-
-    async def get_by_discord_guild_id(
-        self,
-        discord_guild_id: str,
-    ) -> DiscordGuild | None:
-        """Return a guild by its Discord snowflake."""
-
-        statement = select(DiscordGuild).where(DiscordGuild.discord_guild_id == discord_guild_id)
+        statement = (
+            select(Guild).where(Guild.id == guild_id).options(selectinload(Guild.owner))
+        )
         result = await self._session.execute(statement)
 
         return result.scalar_one_or_none()
 
-    async def add(self, guild: DiscordGuild) -> DiscordGuild:
-        """Add a Discord guild and flush it to the database."""
+    async def get_by_discord_guild_id(
+        self,
+        discord_guild_id: str,
+    ) -> Guild | None:
+        """Return a guild by its Discord snowflake (owner eager-loaded)."""
+
+        statement = (
+            select(Guild)
+            .where(Guild.discord_guild_id == discord_guild_id)
+            .options(selectinload(Guild.owner))
+        )
+        result = await self._session.execute(statement)
+
+        return result.scalar_one_or_none()
+
+    async def resolve_owner(self, discord_owner_id: str) -> DiscordUser:
+        """Return (creating if needed) the ``DiscordUser`` for an owner."""
+
+        from app.services.users import upsert_discord_user
+
+        return await upsert_discord_user(self._session, discord_owner_id)
+
+    async def add(self, guild: Guild) -> Guild:
+        """Add a guild and flush it to the database."""
 
         self._session.add(guild)
         await self._session.flush()
 
         return guild
 
-    async def save(self, guild: DiscordGuild) -> DiscordGuild:
-        """Flush changes made to an existing Discord guild."""
+    async def save(self, guild: Guild) -> Guild:
+        """Flush changes made to an existing guild."""
 
         await self._session.flush()
 
         return guild
 
-    async def delete(self, guild: DiscordGuild) -> None:
-        """Delete a Discord guild and flush the change."""
+    async def delete(self, guild: Guild) -> None:
+        """Delete a guild and flush the change."""
 
         await self._session.delete(guild)
         await self._session.flush()

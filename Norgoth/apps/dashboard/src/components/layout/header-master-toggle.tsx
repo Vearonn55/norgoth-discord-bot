@@ -7,7 +7,10 @@ type HeaderMasterToggleProps = {
   enabled: boolean;
   onChange: (checked: boolean) => void;
   loading?: boolean;
+  /** Used for aria-label; optionally shown as visible text when showLabel. */
   label?: string;
+  /** When false, hide the visible label span but keep accessible name. */
+  showLabel?: boolean;
 };
 
 /**
@@ -19,10 +22,13 @@ export function HeaderMasterToggle({
   onChange,
   loading = false,
   label,
+  showLabel = true,
 }: HeaderMasterToggleProps) {
   return (
     <div className="d-flex align-items-center gap-2 flex-shrink-0">
-      {label ? <span className="small fw-semibold">{label}</span> : null}
+      {showLabel && label ? (
+        <span className="small fw-semibold">{label}</span>
+      ) : null}
       {loading ? <CSpinner size="sm" /> : null}
       <span
         className="small"

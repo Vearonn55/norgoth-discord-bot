@@ -11,15 +11,15 @@ import {
   CHeaderText,
 } from "@coreui/react";
 import { CIcon } from "@coreui/icons-react";
-import { cilSearch } from "@coreui/icons";
+import { cilPeople, cilSearch } from "@coreui/icons";
 import { locales, type Locale } from "@/i18n/config";
 import type { Dictionary } from "@/app/[lang]/dictionaries";
 import { usePreferencesContext } from "@/components/providers/preferences-provider";
 import { useUiStore } from "@/stores/ui-store";
-import { GuildSwitcher } from "@/components/layout/guild-switcher";
-import { useGuildStore } from "@/stores/guild-store";
+import { useFirstGuild } from "@/lib/use-first-guild";
 import { useAuthStore } from "@/stores/auth-store";
 import { apiUrl } from "@/lib/api";
+import { formatNumber } from "@/lib/number";
 
 type TopbarProps = {
   lang: Locale;
@@ -52,7 +52,7 @@ export function Topbar({ lang, dict }: TopbarProps) {
   const { preferences } = usePreferencesContext();
   const setCommandPaletteOpen = useUiStore((s) => s.setCommandPaletteOpen);
 
-  const selectedGuild = useGuildStore((s) => s.selectedGuild);
+  const { selectedGuild, resources } = useFirstGuild();
   const authUser = useAuthStore((s) => s.user);
   const reloadAuth = useAuthStore((s) => s.reload);
   const logout = useAuthStore((s) => s.logout);
@@ -96,18 +96,23 @@ export function Topbar({ lang, dict }: TopbarProps) {
     router.push(replaceLocaleInPathname(pathname, nextLocale));
   }
 
-  const guild = selectedGuild
-    ? { name: selectedGuild.name, member_count: health?.status?.guilds?.find((g) => g.id === selectedGuild.id)?.member_count }
-    : health?.status?.guilds?.[0];
   const connected = Boolean(health?.connected);
+  // Member count comes from the already-loaded guild resources (a cheap Redis
+  // read via the shared guild store), keeping a single source of truth and
+  // avoiding extra Discord API calls.
+  const memberCount = resources?.member_count ?? null;
+  const memberCountLabel = lang === "tr" ? "Üye Sayısı" : "Member Count";
+  const searchPlaceholder =
+    dict.common.searchPlaceholder ||
+    (lang === "tr" ? "Özellik ara…" : "Search features…");
 
   return (
     <CHeader
       position={preferences.stickyTopbar ? "sticky" : undefined}
       className="norgoth-topbar mb-0 px-4"
     >
-      <CHeaderNav className="d-flex flex-grow-1 align-items-center justify-content-between gap-3 w-100">
-        <div className="d-flex align-items-center gap-3">
+      <CHeaderNav className="norgoth-topbar-nav d-flex align-items-center gap-3 w-100">
+        <div className="norgoth-topbar-left d-flex align-items-center gap-3">
           <CBadge
             color={connected ? "success" : "danger"}
             shape="rounded-pill"
@@ -115,26 +120,49 @@ export function Topbar({ lang, dict }: TopbarProps) {
           >
             {connected ? "Online" : "Offline"}
           </CBadge>
-          <GuildSwitcher />
-          <div className="d-flex flex-column d-none d-md-flex">
-            <CHeaderText className="fw-semibold text-white mb-0">
-              {guild
-                ? guild.name
-                : connected
-                  ? "Connected"
-                  : "Bot offline"}
-            </CHeaderText>
-            {guild?.member_count ? (
+          {selectedGuild && memberCount !== null ? (
+            <CHeaderText className="d-none d-md-flex align-items-center gap-2 mb-0 text-white">
+              <CIcon icon={cilPeople} className="text-body-secondary" />
               <span className="small text-body-secondary">
-                {guild.member_count.toLocaleString()} members
+                {memberCountLabel}:
               </span>
-            ) : null}
-          </div>
+              <span className="fw-semibold">
+                {formatNumber(memberCount, lang)}
+              </span>
+            </CHeaderText>
+          ) : null}
         </div>
 
-        <div className="d-flex align-items-center gap-2">
+        <div className="norgoth-topbar-center flex-grow-1 d-flex justify-content-center">
+          <button
+            type="button"
+            className="norgoth-topbar-search"
+            onClick={() => setCommandPaletteOpen(true)}
+            aria-label={searchPlaceholder}
+          >
+            <CIcon icon={cilSearch} className="text-body-secondary flex-shrink-0" />
+            <span className="norgoth-topbar-search-label text-body-secondary text-truncate">
+              {searchPlaceholder}
+            </span>
+            <kbd className="norgoth-topbar-search-kbd small text-body-secondary d-none d-lg-inline">
+              ⌘K
+            </kbd>
+          </button>
+          <CButton
+            color="secondary"
+            variant="outline"
+            size="sm"
+            className="norgoth-topbar-search-compact d-flex d-md-none align-items-center"
+            onClick={() => setCommandPaletteOpen(true)}
+            aria-label={searchPlaceholder}
+          >
+            <CIcon icon={cilSearch} />
+          </CButton>
+        </div>
+
+        <div className="norgoth-topbar-right d-flex align-items-center gap-2">
           {authUser ? (
-            <span className="small text-body-secondary d-none d-lg-inline">
+            <span className="small text-body-secondary d-none d-xl-inline">
               {authUser.global_name || authUser.username}
             </span>
           ) : null}
@@ -150,20 +178,6 @@ export function Topbar({ lang, dict }: TopbarProps) {
               Log out
             </CButton>
           ) : null}
-          <CButton
-            color="secondary"
-            variant="outline"
-            size="sm"
-            className="d-flex align-items-center gap-2"
-            onClick={() => setCommandPaletteOpen(true)}
-            aria-label="Open command palette"
-          >
-            <CIcon icon={cilSearch} />
-            <span className="d-none d-md-inline">Search</span>
-            <kbd className="small d-none d-lg-inline text-body-secondary">
-              ⌘K
-            </kbd>
-          </CButton>
           <CFormSelect
             value={lang}
             onChange={(e) => handleLanguageChange(e.target.value as Locale)}

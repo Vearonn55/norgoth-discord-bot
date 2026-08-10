@@ -1,11 +1,15 @@
 "use client";
 
 import { useEffect } from "react";
+import { useParams } from "next/navigation";
 import { CBadge } from "@coreui/react";
+import { formatDateTime } from "@/lib/datetime";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import { useContentNotificationsStore } from "@/stores/content-notifications-store";
 
 export function DeliveryHistoryPanel() {
+  const params = useParams();
+  const lang = String(params?.lang || "en");
   const { guildId } = useFirstGuild();
   const history = useContentNotificationsStore((s) => s.history);
   const loadHistory = useContentNotificationsStore((s) => s.loadHistory);
@@ -36,9 +40,7 @@ export function DeliveryHistoryPanel() {
             {history.map((item) => (
               <tr key={item.job_id}>
                 <td className="small text-body-secondary">
-                  {item.created_at
-                    ? new Date(item.created_at).toLocaleString()
-                    : "—"}
+                  {formatDateTime(item.created_at, lang)}
                 </td>
                 <td className="text-uppercase small">{item.platform}</td>
                 <td>{item.creator_name}</td>

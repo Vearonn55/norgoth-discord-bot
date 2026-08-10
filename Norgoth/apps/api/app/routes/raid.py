@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from app.api.v1.dependencies_auth import guild_manager_dependency
 from app.services.campaign_store import get_redis, now_iso
+from app.services.feature_config_store import read_raw, save_config
 
 router = APIRouter(
     tags=["Raid"],
@@ -50,7 +51,7 @@ async def get_raid_config(guild_id: str) -> dict[str, Any]:
     redis_client = await get_redis()
 
     try:
-        raw = await redis_client.get(raid_key(guild_id))
+        raw = await read_raw(guild_id, "raid", redis_client)
         active_raw = await redis_client.get(raid_incident_key(guild_id))
     finally:
         await redis_client.aclose()
@@ -98,7 +99,7 @@ async def update_raid_config(
     redis_client = await get_redis()
 
     try:
-        await redis_client.set(raid_key(guild_id), json.dumps(payload))
+        await save_config(guild_id, "raid", payload, enabled=bool(payload.get("enabled", False)))
     finally:
         await redis_client.aclose()
 

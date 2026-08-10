@@ -33,6 +33,7 @@ import {
 import type { Dictionary } from "@/app/[lang]/dictionaries";
 import type { Locale } from "@/i18n/config";
 import { apiUrl } from "@/lib/api";
+import { formatDateTime } from "@/lib/datetime";
 import { useCampaignsStore } from "@/stores/campaigns-store";
 import { useCampaignWizardDraftStore } from "@/stores/campaign-wizard-draft-store";
 
@@ -456,7 +457,9 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
 
   const previewSampleValues = useMemo(
     () => ({
-      "{user_name}": isDM ? "Alice" : "there",
+      // Channel campaigns have no recipient — match runtime USER_NAME_FALLBACK.
+      // DM preview uses a sample display name; runtime resolves per recipient.
+      "{user_name}": isDM ? "Alice" : "member",
       "{server_name}": guildName,
       "{campaign_name}": wizardState.basics.name.trim() || "Campaign",
     }),
@@ -605,7 +608,7 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                 <div className="small">
                   Updated{" "}
                   {draft?.updatedAt
-                    ? new Date(draft.updatedAt).toLocaleString()
+                    ? formatDateTime(draft.updatedAt, lang)
                     : "recently"}
                   . Continue where you left off, discard, or start new.
                 </div>
@@ -1042,6 +1045,7 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                           value={wizardState.message.embedImageUrl}
                           guildId={guildId ?? undefined}
                           banner
+                          equalizeToThumbnail
                           onChange={(url) =>
                             setWizardState((prev) => ({
                               ...prev,
@@ -1076,7 +1080,7 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                   <p className="mt-2 mb-0 small text-body-secondary">
                     Formatting is converted to Discord markdown on send.
                     Variables resolve per recipient in DM mode; in channel mode
-                    {" {user_name} "} becomes “there”.
+                    {" {user_name} "} becomes “member” (no single recipient).
                   </p>
                 </div>
               </div>
@@ -1094,10 +1098,6 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
 
                   {wizardState.message.messageType === "embed" ? (
                     <MessagePreview
-                      content={substituteVariables(
-                        wizardState.message.body,
-                        previewSampleValues,
-                      )}
                       embed={{
                         title: substituteVariables(
                           wizardState.message.subject ||
@@ -1116,7 +1116,7 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                           wizardState.message.embedImageUrl || undefined,
                         footer: "Norgoth Campaign",
                       }}
-                      showEmbed
+                      mode="embed"
                     />
                   ) : (
                     <div className="border rounded p-3 overflow-hidden">

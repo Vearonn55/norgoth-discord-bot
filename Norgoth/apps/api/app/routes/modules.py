@@ -6,7 +6,6 @@ defaults to enabled; the bot checks the flag before acting.
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from fastapi import APIRouter, Depends
@@ -14,6 +13,7 @@ from pydantic import BaseModel
 
 from app.api.v1.dependencies_auth import guild_manager_dependency
 from app.services.campaign_store import get_redis, now_iso
+from app.services.feature_config_store import read_through, save_config
 
 router = APIRouter(
     tags=["Modules"],
@@ -87,6 +87,11 @@ MODULE_DEFINITIONS: list[dict[str, str]] = [
         "description": "Trap channels that punish members who post in them.",
     },
     {
+        "key": "feed_channels",
+        "name": "Top Trending",
+        "description": "Ranked Daily/Weekly/Monthly/All-Time feeds by Net Upvotes.",
+    },
+    {
         "key": "campaigns",
         "name": "Campaign Messaging",
         "description": "Channel broadcasts and member DM campaigns.",
@@ -105,17 +110,9 @@ class ModulesUpdate(BaseModel):
 
 
 async def read_module_flags(redis_client, guild_id: str) -> dict[str, bool]:
-    raw = await redis_client.get(modules_key(guild_id))
+    parsed = await read_through(guild_id, "modules", redis_client)
 
-    stored: dict[str, Any] = {}
-
-    if raw:
-        try:
-            parsed = json.loads(raw)
-            if isinstance(parsed, dict):
-                stored = parsed
-        except json.JSONDecodeError:
-            pass
+    stored: dict[str, Any] = parsed if isinstance(parsed, dict) else {}
 
     return {key: bool(stored.get(key, True)) for key in MODULE_KEYS}
 
@@ -150,7 +147,7 @@ async def update_modules(guild_id: str, payload: ModulesUpdate) -> dict[str, Any
                 flags[key] = bool(enabled)
 
         flags["updated_at"] = now_iso()  # type: ignore[assignment]
-        await redis_client.set(modules_key(guild_id), json.dumps(flags))
+        await save_config(guild_id, "modules", flags, enabled=True)
     finally:
         await redis_client.aclose()
 

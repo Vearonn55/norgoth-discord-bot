@@ -1,66 +1,66 @@
-"""Database operations for Discord guild configurations."""
+"""Database operations for normalized guild verification configuration."""
 
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.configuration import Configuration
+from app.models.enums import GuildChannelPurpose, GuildRolePurpose
+from app.models.guild_bindings import GuildChannelBinding, GuildRoleBinding
+from app.models.guild_settings import GuildSettings
 
 
 class ConfigurationRepository:
-    """Provide persistence operations for guild configurations."""
+    """Persist guild settings plus their role and channel bindings."""
 
     def __init__(self, session: AsyncSession) -> None:
         """Initialize the repository with an async database session."""
 
         self._session = session
 
-    async def get_by_id(
-        self,
-        configuration_id: UUID,
-    ) -> Configuration | None:
-        """Return a configuration by its internal UUID."""
+    async def get_settings(self, guild_id: UUID) -> GuildSettings | None:
+        """Return the settings row for a guild, if any."""
 
-        return await self._session.get(Configuration, configuration_id)
-
-    async def get_by_guild_id(
-        self,
-        guild_id: UUID,
-    ) -> Configuration | None:
-        """Return the configuration belonging to a Discord guild."""
-
-        statement = select(Configuration).where(Configuration.guild_id == guild_id)
+        statement = select(GuildSettings).where(GuildSettings.guild_id == guild_id)
         result = await self._session.execute(statement)
 
         return result.scalar_one_or_none()
 
-    async def add(
+    async def get_role_bindings(
         self,
-        configuration: Configuration,
-    ) -> Configuration:
-        """Add a guild configuration and flush it to the database."""
+        guild_id: UUID,
+    ) -> dict[GuildRolePurpose, GuildRoleBinding]:
+        """Return role bindings for a guild keyed by purpose."""
 
-        self._session.add(configuration)
-        await self._session.flush()
+        statement = select(GuildRoleBinding).where(GuildRoleBinding.guild_id == guild_id)
+        result = await self._session.execute(statement)
 
-        return configuration
+        return {binding.purpose: binding for binding in result.scalars().all()}
 
-    async def save(
+    async def get_channel_bindings(
         self,
-        configuration: Configuration,
-    ) -> Configuration:
-        """Flush changes made to an existing configuration."""
+        guild_id: UUID,
+    ) -> dict[GuildChannelPurpose, GuildChannelBinding]:
+        """Return channel bindings for a guild keyed by purpose."""
 
-        await self._session.flush()
+        statement = select(GuildChannelBinding).where(
+            GuildChannelBinding.guild_id == guild_id
+        )
+        result = await self._session.execute(statement)
 
-        return configuration
+        return {binding.purpose: binding for binding in result.scalars().all()}
 
-    async def delete(
-        self,
-        configuration: Configuration,
-    ) -> None:
-        """Delete a guild configuration and flush the change."""
+    async def add(self, instance: object) -> None:
+        """Stage a new settings/binding row on the session."""
 
-        await self._session.delete(configuration)
+        self._session.add(instance)
+
+    async def delete(self, instance: object) -> None:
+        """Stage a settings/binding row for deletion."""
+
+        await self._session.delete(instance)
+
+    async def flush(self) -> None:
+        """Flush pending changes to the database."""
+
         await self._session.flush()

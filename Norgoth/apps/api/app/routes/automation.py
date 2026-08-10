@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from app.api.v1.dependencies_auth import guild_manager_dependency
 from app.services.campaign_store import get_redis, now_iso
+from app.services.feature_config_store import read_raw, save_config
 
 router = APIRouter(
     tags=["Automation"],
@@ -31,6 +32,10 @@ def welcome_status_key(guild_id: str) -> str:
     return f"norgoth:guild:{guild_id}:welcome:status"
 
 
+def autorole_status_key(guild_id: str) -> str:
+    return f"norgoth:guild:{guild_id}:autorole:status"
+
+
 def guild_resources_key(guild_id: str) -> str:
     return f"norgoth:guild:{guild_id}:resources"
 
@@ -42,15 +47,46 @@ class AutomationConfig(BaseModel):
         default="Welcome to {server}, {user}!",
         max_length=1500,
     )
+    # "text" sends welcome_message; "embed" renders the referenced Embed Draft.
+    welcome_source: Literal["text", "embed"] = "text"
+    welcome_embed_message_id: Optional[str] = Field(default=None, max_length=64)
     leave_enabled: bool = False
     leave_channel_id: Optional[str] = Field(default=None, pattern=SNOWFLAKE_PATTERN)
     leave_message: str = Field(
         default="{username} has left {server}.",
         max_length=1500,
     )
+    leave_source: Literal["text", "embed"] = "text"
+    leave_embed_message_id: Optional[str] = Field(default=None, max_length=64)
     auto_role_enabled: bool = False
     auto_role_id: Optional[str] = Field(default=None, pattern=SNOWFLAKE_PATTERN)
     auto_role_ids: list[str] = Field(default_factory=list, max_length=50)
+    mod_log_channel_id: Optional[str] = Field(default=None, pattern=SNOWFLAKE_PATTERN)
+
+
+class AutomationConfigPatch(BaseModel):
+    """Partial automation update.
+
+    Every field is optional so a single section (Welcome or Leave) can be saved
+    without resubmitting — and therefore without clobbering — the other
+    section's stored values. Fields are merged server-side onto the durable
+    config, using ``exclude_unset`` to distinguish "leave unchanged" from an
+    explicit ``null`` clear.
+    """
+
+    welcome_enabled: Optional[bool] = None
+    welcome_channel_id: Optional[str] = Field(default=None, pattern=SNOWFLAKE_PATTERN)
+    welcome_message: Optional[str] = Field(default=None, max_length=1500)
+    welcome_source: Optional[Literal["text", "embed"]] = None
+    welcome_embed_message_id: Optional[str] = Field(default=None, max_length=64)
+    leave_enabled: Optional[bool] = None
+    leave_channel_id: Optional[str] = Field(default=None, pattern=SNOWFLAKE_PATTERN)
+    leave_message: Optional[str] = Field(default=None, max_length=1500)
+    leave_source: Optional[Literal["text", "embed"]] = None
+    leave_embed_message_id: Optional[str] = Field(default=None, max_length=64)
+    auto_role_enabled: Optional[bool] = None
+    auto_role_id: Optional[str] = Field(default=None, pattern=SNOWFLAKE_PATTERN)
+    auto_role_ids: Optional[list[str]] = Field(default=None, max_length=50)
     mod_log_channel_id: Optional[str] = Field(default=None, pattern=SNOWFLAKE_PATTERN)
 
 
@@ -73,7 +109,7 @@ def normalize_auto_roles(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 async def read_stored_config(redis_client, guild_id: str) -> AutomationConfig:
-    raw = await redis_client.get(automation_key(guild_id))
+    raw = await read_raw(guild_id, "automation", redis_client)
 
     if raw:
         try:
@@ -118,7 +154,46 @@ async def update_automation_config(
     redis_client = await get_redis()
 
     try:
-        await redis_client.set(automation_key(guild_id), json.dumps(payload))
+        await save_config(guild_id, "automation", payload)
+    finally:
+        await redis_client.aclose()
+
+    return {"guild_id": guild_id, **payload}
+
+
+@router.patch("/guilds/{guild_id}/automation")
+async def patch_automation_config(
+    guild_id: str,
+    patch: AutomationConfigPatch,
+) -> dict[str, Any]:
+    """Merge a partial update onto the stored config, section-safe.
+
+    Only the fields explicitly present in the request body are changed; the
+    rest of the durable config (including the other message section) is read
+    from storage and preserved. This is what makes saving Welcome independent
+    of unsaved Leave edits, and vice versa.
+    """
+
+    updates = patch.model_dump(exclude_unset=True)
+
+    redis_client = await get_redis()
+
+    try:
+        current = await read_stored_config(redis_client, guild_id)
+        merged = {**current.model_dump(), **updates}
+        merged = normalize_auto_roles(merged)
+        # Re-validate the merged shape so patch inputs get the same guarantees
+        # as a full PUT before it is persisted.
+        final = AutomationConfig(
+            **{
+                key: value
+                for key, value in merged.items()
+                if key in AutomationConfig.model_fields
+            }
+        )
+        payload = final.model_dump()
+        payload["updated_at"] = now_iso()
+        await save_config(guild_id, "automation", payload)
     finally:
         await redis_client.aclose()
 
@@ -127,24 +202,31 @@ async def update_automation_config(
 
 @router.get("/guilds/{guild_id}/automation/status")
 async def get_automation_status(guild_id: str) -> dict[str, Any]:
-    """Last welcome delivery attempt reported by the bot."""
+    """Last welcome / auto-role attempt reported by the bot."""
 
     redis_client = await get_redis()
 
     try:
-        raw = await redis_client.get(welcome_status_key(guild_id))
+        welcome_raw = await redis_client.get(welcome_status_key(guild_id))
+        autorole_raw = await redis_client.get(autorole_status_key(guild_id))
     finally:
         await redis_client.aclose()
 
-    if not raw:
-        return {"guild_id": guild_id, "welcome": None}
+    welcome = None
+    if welcome_raw:
+        try:
+            welcome = json.loads(welcome_raw)
+        except json.JSONDecodeError:
+            welcome = None
 
-    try:
-        status = json.loads(raw)
-    except json.JSONDecodeError:
-        status = None
+    autorole = None
+    if autorole_raw:
+        try:
+            autorole = json.loads(autorole_raw)
+        except json.JSONDecodeError:
+            autorole = None
 
-    return {"guild_id": guild_id, "welcome": status}
+    return {"guild_id": guild_id, "welcome": welcome, "autorole": autorole}
 
 
 @router.post("/guilds/{guild_id}/automation/test-welcome")

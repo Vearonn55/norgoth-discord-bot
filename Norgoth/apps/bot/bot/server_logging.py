@@ -32,7 +32,12 @@ CATEGORY_COLORS = {
     "thread": discord.Color.dark_teal(),
     "moderation": discord.Color.red(),
     "security": discord.Color.dark_red(),
+    "tickets": discord.Color.blurple(),
+    "invites": discord.Color.green(),
 }
+
+# Categories that should warn loudly when unrouted / undeliverable.
+_ROUTE_WARN_CATEGORIES = frozenset({"tickets", "invites"})
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "enabled": True,
@@ -140,6 +145,13 @@ class ServerLoggingCog(commands.Cog):
             )
 
         if not channel_ids:
+            logger.warning(
+                "log delivery failed class=unmapped guild_id=%s event_type=%s "
+                "category=%s channel_id=none",
+                guild.id,
+                event_type,
+                category,
+            )
             return False
 
         footer = f"Norgoth · {category} event"
@@ -149,19 +161,116 @@ class ServerLoggingCog(commands.Cog):
             title, description, color=color, fields=fields, footer=footer
         )
 
+        allowed = discord.AllowedMentions(everyone=False, roles=False, users=True)
         sent = False
         for channel_id in channel_ids:
-            channel = guild.get_channel(int(channel_id))
-            if not isinstance(channel, discord.TextChannel):
+            channel = await self._resolve_text_channel(
+                guild, channel_id, event_type=event_type
+            )
+            if channel is None:
                 continue
             try:
-                await channel.send(embed=embed)
+                await channel.send(embed=embed, allowed_mentions=allowed)
                 sent = True
-            except discord.HTTPException:
-                logger.exception(
-                    "Failed to post log embed to channel %s", channel_id
+            except discord.Forbidden as error:
+                logger.warning(
+                    "log delivery failed class=forbidden guild_id=%s "
+                    "event_type=%s channel_id=%s discord_status=%s discord_code=%s",
+                    guild.id,
+                    event_type,
+                    channel_id,
+                    getattr(error, "status", None),
+                    getattr(error, "code", None),
                 )
+            except discord.HTTPException as error:
+                logger.warning(
+                    "log delivery failed class=http guild_id=%s "
+                    "event_type=%s channel_id=%s discord_status=%s discord_code=%s",
+                    guild.id,
+                    event_type,
+                    channel_id,
+                    getattr(error, "status", None),
+                    getattr(error, "code", None),
+                )
+        if not sent and category in _ROUTE_WARN_CATEGORIES:
+            logger.warning(
+                "log delivery failed class=undelivered guild_id=%s "
+                "event_type=%s channel_ids=%s",
+                guild.id,
+                event_type,
+                sorted(channel_ids),
+            )
         return sent
+
+    async def _resolve_text_channel(
+        self,
+        guild: discord.Guild,
+        channel_id: str,
+        *,
+        event_type: str,
+    ) -> discord.TextChannel | None:
+        """Resolve a text channel by ID, fetching once on cache miss."""
+
+        channel: discord.abc.GuildChannel | discord.Thread | None
+        try:
+            cid = int(channel_id)
+        except (TypeError, ValueError):
+            logger.warning(
+                "log delivery failed class=missing_channel guild_id=%s "
+                "event_type=%s channel_id=%s reason=invalid_id",
+                guild.id,
+                event_type,
+                channel_id,
+            )
+            return None
+
+        channel = guild.get_channel(cid)
+        if channel is None:
+            try:
+                fetched = await guild.fetch_channel(cid)
+            except discord.NotFound:
+                logger.warning(
+                    "log delivery failed class=missing_channel guild_id=%s "
+                    "event_type=%s channel_id=%s reason=not_found",
+                    guild.id,
+                    event_type,
+                    channel_id,
+                )
+                return None
+            except discord.Forbidden:
+                logger.warning(
+                    "log delivery failed class=forbidden guild_id=%s "
+                    "event_type=%s channel_id=%s reason=fetch_forbidden",
+                    guild.id,
+                    event_type,
+                    channel_id,
+                )
+                return None
+            except discord.HTTPException as error:
+                logger.warning(
+                    "log delivery failed class=http guild_id=%s "
+                    "event_type=%s channel_id=%s reason=fetch "
+                    "discord_status=%s discord_code=%s",
+                    guild.id,
+                    event_type,
+                    channel_id,
+                    getattr(error, "status", None),
+                    getattr(error, "code", None),
+                )
+                return None
+            channel = fetched
+
+        if not isinstance(channel, discord.TextChannel):
+            logger.warning(
+                "log delivery failed class=missing_channel guild_id=%s "
+                "event_type=%s channel_id=%s reason=not_text_channel type=%s",
+                guild.id,
+                event_type,
+                channel_id,
+                type(channel).__name__,
+            )
+            return None
+        return channel
 
     def _legacy_channel_ids(
         self,
@@ -330,26 +439,34 @@ class ServerLoggingCog(commands.Cog):
             target_id=member.id,
         )
 
-        description = f"{member} ({member.id}) left the server."
         if actor_name:
-            description = (
-                f"{member} ({member.id}) was removed from the server "
-                f"(likely kicked by {actor_name})."
+            await self.record_event(
+                member.guild,
+                "member",
+                "Member kicked",
+                f"{member} ({member.id}) was kicked by {actor_name}.",
+                {
+                    "Member": f"{member} ({member.id})",
+                    "Roles": ", ".join(roles) if roles else "None",
+                    "Member count": str(member.guild.member_count),
+                },
+                event_type="member_kick",
+                actor_id=actor_id,
+                actor_name=actor_name,
             )
+            return
 
         await self.record_event(
             member.guild,
             "member",
             "Member left",
-            description,
+            f"{member} ({member.id}) left the server.",
             {
                 "Member": f"{member} ({member.id})",
                 "Roles": ", ".join(roles) if roles else "None",
                 "Member count": str(member.guild.member_count),
             },
             event_type="member_leave",
-            actor_id=actor_id,
-            actor_name=actor_name,
         )
 
     @commands.Cog.listener()
@@ -376,6 +493,22 @@ class ServerLoggingCog(commands.Cog):
                     "Until": after_timeout.strftime("%Y-%m-%d %H:%M UTC"),
                 },
                 event_type="member_timeout",
+                actor_id=actor_id,
+                actor_name=actor_name,
+            )
+        elif before_timeout is not None and after_timeout is None:
+            actor_id, actor_name = await self.resolve_audit_actor(
+                after.guild,
+                discord.AuditLogAction.member_update,
+                target_id=after.id,
+            )
+            await self.record_event(
+                after.guild,
+                "member",
+                "Timeout cleared",
+                f"{after.display_name}'s timeout was cleared.",
+                {"Member": f"{after} ({after.id})"},
+                event_type="member_timeout_clear",
                 actor_id=actor_id,
                 actor_name=actor_name,
             )
@@ -878,3 +1011,287 @@ class ServerLoggingCog(commands.Cog):
                 actor_id=str(member.id),
                 actor_name=str(member),
             )
+
+        if before.mute != after.mute:
+            await self.record_event(
+                member.guild,
+                "voice",
+                "Server mute toggled",
+                (
+                    f"{member.display_name} was "
+                    f"{'server-muted' if after.mute else 'server-unmuted'}."
+                ),
+                {
+                    "Member": f"{member} ({member.id})",
+                    "Muted": "yes" if after.mute else "no",
+                },
+                event_type="voice_server_mute",
+                actor_id=str(member.id),
+                actor_name=str(member),
+            )
+        if before.deaf != after.deaf:
+            await self.record_event(
+                member.guild,
+                "voice",
+                "Server deafen toggled",
+                (
+                    f"{member.display_name} was "
+                    f"{'server-deafened' if after.deaf else 'server-undeafened'}."
+                ),
+                {
+                    "Member": f"{member} ({member.id})",
+                    "Deafened": "yes" if after.deaf else "no",
+                },
+                event_type="voice_server_deafen",
+                actor_id=str(member.id),
+                actor_name=str(member),
+            )
+        if before.self_stream != after.self_stream or before.self_video != after.self_video:
+            await self.record_event(
+                member.guild,
+                "voice",
+                "Stream / camera toggled",
+                f"{member.display_name} updated stream/camera state.",
+                {
+                    "Member": f"{member} ({member.id})",
+                    "Streaming": "yes" if after.self_stream else "no",
+                    "Camera": "yes" if after.self_video else "no",
+                },
+                event_type="voice_stream",
+                actor_id=str(member.id),
+                actor_name=str(member),
+            )
+
+    @commands.Cog.listener()
+    async def on_raw_message_delete(
+        self, payload: discord.RawMessageDeleteEvent
+    ) -> None:
+        if payload.cached_message is not None:
+            return  # Handled by on_message_delete with richer content.
+        if payload.guild_id is None:
+            return
+        guild = self.bot.get_guild(payload.guild_id)
+        if guild is None:
+            return
+        channel = guild.get_channel(payload.channel_id)
+        channel_name = getattr(channel, "name", str(payload.channel_id))
+        await self.record_event(
+            guild,
+            "message",
+            "Message deleted (uncached)",
+            f"A message was deleted in #{channel_name} (content unavailable).",
+            {
+                "Message ID": str(payload.message_id),
+                "Channel": f"#{channel_name} ({payload.channel_id})",
+            },
+            event_type="message_delete_raw",
+        )
+
+    @commands.Cog.listener()
+    async def on_raw_reaction_add(
+        self, payload: discord.RawReactionActionEvent
+    ) -> None:
+        if payload.guild_id is None or payload.member is None or payload.member.bot:
+            return
+        guild = self.bot.get_guild(payload.guild_id)
+        if guild is None:
+            return
+        await self.record_event(
+            guild,
+            "message",
+            "Reaction added",
+            f"{payload.member.display_name} added {payload.emoji}.",
+            {
+                "Member": f"{payload.member} ({payload.user_id})",
+                "Emoji": str(payload.emoji),
+                "Message ID": str(payload.message_id),
+                "Channel ID": str(payload.channel_id),
+            },
+            event_type="message_reaction_add",
+            actor_id=str(payload.user_id),
+            actor_name=str(payload.member),
+        )
+
+    @commands.Cog.listener()
+    async def on_raw_reaction_remove(
+        self, payload: discord.RawReactionActionEvent
+    ) -> None:
+        if payload.guild_id is None:
+            return
+        guild = self.bot.get_guild(payload.guild_id)
+        if guild is None:
+            return
+        await self.record_event(
+            guild,
+            "message",
+            "Reaction removed",
+            f"A reaction {payload.emoji} was removed.",
+            {
+                "User ID": str(payload.user_id),
+                "Emoji": str(payload.emoji),
+                "Message ID": str(payload.message_id),
+                "Channel ID": str(payload.channel_id),
+            },
+            event_type="message_reaction_remove",
+            actor_id=str(payload.user_id),
+        )
+
+    @commands.Cog.listener()
+    async def on_guild_channel_pins_update(
+        self,
+        channel: discord.abc.GuildChannel,
+        last_pin: object | None,
+    ) -> None:
+        if not isinstance(channel, (discord.TextChannel, discord.Thread)):
+            return
+        await self.record_event(
+            channel.guild,
+            "channel",
+            "Channel pins updated",
+            f"Pins were updated in #{channel.name}.",
+            {
+                "Channel": f"#{channel.name} ({channel.id})",
+                "Last pin": str(last_pin) if last_pin else "—",
+            },
+            event_type="channel_pins_update",
+        )
+
+    @commands.Cog.listener()
+    async def on_guild_emojis_update(
+        self,
+        guild: discord.Guild,
+        before: list[discord.Emoji],
+        after: list[discord.Emoji],
+    ) -> None:
+        await self.record_event(
+            guild,
+            "server",
+            "Emojis updated",
+            f"Server emojis changed ({len(before)} → {len(after)}).",
+            {"Before": str(len(before)), "After": str(len(after))},
+            event_type="guild_emojis_update",
+        )
+
+    @commands.Cog.listener()
+    async def on_guild_stickers_update(
+        self,
+        guild: discord.Guild,
+        before: list[discord.GuildSticker],
+        after: list[discord.GuildSticker],
+    ) -> None:
+        await self.record_event(
+            guild,
+            "server",
+            "Stickers updated",
+            f"Server stickers changed ({len(before)} → {len(after)}).",
+            {"Before": str(len(before)), "After": str(len(after))},
+            event_type="guild_stickers_update",
+        )
+
+    @commands.Cog.listener()
+    async def on_webhooks_update(self, channel: discord.abc.GuildChannel) -> None:
+        await self.record_event(
+            channel.guild,
+            "server",
+            "Webhooks updated",
+            f"Webhooks changed in #{getattr(channel, 'name', channel.id)}.",
+            {"Channel": f"{getattr(channel, 'name', channel.id)} ({channel.id})"},
+            event_type="webhooks_update",
+        )
+
+    @commands.Cog.listener()
+    async def on_thread_member_join(self, member: discord.ThreadMember) -> None:
+        thread = member.thread
+        if thread is None or thread.guild is None:
+            return
+        user = thread.guild.get_member(member.id)
+        name = user.display_name if user else str(member.id)
+        await self.record_event(
+            thread.guild,
+            "thread",
+            "Member joined thread",
+            f"{name} joined thread **{thread.name}**.",
+            {
+                "Member": f"{name} ({member.id})",
+                "Thread": f"{thread.name} ({thread.id})",
+            },
+            event_type="thread_member_join",
+            actor_id=str(member.id),
+            actor_name=name,
+        )
+
+    @commands.Cog.listener()
+    async def on_thread_member_remove(self, member: discord.ThreadMember) -> None:
+        thread = member.thread
+        if thread is None or thread.guild is None:
+            return
+        await self.record_event(
+            thread.guild,
+            "thread",
+            "Member left thread",
+            f"Member {member.id} left thread **{thread.name}**.",
+            {
+                "Member ID": str(member.id),
+                "Thread": f"{thread.name} ({thread.id})",
+            },
+            event_type="thread_member_remove",
+            actor_id=str(member.id),
+        )
+
+    @commands.Cog.listener()
+    async def on_invite_create(self, invite: discord.Invite) -> None:
+        if invite.guild is None or not isinstance(invite.guild, discord.Guild):
+            return
+        await self.record_event(
+            invite.guild,
+            "invites",
+            "Invite created",
+            f"Invite `{invite.code}` was created.",
+            {
+                "Code": invite.code,
+                "Channel": str(getattr(invite.channel, "name", invite.channel_id)),
+                "Inviter": str(invite.inviter) if invite.inviter else "—",
+                "Max uses": str(invite.max_uses or "∞"),
+            },
+            event_type="invite_created",
+            actor_id=str(invite.inviter.id) if invite.inviter else None,
+            actor_name=str(invite.inviter) if invite.inviter else None,
+        )
+
+    @commands.Cog.listener()
+    async def on_invite_delete(self, invite: discord.Invite) -> None:
+        if invite.guild is None or not isinstance(invite.guild, discord.Guild):
+            return
+        await self.record_event(
+            invite.guild,
+            "invites",
+            "Invite deleted",
+            f"Invite `{invite.code}` was deleted.",
+            {
+                "Code": invite.code,
+                "Channel": str(getattr(invite.channel, "name", invite.channel_id)),
+            },
+            event_type="invite_deleted",
+        )
+
+    @commands.Cog.listener()
+    async def on_auto_moderation_action_execution(
+        self, execution: object
+    ) -> None:
+        guild = getattr(execution, "guild", None)
+        if guild is None:
+            return
+        await self.record_event(
+            guild,
+            "security",
+            "Discord AutoMod execution",
+            "Discord AutoMod took an action.",
+            {
+                "Rule ID": str(getattr(execution, "rule_id", "")),
+                "Action": str(getattr(getattr(execution, "action", None), "type", "")),
+                "User ID": str(getattr(execution, "user_id", "")),
+                "Channel ID": str(getattr(execution, "channel_id", None) or "—"),
+            },
+            event_type="discord_automod_execution",
+            actor_id=str(getattr(execution, "user_id", "") or "") or None,
+        )

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useParams } from "next/navigation";
 import { CAlert, CSpinner } from "@coreui/react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,8 +12,20 @@ import {
 } from "@/components/ui/date-range-filter";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import { useVerificationStore } from "@/stores/verification-store";
+import { formatDateTime } from "@/lib/datetime";
+
+type StatusFilter = "all" | "manual_review" | "success" | "failed";
+
+const STATUS_FILTERS: { id: StatusFilter; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "manual_review", label: "Manual review" },
+  { id: "success", label: "Allowed" },
+  { id: "failed", label: "Denied" },
+];
 
 export function VerificationLogsPanel() {
+  const params = useParams();
+  const lang = String(params?.lang || "en");
   const { guildId, loading: guildLoading, error: guildError } = useFirstGuild();
 
   const logs = useVerificationStore((s) => s.logs);
@@ -22,14 +35,21 @@ export function VerificationLogsPanel() {
   const setDateRange = useVerificationStore((s) => s.setDateRange);
   const loadLogs = useVerificationStore((s) => s.loadLogs);
 
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+
   useEffect(() => {
     if (!guildId) return;
     void loadLogs(guildId);
   }, [guildId, loadLogs]);
 
   const filteredLogs = useMemo(
-    () => logs.filter((log) => isInDateRange(log.created_at, dateRange)),
-    [logs, dateRange]
+    () =>
+      logs.filter(
+        (log) =>
+          isInDateRange(log.created_at, dateRange) &&
+          (statusFilter === "all" || log.status === statusFilter)
+      ),
+    [logs, dateRange, statusFilter]
   );
 
   if (guildLoading) {
@@ -60,7 +80,8 @@ export function VerificationLogsPanel() {
           <div>
             <h2 className="h5 mb-0 fw-semibold">Verification Log</h2>
             <p className="mt-1 mb-0 small text-body-secondary">
-              Latest verification attempts for this server.
+              Read-only history of verification attempts for this server. Use
+              Manual Verification to review pending members.
             </p>
           </div>
 
@@ -71,6 +92,19 @@ export function VerificationLogsPanel() {
           >
             Refresh
           </Button>
+        </div>
+
+        <div className="d-flex flex-wrap align-items-center gap-2">
+          {STATUS_FILTERS.map((filter) => (
+            <Button
+              key={filter.id}
+              variant={statusFilter === filter.id ? "primary" : "secondary"}
+              size="sm"
+              onClick={() => setStatusFilter(filter.id)}
+            >
+              {filter.label}
+            </Button>
+          ))}
         </div>
 
         <DateRangePicker value={dateRange} onChange={setDateRange} />
@@ -85,11 +119,11 @@ export function VerificationLogsPanel() {
             {error}
           </CAlert>
         ) : filteredLogs.length === 0 ? (
-          <CAlert color="secondary" className="mb-0">
+          <div className="border rounded px-3 py-4 small text-body-secondary">
             {logs.length === 0
-              ? "No verification attempts yet. Share the verification link from Settings → Guild Configuration."
+              ? "No verification attempts yet. Open Verification Settings to copy the verification link or publish the Discord verify panel."
               : "No verification attempts in this date range."}
-          </CAlert>
+          </div>
         ) : (
           <div className="d-flex flex-column gap-2">
             {filteredLogs.map((log) => (
@@ -99,9 +133,19 @@ export function VerificationLogsPanel() {
               >
                 <div className="d-flex align-items-center gap-2 flex-wrap">
                   <Badge
-                    variant={log.status === "success" ? "success" : "danger"}
+                    variant={
+                      log.status === "success"
+                        ? "success"
+                        : log.status === "manual_review"
+                          ? "warning"
+                          : "danger"
+                    }
                   >
-                    {log.status === "success" ? "Allowed" : "Denied"}
+                    {log.status === "success"
+                      ? "Allowed"
+                      : log.status === "manual_review"
+                        ? "Manual review"
+                        : "Denied"}
                   </Badge>
                   <span className="font-monospace small">
                     {log.discord_user_id}
@@ -120,10 +164,18 @@ export function VerificationLogsPanel() {
                   {log.shared_ip_detected && (
                     <Badge variant="warning">Shared IP</Badge>
                   )}
-                  {log.blacklisted_guild_detected && (
-                    <Badge variant="warning">Blacklisted guild</Badge>
+                  {log.high_risk_guild_detected && (
+                    <Badge variant="warning">High risk server</Badge>
                   )}
-                  <span>{new Date(log.created_at).toLocaleString()}</span>
+                  {log.reviewed_by ? (
+                    <span title={`Reviewed by ${log.reviewed_by}`}>
+                      reviewed{" "}
+                      {log.reviewed_at
+                        ? formatDateTime(log.reviewed_at, lang)
+                        : ""}
+                    </span>
+                  ) : null}
+                  <span>{formatDateTime(log.created_at, lang)}</span>
                 </div>
               </div>
             ))}

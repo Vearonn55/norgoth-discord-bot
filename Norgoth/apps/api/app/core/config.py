@@ -106,6 +106,13 @@ class Settings:
     public_api_url: str | None = None
     upload_dir: str = "var/uploads"
     max_upload_bytes: int = 8 * 1024 * 1024
+    media_storage_backend: str = "local"
+    aws_region: str | None = None
+    aws_access_key_id: str | None = None
+    aws_secret_access_key: str | None = None
+    aws_s3_bucket_name: str | None = None
+    aws_s3_endpoint_url: str | None = None
+    aws_s3_public_base_url: str | None = None
 
     @classmethod
     def from_environment(cls) -> Settings:
@@ -265,6 +272,15 @@ class Settings:
                 "NORGOTH_MAX_UPLOAD_BYTES",
                 default=8 * 1024 * 1024,
             ),
+            media_storage_backend=(
+                _read_optional_string("NORGOTH_MEDIA_STORAGE_BACKEND") or "local"
+            ).lower(),
+            aws_region=_read_optional_string("AWS_REGION"),
+            aws_access_key_id=_read_optional_string("AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key=_read_optional_string("AWS_SECRET_ACCESS_KEY"),
+            aws_s3_bucket_name=_read_optional_string("AWS_S3_BUCKET_NAME"),
+            aws_s3_endpoint_url=_read_optional_string("AWS_S3_ENDPOINT_URL"),
+            aws_s3_public_base_url=_read_optional_string("AWS_S3_PUBLIC_BASE_URL"),
         )
 
 
