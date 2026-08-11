@@ -3,15 +3,12 @@
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import cast
 
-from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
 from app.api.v1.router import api_router  # noqa: E402
 from app.core.config import Settings, get_settings  # noqa: E402
