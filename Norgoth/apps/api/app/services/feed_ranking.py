@@ -345,13 +345,17 @@ def window_bounds(
     return start, end
 
 
-def windows_for_timestamp(created_at: datetime) -> list[FeedWindow]:
+def windows_for_timestamp(
+    created_at: datetime,
+    *,
+    now: datetime | None = None,
+) -> list[FeedWindow]:
     """Windows that currently include ``created_at`` (UTC calendar)."""
 
-    now = datetime.now(timezone.utc)
+    current = now or datetime.now(timezone.utc)
     included: list[FeedWindow] = ["all_time"]
     for window in ("daily", "weekly", "monthly"):
-        start, end = window_bounds(window, now=now)
+        start, end = window_bounds(window, now=current)
         assert start is not None and end is not None
         ts = created_at
         if ts.tzinfo is None:

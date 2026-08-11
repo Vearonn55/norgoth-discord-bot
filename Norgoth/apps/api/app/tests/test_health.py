@@ -2,11 +2,14 @@
 
 from fastapi.testclient import TestClient
 
+from app.core.config import get_settings
 from app.main import app
 
 
 def test_health_endpoint_returns_application_status() -> None:
     """The liveness endpoint should return stable application metadata."""
+
+    settings = get_settings()
 
     with TestClient(app) as client:
         response = client.get("/api/v1/health")
@@ -16,7 +19,7 @@ def test_health_endpoint_returns_application_status() -> None:
         "status": "ok",
         "service": "Norgoth Verification API",
         "version": "0.1.0",
-        "environment": "development",
+        "environment": settings.environment,
     }
 
 

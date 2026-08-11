@@ -145,15 +145,15 @@ def test_window_bounds_utc_calendar() -> None:
 
 def test_windows_for_timestamp_includes_matching() -> None:
     now = datetime(2026, 8, 10, 12, 0, tzinfo=timezone.utc)
-    # Freeze "now" by using a message inside today.
-    included = windows_for_timestamp(now)
+    # Freeze calendar "now" so the fixture date stays inside daily/weekly/monthly.
+    included = windows_for_timestamp(now, now=now)
     assert "all_time" in included
     assert "daily" in included
     assert "weekly" in included
     assert "monthly" in included
 
     old = datetime(2020, 1, 1, tzinfo=timezone.utc)
-    old_windows = windows_for_timestamp(old)
+    old_windows = windows_for_timestamp(old, now=now)
     assert old_windows == ["all_time"]
 
 
