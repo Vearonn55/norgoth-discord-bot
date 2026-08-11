@@ -26,13 +26,27 @@ esac
 check() {
   local name="$1"
   local url="$2"
-  echo -n "Checking ${name}: ${url} … "
-  if curl -fsS --max-time 20 "${url}" >/dev/null; then
-    echo "ok"
-  else
-    echo "FAIL"
-    return 1
-  fi
+  local attempts=12
+  local delay=5
+  local attempt
+
+  for attempt in $(seq 1 "${attempts}"); do
+    echo -n "Checking ${name}: ${url} (${attempt}/${attempts}) … "
+
+    if curl -fsS --max-time 20 "${url}" >/dev/null; then
+      echo "ok"
+      return 0
+    fi
+
+    echo "not ready"
+
+    if [[ "${attempt}" -lt "${attempts}" ]]; then
+      sleep "${delay}"
+    fi
+  done
+
+  echo "FAIL: ${name} did not become ready after ${attempts} attempts."
+  return 1
 }
 
 # Prefer public URLs; fall back to loopback during early bring-up.
