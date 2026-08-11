@@ -1,6 +1,6 @@
 # Deployment Runbook — NorBot
 
-<!-- ci-cd smoke: 2026-08-11b -->
+<!-- ci-cd smoke: 2026-08-11c -->
 
 ## Layout on the VDS
 
