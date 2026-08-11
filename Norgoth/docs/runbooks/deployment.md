@@ -14,7 +14,9 @@
 ## First-time bring-up
 
 1. Run `scripts/vds/bootstrap.sh` as root.
-2. Run `scripts/vds/setup-firewall.sh`.
+2. Run `scripts/vds/setup-firewall.sh` (defaults to SSH port **35342**;
+   override with `SSH_PORT=...` if needed). Keep your current SSH session open
+   and verify a second login before closing it.
 3. Sync `Norgoth/deploy/` → `/opt/norbot/deploy/` and docker scripts → `/opt/norbot/scripts/`.
 4. Create `/opt/norbot/env/production.env` and `test.env` from the examples.
 5. Install Nginx configs from `deploy/nginx/` and run `scripts/vds/install-certbot.sh`.
