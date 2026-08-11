@@ -15,9 +15,11 @@ ENV_NAME="${1:-production}"
 
 case "${ENV_NAME}" in
   production)
+    ENV_FILE="/opt/norbot/env/production.env"
     COMPOSE_FILES=(-f "${DEPLOY_DIR}/compose.yml" -f "${DEPLOY_DIR}/compose.production.yml")
     ;;
   test)
+    ENV_FILE="/opt/norbot/env/test.env"
     COMPOSE_FILES=(-f "${DEPLOY_DIR}/compose.yml" -f "${DEPLOY_DIR}/compose.test.yml")
     ;;
   *)
@@ -30,6 +32,6 @@ esac
 : "${NORBOT_API_IMAGE:?NORBOT_API_IMAGE is required}"
 
 echo "Running alembic upgrade head (${ENV_NAME}) with tag ${NORBOT_IMAGE_TAG}…"
-docker compose "${COMPOSE_FILES[@]}" run --rm --no-deps api \
+docker compose --env-file "${ENV_FILE}" "${COMPOSE_FILES[@]}" run --rm --no-deps api \
   python -m alembic upgrade head
 echo "Migrations complete."
