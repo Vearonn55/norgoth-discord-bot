@@ -9,7 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "postinstall": "rm -rf public/tinymce && cp -R node_modules/tinymce public/tinymce"
+    "postinstall": "mkdir -p public && rm -rf public/tinymce && cp -R node_modules/tinymce public/tinymce"
   },
   "dependencies": {
     "@coreui/coreui": "^5.9.0",
