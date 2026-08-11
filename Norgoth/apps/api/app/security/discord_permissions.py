@@ -7,8 +7,11 @@ from urllib.parse import urlencode
 ADMINISTRATOR = 1 << 3  # 0x8
 MANAGE_GUILD = 1 << 5  # 0x20
 
-DISCORD_OAUTH_AUTHORIZE_URL = "https://discord.com/api/oauth2/authorize"
+# Match Discord Developer Portal Guild Install links (not /api/oauth2).
+DISCORD_OAUTH_AUTHORIZE_URL = "https://discord.com/oauth2/authorize"
 BOT_INSTALL_SCOPES = "bot applications.commands"
+# Discord install contexts: 0 = Guild Install, 1 = User Install.
+DISCORD_INTEGRATION_TYPE_GUILD = "0"
 
 
 def can_manage_guild(*, owner: bool, permissions: str | int) -> bool:
@@ -54,7 +57,9 @@ def build_bot_invite_url(
 ) -> str:
     """Build a simple Discord Guild Install URL (not login OAuth).
 
-    Uses ``bot`` + ``applications.commands`` only — no ``response_type=code``.
+    Mirrors the Developer Portal generator for Guild Install:
+    ``bot`` + ``applications.commands`` + ``integration_type=0``,
+    with no ``response_type`` / ``redirect_uri``.
     When ``guild_id`` is set, Discord preselects that guild and
     ``disable_guild_select=true`` locks the picker.
     """
@@ -62,6 +67,7 @@ def build_bot_invite_url(
     params: dict[str, str] = {
         "client_id": client_id,
         "permissions": str(permissions),
+        "integration_type": DISCORD_INTEGRATION_TYPE_GUILD,
         "scope": BOT_INSTALL_SCOPES,
     }
     if guild_id:
@@ -75,6 +81,7 @@ __all__ = [
     "MANAGE_GUILD",
     "BOT_INSTALL_SCOPES",
     "BOT_INVITE_PERMISSIONS_MINIMAL",
+    "DISCORD_INTEGRATION_TYPE_GUILD",
     "build_bot_invite_url",
     "can_manage_guild",
 ]

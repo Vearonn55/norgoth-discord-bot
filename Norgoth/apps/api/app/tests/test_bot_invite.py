@@ -31,16 +31,17 @@ def test_build_bot_invite_url_without_guild() -> None:
 
     assert (
         f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
-        == "https://discord.com/api/oauth2/authorize"
+        == "https://discord.com/oauth2/authorize"
     )
     assert query["client_id"] == [APP_ID]
     assert query["permissions"] == [str(BOT_INVITE_PERMISSIONS_MINIMAL)]
+    assert query["integration_type"] == ["0"]
     assert query["scope"] == [BOT_INSTALL_SCOPES]
     assert "response_type" not in query
+    assert "redirect_uri" not in query
     assert "guild_id" not in query
     assert "disable_guild_select" not in query
     assert "client_secret" not in query
-    assert "redirect_uri" not in query
 
 
 def test_build_bot_invite_url_with_guild_preselect() -> None:
@@ -49,8 +50,10 @@ def test_build_bot_invite_url_with_guild_preselect() -> None:
 
     assert query["guild_id"] == [GUILD_A]
     assert query["disable_guild_select"] == ["true"]
+    assert query["integration_type"] == ["0"]
     assert query["scope"] == [BOT_INSTALL_SCOPES]
     assert "response_type" not in query
+    assert "redirect_uri" not in query
 
 
 def _operator(user_id: str = "42") -> OperatorSession:
