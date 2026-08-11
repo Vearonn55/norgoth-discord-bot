@@ -17,7 +17,13 @@ import httpx
 from dotenv import load_dotenv
 from sqlalchemy import or_, select
 
-load_dotenv(Path(__file__).resolve().parents[4] / ".env")
+# Local monorepo: Norgoth/apps/api/app/workers/… -> parents[4] == Norgoth/
+# Docker image layout is shallower (/app/app/workers/…); compose injects env.
+_here = Path(__file__).resolve()
+if len(_here.parents) > 4:
+    load_dotenv(_here.parents[4] / ".env")
+load_dotenv()
+
 
 from app.core.config import get_settings  # noqa: E402
 from app.db.session import get_session_factory  # noqa: E402

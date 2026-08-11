@@ -39,7 +39,13 @@ from app.services.template_variables import (
     resolve_user_name_from_recipient,
 )
 
-load_dotenv(Path(__file__).resolve().parents[4] / ".env")
+# Local monorepo: Norgoth/apps/api/app/workers/… -> parents[4] == Norgoth/
+# Docker image layout is shallower (/app/app/workers/…); compose injects env.
+_here = Path(__file__).resolve()
+if len(_here.parents) > 4:
+    load_dotenv(_here.parents[4] / ".env")
+load_dotenv()
+
 
 DISCORD_API_BASE_URL = "https://discord.com/api/v10"
 DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "").strip()

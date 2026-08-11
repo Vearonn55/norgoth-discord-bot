@@ -1,4 +1,4 @@
-"""Bot configuration loaded from the product-level .env file."""
+"""Bot configuration loaded from environment (and optional local .env)."""
 
 from __future__ import annotations
 
@@ -8,8 +8,15 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Norgoth/.env is two levels above apps/bot/.
-PRODUCT_ROOT = Path(__file__).resolve().parents[3]
+
+def _load_local_dotenv() -> None:
+    """Load Norgoth/.env in monorepo checkouts; no-op in shallow Docker layouts."""
+
+    here = Path(__file__).resolve()
+    # Local: Norgoth/apps/bot/bot/config.py -> parents[3] == Norgoth/
+    if len(here.parents) > 3:
+        load_dotenv(here.parents[3] / ".env")
+    load_dotenv()
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,14 +28,14 @@ class BotSettings:
 
     @classmethod
     def from_environment(cls) -> "BotSettings":
-        load_dotenv(PRODUCT_ROOT / ".env")
+        _load_local_dotenv()
 
         token = os.getenv("DISCORD_BOT_TOKEN", "").strip()
 
         if not token:
             raise RuntimeError(
                 "DISCORD_BOT_TOKEN is not set. Add it to Norgoth/.env "
-                "(see Norgoth/.env.example)."
+                "(see Norgoth/.env.example) or the container env file."
             )
 
         raw_application_id = os.getenv("DISCORD_APPLICATION_ID", "").strip()
