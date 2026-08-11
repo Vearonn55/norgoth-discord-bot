@@ -23,8 +23,34 @@
 4. Create `/opt/norbot/env/production.env` and `test.env` from the examples.
 5. Install Nginx configs from `deploy/nginx/` and run `scripts/vds/install-certbot.sh`.
 6. Create GitHub Environments `test` and `production` with secrets:
-   - `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`
+   - `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_PORT`
+   - `DEPLOY_PORT` must match the VDS SSH listen port (default **35342** from
+     `setup-firewall.sh`). Required for **both** environments — without it,
+     deploy-test defaults to port 22 and times out.
 7. Push to `test` to trigger staging deploy; promote via PR into `main` for production.
+
+## After deploy: bot online check
+
+Smoke requires `GET {local-api}/bot/health`. If Discord still shows the bot
+offline after a green deploy:
+
+```bash
+docker compose --env-file /opt/norbot/env/production.env \
+  -f /opt/norbot/deploy/compose.yml \
+  -f /opt/norbot/deploy/compose.production.yml \
+  ps bot
+
+docker compose --env-file /opt/norbot/env/production.env \
+  -f /opt/norbot/deploy/compose.yml \
+  -f /opt/norbot/deploy/compose.production.yml \
+  logs bot --tail 100
+```
+
+Confirm `DISCORD_BOT_TOKEN` in `/opt/norbot/env/production.env` matches the
+Developer Portal bot for the live Application ID. Look for `Bot ready` in logs.
+
+Keep `/opt/norbot/scripts/` in sync with `Norgoth/scripts/docker/` (including
+`smoke-check.sh`) when changing deploy scripts — Actions call the VDS copies.
 
 ## Normal production deploy
 

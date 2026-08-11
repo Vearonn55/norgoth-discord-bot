@@ -102,7 +102,10 @@ export function FeedChannelsPanel() {
   const [countdownMs, setCountdownMs] = useState(0);
   const [countdownReady, setCountdownReady] = useState(false);
   const intervalDraftRef = useRef(intervalDraft);
-  intervalDraftRef.current = intervalDraft;
+
+  useEffect(() => {
+    intervalDraftRef.current = intervalDraft;
+  }, [intervalDraft]);
 
   // Canonical backend schedule only — never invent from slider draft.
   const countdownSnapshot = useMemo(
@@ -112,7 +115,8 @@ export function FeedChannelsPanel() {
             remainingSeconds: status.remaining_seconds ?? null,
             serverTime: status.server_time ?? null,
             nextRefreshAt: status.next_refresh_at ?? null,
-            receivedAt: status.countdown_received_at ?? Date.now(),
+            // Store stamps countdown_received_at on fetch; 0 means "no skew adjust".
+            receivedAt: status.countdown_received_at ?? 0,
           }
         : null,
     [status]

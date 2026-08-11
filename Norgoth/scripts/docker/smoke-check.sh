@@ -49,6 +49,34 @@ check() {
   return 1
 }
 
+# /bot/health returns HTTP 200 even when connected=false — require connected:true.
+check_bot_connected() {
+  local url="$1"
+  local attempts=12
+  local delay=5
+  local attempt
+  local body
+
+  for attempt in $(seq 1 "${attempts}"); do
+    echo -n "Checking bot connected: ${url} (${attempt}/${attempts}) … "
+
+    if body="$(curl -fsS --max-time 20 "${url}" 2>/dev/null)" \
+      && printf '%s' "${body}" | python3 -c 'import json,sys; raise SystemExit(0 if json.load(sys.stdin).get("connected") is True else 1)'; then
+      echo "ok"
+      return 0
+    fi
+
+    echo "not ready"
+
+    if [[ "${attempt}" -lt "${attempts}" ]]; then
+      sleep "${delay}"
+    fi
+  done
+
+  echo "FAIL: bot did not report connected=true after ${attempts} attempts."
+  return 1
+}
+
 # Prefer public URLs; fall back to loopback during early bring-up.
 if ! check "web" "${WEB_URL}/api/health"; then
   check "web-local" "${LOCAL_WEB}/api/health"
@@ -58,9 +86,10 @@ if ! check "api" "${API_URL}/api/v1/health"; then
   check "api-local" "${LOCAL_API}/api/v1/health"
 fi
 
-# Optional bot/worker heartbeats (best-effort).
-curl -fsS --max-time 10 "${LOCAL_API}/bot/health" >/dev/null 2>&1 \
-  && echo "bot health: ok" || echo "bot health: skipped/unavailable"
+# Bot must be gateway-connected (Redis heartbeat). Fail deploy otherwise.
+check_bot_connected "${LOCAL_API}/bot/health"
+
+# Campaign worker remains best-effort (may be scaled down in some envs).
 curl -fsS --max-time 10 "${LOCAL_API}/campaigns/worker/health" >/dev/null 2>&1 \
   && echo "campaign worker health: ok" || echo "campaign worker health: skipped/unavailable"
 

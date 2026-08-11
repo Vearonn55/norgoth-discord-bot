@@ -60,10 +60,7 @@ export function ServerSelector() {
   }, [lang, router]);
 
   async function openServer(server: ServerItem) {
-    if (!server.bot_installed) {
-      window.location.href = botInviteHref(server.id);
-      return;
-    }
+    if (!server.bot_installed) return;
     const guild: SelectedGuild = {
       id: server.id,
       name: server.name,
