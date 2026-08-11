@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { defaultLocale, locales, type Locale } from "@/i18n/config";
+import { dashboardUrl, getDashboardOrigin } from "@/lib/dashboard-origin";
 
 const PUBLIC_SUFFIXES = ["", "/login", "/auth/complete"];
 
@@ -32,6 +33,14 @@ function isLocaleExemptPath(pathname: string): boolean {
   );
 }
 
+/** Rewrite nextUrl to the trusted public origin before absolute redirects. */
+function applyPublicOrigin(request: NextRequest): void {
+  const origin = new URL(getDashboardOrigin(request.url));
+  request.nextUrl.protocol = origin.protocol;
+  request.nextUrl.hostname = origin.hostname;
+  request.nextUrl.port = origin.port;
+}
+
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -46,6 +55,7 @@ export function proxy(request: NextRequest) {
 
   if (!pathnameHasLocale) {
     const locale = getLocaleFromRequest(request);
+    applyPublicOrigin(request);
     request.nextUrl.pathname = `/${locale}${pathname}`;
     return NextResponse.redirect(request.nextUrl);
   }
@@ -55,10 +65,9 @@ export function proxy(request: NextRequest) {
 
   if (authEnforced && !session && !isPublicPath(pathname)) {
     const lang = pathname.split("/").filter(Boolean)[0] || defaultLocale;
-    const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = `/${lang}/login`;
-    loginUrl.search = "";
-    return NextResponse.redirect(loginUrl);
+    return NextResponse.redirect(
+      dashboardUrl(`/${lang}/login`, request.url),
+    );
   }
 
   return NextResponse.next();

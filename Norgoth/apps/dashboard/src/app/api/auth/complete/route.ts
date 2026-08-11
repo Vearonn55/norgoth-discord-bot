@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { dashboardUrl } from "@/lib/dashboard-origin";
 
 const COOKIE_NAME = "norgoth_session";
 
@@ -7,7 +8,9 @@ export async function GET(request: NextRequest) {
   const lang = request.nextUrl.searchParams.get("lang") || "en";
 
   if (!code) {
-    return NextResponse.redirect(new URL(`/${lang}/login?error=missing_code`, request.url));
+    return NextResponse.redirect(
+      dashboardUrl(`/${lang}/login?error=missing_code`, request.url),
+    );
   }
 
   const apiOrigin =
@@ -21,7 +24,9 @@ export async function GET(request: NextRequest) {
   });
 
   if (!exchange.ok) {
-    return NextResponse.redirect(new URL(`/${lang}/login?error=exchange`, request.url));
+    return NextResponse.redirect(
+      dashboardUrl(`/${lang}/login?error=exchange`, request.url),
+    );
   }
 
   // Prefer session id from API Set-Cookie if present; else from body.
@@ -42,10 +47,14 @@ export async function GET(request: NextRequest) {
   }
 
   if (!sessionId) {
-    return NextResponse.redirect(new URL(`/${lang}/login?error=session`, request.url));
+    return NextResponse.redirect(
+      dashboardUrl(`/${lang}/login?error=session`, request.url),
+    );
   }
 
-  const response = NextResponse.redirect(new URL(`/${lang}/servers`, request.url));
+  const response = NextResponse.redirect(
+    dashboardUrl(`/${lang}/servers`, request.url),
+  );
   response.cookies.set({
     name: COOKIE_NAME,
     value: sessionId,
