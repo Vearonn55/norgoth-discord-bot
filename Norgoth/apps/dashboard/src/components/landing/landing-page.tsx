@@ -5,6 +5,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { CAlert, CContainer } from "@coreui/react";
 import { Button } from "@/components/ui/button";
 import { browserApiUrl } from "@/lib/api";
+import { botInviteHref } from "@/lib/bot-invite";
 
 const FEATURE_CATEGORIES = [
   {
@@ -60,7 +61,7 @@ export function LandingPage() {
         `/api/v1/oauth/discord/dashboard/authorize?lang=${encodeURIComponent(lang)}`
       );
 
-  const addBotHref = browserApiUrl(`/api/v1/oauth/discord/bot-invite`);
+  const addBotHref = botInviteHref();
 
   return (
     <>

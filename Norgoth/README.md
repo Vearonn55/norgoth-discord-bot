@@ -64,13 +64,19 @@ in Redis, a discord.py cog, FastAPI routes, and a dashboard page:
 1. Create the application/bot in the Discord Developer Portal; enable the
    **Server Members** and **Message Content** privileged intents (the latter
    is required for auto-moderation, auto-responses, and leveling).
-2. Invite the bot with: Manage Roles, Kick, Ban, Moderate Members,
+2. On the **Bot** tab, leave **Requires OAuth2 Code Grant** **OFF**. NorBot
+   uses a simple Guild Install (`bot` + `applications.commands`) via
+   `/api/v1/oauth/discord/bot-invite`. That toggle must stay off unless you
+   implement a full install-time code-grant exchange (NorBot does not).
+   Login OAuth (`identify` + `guilds`) is a separate flow and does not need
+   this setting.
+3. Invite the bot with: Manage Roles, Kick, Ban, Moderate Members,
    Send Messages, Manage Messages, Manage Channels (tickets),
    Manage Server (invite tracking), View Channels.
-3. Keep the bot's role **above** the verified/auto/reward roles.
-4. Register the OAuth redirect:
+4. Keep the bot's role **above** the verified/auto/reward roles.
+5. Register the OAuth redirect:
    `http://127.0.0.1:8000/api/v1/oauth/discord/callback`
-5. Auto-mod testing tip: staff with Manage Messages are exempt by default.
+6. Auto-mod testing tip: staff with Manage Messages are exempt by default.
    Turn off **Exempt Manage Messages** in Auto-Moderation (or test with a
    non-privileged account). Save config before expecting rules to fire;
    master enabled defaults off until saved.

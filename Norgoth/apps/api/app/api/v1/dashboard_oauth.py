@@ -6,26 +6,31 @@ import logging
 from typing import Annotated
 from urllib.parse import urlencode
 
-import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
 
 from app.api.v1.dependencies import (
     DiscordOAuthClientDependency,
     DiscordOAuthStateServiceDependency,
+    HTTPClientDependency,
     SettingsDependency,
-    get_http_client,
+    _require_discord_oauth_settings,
+)
+from app.api.v1.dependencies_auth import (
+    OptionalOperatorSessionDependency,
+    get_session_service,
 )
 from app.integrations.discord.oauth import DiscordOAuthClient, DiscordOAuthError
-from app.security.discord_permissions import BOT_INVITE_PERMISSIONS_MINIMAL
+from app.security.discord_permissions import (
+    build_bot_invite_url,
+    can_manage_guild,
+)
 from app.security.oauth_state import DiscordOAuthStateService, InvalidOAuthStateError
 from app.security.session import SessionService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/oauth/discord", tags=["dashboard-oauth"])
-
-HTTPClientDependency = Annotated[httpx.AsyncClient, Depends(get_http_client)]
 
 
 @router.get("/dashboard/authorize")
@@ -136,19 +141,78 @@ async def dashboard_callback(
 
 
 @router.get("/bot-invite")
-async def bot_invite(settings: SettingsDependency) -> RedirectResponse:
+async def bot_invite(
+    settings: SettingsDependency,
+    session: OptionalOperatorSessionDependency,
+    http_client: HTTPClientDependency,
+    guild_id: Annotated[str | None, Query(pattern=r"^[0-9]{5,25}$")] = None,
+) -> RedirectResponse:
+    """Redirect to Discord Guild Install (bot + applications.commands).
+
+    Optional ``guild_id`` preselects that server. When provided, the caller
+    must be an authenticated operator who can manage that guild.
+    """
+
     app_id = settings.discord_application_id or settings.discord_client_id
     if not app_id:
-        raise HTTPException(status_code=503, detail="Discord application ID is not configured.")
+        raise HTTPException(
+            status_code=503,
+            detail="Discord application ID is not configured.",
+        )
 
-    query = urlencode(
-        {
-            "client_id": app_id,
-            "permissions": str(BOT_INVITE_PERMISSIONS_MINIMAL),
-            "scope": "bot applications.commands",
-        }
-    )
+    resolved_guild_id: str | None = None
+    if guild_id:
+        if session is None:
+            if settings.auth_enforced:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Authentication required.",
+                )
+            # Soft-auth local/dev: allow guild preselect without Discord
+            # membership verification (no operator token available).
+            resolved_guild_id = guild_id
+        elif not settings.auth_enforced and session.user_id == "0":
+            resolved_guild_id = guild_id
+        else:
+            sessions = get_session_service()
+            token = await sessions.get_access_token(session.user_id)
+            if not token:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Session token expired. Please sign in again.",
+                )
+            client_id, client_secret, redirect_uri = _require_discord_oauth_settings(
+                settings
+            )
+            oauth_client = DiscordOAuthClient(
+                client_id=client_id,
+                client_secret=client_secret,
+                redirect_uri=redirect_uri,
+                http_client=http_client,
+            )
+            try:
+                user_guilds = await oauth_client.get_current_user_guilds(
+                    access_token=token
+                )
+            except DiscordOAuthError as error:
+                raise HTTPException(
+                    status_code=502,
+                    detail="Could not verify guild permissions.",
+                ) from error
+
+            match = next((g for g in user_guilds if g.id == guild_id), None)
+            if match is None or not can_manage_guild(
+                owner=match.owner,
+                permissions=match.permissions,
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You do not have permission to add NorBot to this guild.",
+                )
+            resolved_guild_id = guild_id
+
+    url = build_bot_invite_url(client_id=app_id, guild_id=resolved_guild_id)
     return RedirectResponse(
-        url=f"https://discord.com/api/oauth2/authorize?{query}",
+        url=url,
         status_code=status.HTTP_307_TEMPORARY_REDIRECT,
     )

@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { CContainer, CSpinner } from "@coreui/react";
-import { apiUrl, browserApiUrl } from "@/lib/api";
+import { apiUrl } from "@/lib/api";
+import { botInviteHref } from "@/lib/bot-invite";
 import { useGuildStore, type SelectedGuild } from "@/stores/guild-store";
 import { Button } from "@/components/ui/button";
 
@@ -59,7 +60,10 @@ export function ServerSelector() {
   }, [lang, router]);
 
   async function openServer(server: ServerItem) {
-    if (!server.bot_installed) return;
+    if (!server.bot_installed) {
+      window.location.href = botInviteHref(server.id);
+      return;
+    }
     const guild: SelectedGuild = {
       id: server.id,
       name: server.name,
@@ -70,7 +74,7 @@ export function ServerSelector() {
     router.push(`/${lang}/dashboard`);
   }
 
-  const addBotHref = browserApiUrl("/api/v1/oauth/discord/bot-invite");
+  const addBotHref = botInviteHref();
 
   return (
     <CContainer
@@ -112,8 +116,7 @@ export function ServerSelector() {
                 <button
                   type="button"
                   className="norgoth-section-card norgoth-section-card-primary norgoth-card-interactive text-start d-flex flex-column gap-3 p-3 border-0 w-100 h-100"
-                  onClick={() => openServer(server)}
-                  disabled={!server.bot_installed}
+                  onClick={() => void openServer(server)}
                   style={{ opacity: server.bot_installed ? 1 : 0.85 }}
                 >
                   <span className="d-flex align-items-center gap-3 w-100">
@@ -154,7 +157,7 @@ export function ServerSelector() {
                       <span className="small">Open →</span>
                     ) : (
                       <a
-                        href={addBotHref}
+                        href={botInviteHref(server.id)}
                         className="btn btn-sm btn-primary"
                         onClick={(e) => e.stopPropagation()}
                       >

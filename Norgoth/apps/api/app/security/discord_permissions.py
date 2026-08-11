@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+from urllib.parse import urlencode
+
 ADMINISTRATOR = 1 << 3  # 0x8
 MANAGE_GUILD = 1 << 5  # 0x20
+
+DISCORD_OAUTH_AUTHORIZE_URL = "https://discord.com/api/oauth2/authorize"
+BOT_INSTALL_SCOPES = "bot applications.commands"
 
 
 def can_manage_guild(*, owner: bool, permissions: str | int) -> bool:
@@ -41,9 +46,35 @@ BOT_INVITE_PERMISSIONS_MINIMAL = (
 )
 
 
+def build_bot_invite_url(
+    *,
+    client_id: str,
+    permissions: int = BOT_INVITE_PERMISSIONS_MINIMAL,
+    guild_id: str | None = None,
+) -> str:
+    """Build a simple Discord Guild Install URL (not login OAuth).
+
+    Uses ``bot`` + ``applications.commands`` only — no ``response_type=code``.
+    When ``guild_id`` is set, Discord preselects that guild and
+    ``disable_guild_select=true`` locks the picker.
+    """
+
+    params: dict[str, str] = {
+        "client_id": client_id,
+        "permissions": str(permissions),
+        "scope": BOT_INSTALL_SCOPES,
+    }
+    if guild_id:
+        params["guild_id"] = guild_id
+        params["disable_guild_select"] = "true"
+    return f"{DISCORD_OAUTH_AUTHORIZE_URL}?{urlencode(params)}"
+
+
 __all__ = [
     "ADMINISTRATOR",
     "MANAGE_GUILD",
+    "BOT_INSTALL_SCOPES",
     "BOT_INVITE_PERMISSIONS_MINIMAL",
+    "build_bot_invite_url",
     "can_manage_guild",
 ]
