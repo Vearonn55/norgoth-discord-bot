@@ -1,0 +1,687 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  CAlert,
+  CFormCheck,
+  CFormLabel,
+  CFormSelect,
+  CSpinner,
+} from "@coreui/react";
+import {
+  cilCalendar,
+  cilFire,
+  cilMediaPlay,
+  cilRss,
+  cilStar,
+} from "@coreui/icons";
+import { useParams } from "next/navigation";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/layout/page-header";
+import { Icon } from "@/components/ui/icon";
+import { MiniFeatureCard } from "@/components/ui/mini-feature-card";
+import { MutedSection } from "@/components/ui/feature-muting";
+import { FeatureConfigurationModal } from "@/components/ui/feature-modal";
+import { DiscordEmojiPicker } from "@/components/discord/discord-emoji-picker";
+import { GuildChannelMultiSelect } from "@/components/ui/guild-channel-multi-select";
+import { ChannelSelect } from "@/components/ui/channel-select";
+import { Slider } from "@/components/ui/slider";
+import { NumberInput } from "@/components/ui/number-input";
+import { useFirstGuild } from "@/lib/use-first-guild";
+import { feedEmojiFromPicker, feedEmojiToPicker } from "@/lib/feed-emoji";
+import {
+  COUNTDOWN_PLACEHOLDER,
+  formatCountdown,
+  snapshotRemainingMs,
+} from "@/lib/feed-countdown";
+import {
+  feedNeedsSetup,
+  mergeFeedWindowCards,
+  type FeedWindowCard,
+} from "@/lib/feed-windows";
+import { FeedChannelsSetupWizard } from "@/components/community/feed-channels-setup-wizard";
+import {
+  DEFAULT_FEED_CONFIG,
+  FEED_WINDOW_LABELS,
+  type FeedConfig,
+  type FeedWindowKey,
+  useFeedChannelsStore,
+} from "@/stores/feed-channels-store";
+
+const WINDOW_ICONS: Record<FeedWindowKey, string[]> = {
+  daily: cilMediaPlay,
+  weekly: cilCalendar,
+  monthly: cilStar,
+  all_time: cilFire,
+};
+
+function clampRefreshMinutes(value: number): number {
+  const clamped = Math.max(5, Math.min(60, Math.round(value)));
+  return Math.round((clamped - 5) / 5) * 5 + 5;
+}
+
+const NOT_CONFIGURED: Record<string, string> = {
+  en: "Not Configured",
+  tr: "Yapılandırılmadı",
+};
+
+export function FeedChannelsPanel() {
+  const params = useParams();
+  const lang = typeof params?.lang === "string" ? params.lang : "en";
+  const notConfiguredLabel = NOT_CONFIGURED[lang] ?? NOT_CONFIGURED.en;
+
+  const { guildId, resources, loading: guildLoading, error: guildError } =
+    useFirstGuild();
+
+  const config = useFeedChannelsStore((s) => s.config);
+  const status = useFeedChannelsStore((s) => s.status);
+  const loading = useFeedChannelsStore((s) => s.loading);
+  const busy = useFeedChannelsStore((s) => s.busy);
+  const error = useFeedChannelsStore((s) => s.error);
+  const feedback = useFeedChannelsStore((s) => s.feedback);
+  const load = useFeedChannelsStore((s) => s.load);
+  const refreshStatus = useFeedChannelsStore((s) => s.refreshStatus);
+  const save = useFeedChannelsStore((s) => s.save);
+  const setEnabled = useFeedChannelsStore((s) => s.setEnabled);
+  const patchWindow = useFeedChannelsStore((s) => s.patchWindow);
+  const repair = useFeedChannelsStore((s) => s.repair);
+
+  const [editingWindow, setEditingWindow] = useState<FeedWindowCard | null>(
+    null
+  );
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsDraft, setSettingsDraft] = useState<FeedConfig | null>(null);
+  const [windowDraft, setWindowDraft] = useState<{
+    channel_id: string;
+    enabled: boolean;
+  }>({ channel_id: "", enabled: false });
+  const [intervalDraft, setIntervalDraft] = useState(15);
+  const [intervalSaving, setIntervalSaving] = useState(false);
+  const [countdownMs, setCountdownMs] = useState(0);
+  const [countdownReady, setCountdownReady] = useState(false);
+  const intervalDraftRef = useRef(intervalDraft);
+  intervalDraftRef.current = intervalDraft;
+
+  // Canonical backend schedule only — never invent from slider draft.
+  const countdownSnapshot = useMemo(
+    () =>
+      status
+        ? {
+            remainingSeconds: status.remaining_seconds ?? null,
+            serverTime: status.server_time ?? null,
+            nextRefreshAt: status.next_refresh_at ?? null,
+            receivedAt: status.countdown_received_at ?? Date.now(),
+          }
+        : null,
+    [status]
+  );
+
+  const savedIntervalMinutes = config?.refresh_interval_minutes ?? 15;
+
+  useEffect(() => {
+    if (!guildId) return;
+    void load(guildId);
+  }, [guildId, load]);
+
+  useEffect(() => {
+    setIntervalDraft(clampRefreshMinutes(savedIntervalMinutes));
+  }, [savedIntervalMinutes]);
+
+  useEffect(() => {
+    setCountdownReady(Boolean(status) && !loading);
+  }, [status, loading]);
+
+  // Display-only tick from backend remaining_seconds snapshot (skew-safe).
+  useEffect(() => {
+    const tick = () => {
+      setCountdownMs(snapshotRemainingMs(countdownSnapshot));
+    };
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [countdownSnapshot]);
+
+  // At zero: hold and quietly reconcile until backend advances next_refresh_at.
+  // Must depend on countdownMs so we start polling when the tick reaches zero.
+  useEffect(() => {
+    if (!guildId || !countdownReady || !countdownSnapshot?.nextRefreshAt) return;
+    if (countdownMs > 0) return;
+
+    void refreshStatus(guildId);
+    const id = window.setInterval(() => {
+      void refreshStatus(guildId);
+    }, 5_000);
+    return () => window.clearInterval(id);
+  }, [
+    guildId,
+    countdownReady,
+    countdownMs,
+    countdownSnapshot?.nextRefreshAt,
+    refreshStatus,
+  ]);
+
+  // Tab focus: reconcile against backend (browser timer throttling).
+  useEffect(() => {
+    if (!guildId) return;
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        void refreshStatus(guildId);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [guildId, refreshStatus]);
+
+  const channels = resources?.channels ?? [];
+  const categories = resources?.categories ?? [];
+  const guildEmojis = resources?.emojis ?? [];
+  const categoryMissing = Boolean(
+    config?.feed_category_id &&
+      !categories.some((c) => c.id === config.feed_category_id)
+  );
+
+  const windowCards = useMemo(
+    () => mergeFeedWindowCards(config, status?.windows),
+    [config, status?.windows]
+  );
+
+  const needsSetup = feedNeedsSetup(config);
+
+  async function persistRefreshInterval(minutes: number) {
+    if (!guildId || !config) return;
+    const next = clampRefreshMinutes(minutes);
+    setIntervalDraft(next);
+    if (next === (config.refresh_interval_minutes ?? 15)) return;
+    setIntervalSaving(true);
+    try {
+      const saved = await save(guildId, {
+        ...config,
+        refresh_interval_minutes: next,
+      });
+      if (saved) {
+        setIntervalDraft(
+          clampRefreshMinutes(saved.refresh_interval_minutes ?? next)
+        );
+      }
+    } finally {
+      setIntervalSaving(false);
+    }
+  }
+
+  if (guildLoading || loading) {
+    return (
+      <Card>
+        <div className="d-flex align-items-center gap-2 text-body-secondary">
+          <CSpinner size="sm" />
+          Loading Top Trending…
+        </div>
+      </Card>
+    );
+  }
+
+  if (guildError || !guildId) {
+    return (
+      <Card>
+        <CAlert color="warning" className="mb-0">
+          {guildError ?? "Bot is offline or not in any server yet."}
+        </CAlert>
+      </Card>
+    );
+  }
+
+  if (needsSetup || !config) {
+    return (
+      <div className="d-flex flex-column gap-4">
+        <PageHeader
+          title="Top Trending"
+          icon={<Icon icon={cilRss} size="xl" />}
+          category="community"
+          description="Rank messages by net upvotes and mirror top posts into Daily, Weekly, Monthly, and All-Time Top Trending channels."
+          infoKey="feedChannels"
+        />
+        <FeedChannelsSetupWizard
+          guildId={guildId}
+          channels={channels}
+          categories={categories}
+          guildEmojis={guildEmojis}
+          onComplete={() => void load(guildId)}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="d-flex flex-column gap-4">
+      <PageHeader
+        title="Top Trending"
+        icon={<Icon icon={cilRss} size="xl" />}
+        category="community"
+        description="Rank messages by net upvotes and mirror top posts into Daily, Weekly, Monthly, and All-Time Top Trending channels (UTC)."
+        infoKey="feedChannels"
+        masterToggle={{
+          enabled: config.enabled,
+          onChange: (checked) => void setEnabled(guildId, checked),
+          loading: busy,
+          label: "Top Trending",
+        }}
+      />
+
+      <MutedSection enabled={config.enabled} className="d-flex flex-column gap-4">
+        <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <div className="d-flex flex-wrap align-items-center gap-2">
+            <Badge variant="info">
+              {status?.tracked_messages ?? 0} tracked
+            </Badge>
+            <Badge variant="neutral">
+              {status?.votes_total ?? 0} votes
+            </Badge>
+            {status?.top_message ? (
+              <span className="small text-body-secondary">
+                Top net: {status.top_message.net_score}
+              </span>
+            ) : null}
+          </div>
+          <div className="d-flex flex-wrap align-items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={busy}
+              onClick={() => {
+                setSettingsDraft({ ...config });
+                setSettingsOpen(true);
+              }}
+            >
+              Global settings
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={busy}
+              onClick={() => void repair(guildId)}
+            >
+              {busy ? "Repairing…" : "Repair"}
+            </Button>
+          </div>
+        </div>
+
+        {error ? (
+          <CAlert color="danger" className="mb-0 py-2">
+            {error}
+          </CAlert>
+        ) : null}
+        {feedback ? (
+          <CAlert color="success" className="mb-0 py-2">
+            {feedback}
+          </CAlert>
+        ) : null}
+        {(status?.warnings ?? []).length > 0 ? (
+          <CAlert color="warning" className="mb-0 py-2">
+            {(status?.warnings ?? []).join(" · ")}
+          </CAlert>
+        ) : null}
+
+        <div className="row row-cols-1 row-cols-md-2 row-cols-xl-4 g-3">
+          {windowCards.map((card) => (
+            <div key={card.key} className="col">
+            <MiniFeatureCard
+              icon={WINDOW_ICONS[card.key]}
+              name={card.label}
+              category="community"
+              description={
+                card.configured
+                  ? channels.find((c) => c.id === card.channel_id)?.name
+                    ? `#${channels.find((c) => c.id === card.channel_id)?.name}`
+                    : `Channel ${card.channel_id}`
+                  : "Choose a destination channel"
+              }
+              status={card.configured ? (card.enabled ? "enabled" : "disabled") : "neutral"}
+              statusLabel={
+                card.configured
+                  ? card.enabled
+                    ? "Enabled"
+                    : "Disabled"
+                  : notConfiguredLabel
+              }
+              enabled={card.configured ? card.enabled : undefined}
+              onToggle={
+                card.configured
+                  ? (checked) =>
+                      void patchWindow(guildId, card.key, { enabled: checked })
+                  : undefined
+              }
+              toggleDisabled={busy || !card.configured}
+              onClick={() => {
+                setEditingWindow(card);
+                setWindowDraft({
+                  channel_id: card.channel_id ?? "",
+                  enabled: card.enabled,
+                });
+              }}
+            />
+            </div>
+          ))}
+        </div>
+
+        <Card>
+          <div className="d-flex flex-column gap-3">
+            <div className="d-flex align-items-start justify-content-between gap-3 flex-wrap">
+              <div>
+                <h2 className="h6 mb-1 fw-semibold">Feed Refresh Interval</h2>
+                <p className="mb-0 small text-body-secondary">
+                  How often Top Trending runs a full automatic sync (UTC windows).
+                  Vote updates still coalesce sooner via the dirty drain.
+                </p>
+              </div>
+              <div
+                className="text-end"
+                title="Time until the next automatic Discord feed synchronization"
+              >
+                <div className="small text-body-secondary">Next refresh</div>
+                <div className="fw-semibold font-monospace">
+                  {!countdownReady || !countdownSnapshot?.nextRefreshAt
+                    ? COUNTDOWN_PLACEHOLDER
+                    : formatCountdown(countdownMs)}
+                </div>
+              </div>
+            </div>
+            <div className="d-flex align-items-center justify-content-between gap-3 flex-wrap">
+              <span className="small text-body-secondary">5 min</span>
+              <span className="fw-semibold">
+                Current value: {intervalDraft} minutes
+                {intervalSaving ? " · Saving…" : ""}
+              </span>
+              <span className="small text-body-secondary">60 min</span>
+            </div>
+            <Slider
+              min={5}
+              max={60}
+              step={5}
+              value={intervalDraft}
+              disabled={busy || intervalSaving}
+              aria-label="Feed refresh interval in minutes"
+              onChange={(value) => setIntervalDraft(clampRefreshMinutes(value))}
+              onPointerUp={() => {
+                const next = intervalDraftRef.current;
+                if (next !== savedIntervalMinutes) {
+                  void persistRefreshInterval(next);
+                }
+              }}
+            />
+            <div>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={
+                  busy ||
+                  intervalSaving ||
+                  intervalDraft === savedIntervalMinutes
+                }
+                onClick={() => void persistRefreshInterval(intervalDraft)}
+              >
+                Save interval
+              </Button>
+            </div>
+          </div>
+        </Card>
+
+        <Card>
+          <div className="d-flex flex-column gap-3">
+            <div>
+              <h2 className="h6 mb-1 fw-semibold">Feed Category</h2>
+              <p className="mb-0 small text-body-secondary">
+                Discord category under which Daily, Weekly, Monthly, and All-Time
+                Top Trending channels are created or moved.
+              </p>
+            </div>
+            <div>
+              <CFormLabel htmlFor="feed-category-select">Select category</CFormLabel>
+              <CFormSelect
+                id="feed-category-select"
+                value={config.feed_category_id ?? ""}
+                disabled={busy}
+                aria-label="Feed category"
+                onChange={(event) => {
+                  const value = event.target.value || null;
+                  void save(guildId, {
+                    ...config,
+                    feed_category_id: value,
+                  });
+                }}
+              >
+                <option value="">No category (top level)</option>
+                {categoryMissing && config.feed_category_id ? (
+                  <option value={config.feed_category_id}>
+                    Unavailable (id {config.feed_category_id})
+                  </option>
+                ) : null}
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </CFormSelect>
+            </div>
+            {categoryMissing ? (
+              <CAlert color="warning" className="mb-0 py-2">
+                The previously selected category no longer exists in this server.
+                Pick a replacement or clear the selection.
+              </CAlert>
+            ) : null}
+          </div>
+        </Card>
+      </MutedSection>
+
+      <FeatureConfigurationModal
+        visible={Boolean(editingWindow)}
+        title={
+          editingWindow
+            ? `${FEED_WINDOW_LABELS[editingWindow.key]} feed`
+            : "Feed window"
+        }
+        description="UTC calendar window. Rank slots are edited in place in the destination channel."
+        category="community"
+        icon={editingWindow ? WINDOW_ICONS[editingWindow.key] : cilRss}
+        onClose={() => setEditingWindow(null)}
+        saving={busy}
+        onSave={async () => {
+          if (!editingWindow) return;
+          const saved = await patchWindow(guildId, editingWindow.key, {
+            channel_id: windowDraft.channel_id || null,
+            enabled: Boolean(windowDraft.channel_id) && windowDraft.enabled,
+          });
+          if (saved) setEditingWindow(null);
+        }}
+      >
+        <div className="d-flex flex-column gap-3">
+          <div>
+            <CFormLabel>Feed channel</CFormLabel>
+            <ChannelSelect
+              channels={channels}
+              value={windowDraft.channel_id}
+              onChange={(value) =>
+                setWindowDraft((d) => ({
+                  ...d,
+                  channel_id: value,
+                  enabled: value ? d.enabled || true : false,
+                }))
+              }
+              emptyLabel="Select channel…"
+            />
+          </div>
+          <CFormCheck
+            label="Enabled"
+            checked={windowDraft.enabled && Boolean(windowDraft.channel_id)}
+            disabled={!windowDraft.channel_id}
+            onChange={(e) =>
+              setWindowDraft((d) => ({ ...d, enabled: e.target.checked }))
+            }
+          />
+        </div>
+      </FeatureConfigurationModal>
+
+      <FeatureConfigurationModal
+        visible={settingsOpen && Boolean(settingsDraft)}
+        title="Top Trending settings"
+        description="Emojis, source channels, and ranking thresholds apply to all windows."
+        category="community"
+        icon={cilRss}
+        onClose={() => setSettingsOpen(false)}
+        saving={busy}
+        onSave={async () => {
+          if (!settingsDraft) return;
+          const saved = await save(guildId, settingsDraft);
+          if (saved) setSettingsOpen(false);
+        }}
+      >
+        {settingsDraft ? (
+          <div className="d-flex flex-column gap-3">
+            <div>
+              <CFormLabel>Upvote emoji</CFormLabel>
+              <DiscordEmojiPicker
+                value={feedEmojiToPicker(settingsDraft.upvote_emoji)}
+                guildEmojis={guildEmojis}
+                onChange={(value) => {
+                  const emoji = feedEmojiFromPicker(value);
+                  if (!emoji) return;
+                  setSettingsDraft((d) =>
+                    d ? { ...d, upvote_emoji: emoji } : d
+                  );
+                }}
+              />
+            </div>
+            <div>
+              <CFormLabel>Downvote emoji</CFormLabel>
+              <DiscordEmojiPicker
+                value={feedEmojiToPicker(settingsDraft.downvote_emoji)}
+                guildEmojis={guildEmojis}
+                onChange={(value) => {
+                  const emoji = feedEmojiFromPicker(value);
+                  if (!emoji) return;
+                  setSettingsDraft((d) =>
+                    d ? { ...d, downvote_emoji: emoji } : d
+                  );
+                }}
+              />
+            </div>
+            <div>
+              <CFormLabel>Source channels</CFormLabel>
+              <GuildChannelMultiSelect
+                channels={channels}
+                selectedIds={settingsDraft.source_channel_ids}
+                onChange={(ids) =>
+                  setSettingsDraft((d) =>
+                    d ? { ...d, source_channel_ids: ids } : d
+                  )
+                }
+              />
+            </div>
+            <div>
+              <CFormLabel>Excluded channels</CFormLabel>
+              <GuildChannelMultiSelect
+                channels={channels}
+                selectedIds={settingsDraft.excluded_channel_ids}
+                onChange={(ids) =>
+                  setSettingsDraft((d) =>
+                    d ? { ...d, excluded_channel_ids: ids } : d
+                  )
+                }
+              />
+            </div>
+            <div className="row g-3">
+              <div className="col-md-6">
+                <CFormLabel>Minimum net upvotes</CFormLabel>
+                <NumberInput
+                  value={settingsDraft.min_net_score}
+                  defaultValue={DEFAULT_FEED_CONFIG.min_net_score}
+                  min={0}
+                  max={10000}
+                  step={1}
+                  aria-label="Minimum net upvotes"
+                  onCommit={(next) =>
+                    setSettingsDraft((d) =>
+                      d ? { ...d, min_net_score: next } : d
+                    )
+                  }
+                />
+              </div>
+              <div className="col-md-6">
+                <CFormLabel>Display limit</CFormLabel>
+                <NumberInput
+                  value={settingsDraft.display_limit}
+                  defaultValue={DEFAULT_FEED_CONFIG.display_limit}
+                  min={1}
+                  max={25}
+                  step={1}
+                  aria-label="Display limit"
+                  onCommit={(next) =>
+                    setSettingsDraft((d) =>
+                      d ? { ...d, display_limit: next } : d
+                    )
+                  }
+                />
+              </div>
+            </div>
+            <div>
+              <CFormLabel htmlFor="feed-settings-category">Feed category</CFormLabel>
+              <CFormSelect
+                id="feed-settings-category"
+                value={settingsDraft.feed_category_id ?? ""}
+                aria-label="Feed category"
+                onChange={(event) =>
+                  setSettingsDraft((d) =>
+                    d
+                      ? {
+                          ...d,
+                          feed_category_id: event.target.value || null,
+                        }
+                      : d
+                  )
+                }
+              >
+                <option value="">No category (top level)</option>
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </CFormSelect>
+            </div>
+            <CFormCheck
+              label="Exclude bots"
+              checked={settingsDraft.exclude_bots}
+              onChange={(e) =>
+                setSettingsDraft((d) =>
+                  d ? { ...d, exclude_bots: e.target.checked } : d
+                )
+              }
+            />
+            <CFormCheck
+              label="Exclude webhooks"
+              checked={settingsDraft.exclude_webhooks}
+              onChange={(e) =>
+                setSettingsDraft((d) =>
+                  d ? { ...d, exclude_webhooks: e.target.checked } : d
+                )
+              }
+            />
+            <CFormCheck
+              label="Exclude threads"
+              checked={settingsDraft.exclude_threads}
+              onChange={(e) =>
+                setSettingsDraft((d) =>
+                  d ? { ...d, exclude_threads: e.target.checked } : d
+                )
+              }
+            />
+          </div>
+        ) : null}
+      </FeatureConfigurationModal>
+    </div>
+  );
+}

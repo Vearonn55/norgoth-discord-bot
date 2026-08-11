@@ -1,0 +1,319 @@
+{
+  "common": {
+    "language": "Dil",
+    "notifications": "Bildirimler",
+    "user": "Kullanıcı",
+    "refresh": "Yenile",
+    "createCampaign": "Kampanya Oluştur",
+    "viewDetails": "Detayları Gör",
+    "live": "Canlı",
+    "overview": "Genel Bakış",
+    "guildSelector": "Sunucu Seçici",
+    "searchPlaceholder": "Özellik ara…",
+    "notConfigured": "Yapılandırılmadı",
+    "filters": "Filtreler",
+    "clearAll": "Temizle",
+    "status": "Durum",
+    "saveSettings": "Ayarları Kaydet",
+    "saving": "Kaydediliyor…"
+  },
+  "sidebar": {
+    "overview": "Genel Bakış",
+    "dashboard": "Panel",
+    "serverHealth": "Sunucu Sağlığı",
+    "activitySummary": "Aktivite Özeti",
+    "automation": "Otomasyon",
+    "welcomeGoodbyeInvite": "Karşılama ve Ayrılma",
+    "autoRole": "Otomatik Rol",
+    "autoNickname": "Otomatik Takma Ad",
+    "emojiRole": "Emoji Rol",
+    "selfAssignableRoles": "Atanabilir Roller",
+    "autoResponse": "Otomatik Cevap",
+    "autoResponses": "Otomatik Cevaplar",
+    "community": "Topluluk",
+    "onboarding": "Üye Doğrulama",
+    "leveling": "Seviye Sistemi",
+    "feedChannels": "Top Trending",
+    "leaderboard": "Sıralamalar",
+    "support": "Destek",
+    "tickets": "Biletler",
+    "supportTeams": "Destek Ekipleri",
+    "forms": "Formlar",
+    "moderation": "Moderasyon",
+    "commands": "Komutlar",
+    "actionLogs": "İşlem Kayıtları",
+    "campaigns": "Kampanyalar",
+    "campaignMessaging": "Kampanya Mesajlaşması",
+    "blacklistOptOut": "Kara Liste / Vazgeçenler",
+    "reports": "Raporlar",
+    "advanced": "Gelişmiş",
+    "inviteRules": "Davet Kuralları",
+    "voiceAutomations": "Ses Otomasyonları",
+    "settings": "Ayarlar",
+    "general": "Genel",
+    "permissions": "Yetkiler",
+    "templates": "Şablonlar",
+    "auditLogs": "Denetim Kayıtları",
+    "discordLogs": "Discord Kayıtları",
+    "workspace": "Çalışma Alanı",
+    "workspaceStatus": "Çekirdek panel iskeleti aktif"
+  },
+  "dashboard": {
+    "title": "Panel",
+    "description": "Norgoth çalışma alanınız için operasyonel genel bakış.",
+    "botStatus": "Bot Durumu",
+    "activeCampaigns": "Aktif Kampanyalar",
+    "recentActivity": "Son Aktiviteler"
+  },
+  "status": {
+    "healthy": "Sağlıklı",
+    "warning": "Uyarı",
+    "critical": "Kritik",
+    "info": "Bilgi",
+    "active": "Aktif",
+    "success": "Başarılı",
+    "event": "Olay"
+  },
+  "table": {
+    "label": "Tablo",
+    "empty": "Kayıt bulunamadı."
+  },
+  "campaignTable": {
+    "title": "Kampanya Özeti",
+    "description": "Aktif ve taslak operasyonlardaki son kampanya hareketleri.",
+    "campaign": "Kampanya",
+    "status": "Durum",
+    "audience": "Hedef Kitle",
+    "sent": "Gönderilen",
+    "failed": "Başarısız",
+    "running": "Çalışıyor",
+    "draft": "Taslak",
+    "completed": "Tamamlandı"
+  },
+  "campaignsPage": {
+    "title": "Kampanya Mesajlaşması",
+    "description": "Çalışma alanınızdaki outreach operasyonlarını oluşturun, izleyin ve yönetin.",
+    "newCampaign": "Yeni Kampanya",
+    "export": "Dışa Aktar",
+    "active": "Aktif",
+    "completed": "Tamamlanan",
+    "failed": "Başarısız",
+    "optOuts": "Vazgeçenler",
+    "todayDeliveries": "Bugünkü Gönderimler",
+    "createdBy": "Oluşturan",
+    "startedAt": "Başlangıç"
+  },
+  "settingsPage": {
+    "title": "Settings",
+    "description": "Manage workspace preferences and system-wide configuration.",
+    "languageTitle": "Language Preference",
+    "languageDescription": "Choose the default interface language for your current workspace session.",
+    "currentLanguage": "Current Language",
+    "availableLanguages": "Available Languages",
+    "english": "English",
+    "turkish": "Turkish",
+    "savePreference": "Save Preference",
+    "savedState": "Current route language is active"
+  },
+  "campaignDetail": {
+    "title": "Kampanya Detayı",
+    "description": "Kampanya performansını, mesaj durumunu ve operasyonel riskleri inceleyin.",
+    "validate": "Doğrula",
+    "start": "Başlat",
+    "pause": "Duraklat",
+    "cancel": "İptal Et",
+    "summary": "Özet",
+    "audience": "Hedef Kitle",
+    "message": "Mesaj",
+    "deliveryStatus": "Gönderim Durumu",
+    "auditTrail": "Denetim Geçmişi",
+    "statusTimeline": "Durum Zaman Çizgisi",
+    "draft": "Taslak",
+    "validated": "Doğrulandı",
+    "running": "Çalışıyor",
+    "completed": "Tamamlandı",
+    "deliveryRate": "Gönderim Oranı",
+    "riskSummary": "Risk Özeti",
+    "optOutFiltered": "Vazgeçen filtrelendi",
+    "blacklistFiltered": "Kara liste filtrelendi",
+    "expectedFailures": "Beklenen başarısızlık",
+    "high": "Yüksek",
+    "medium": "Orta",
+    "low": "Düşük"
+  },
+  "campaignWizard": {
+    "newCampaignTitle": "Yeni Kampanya",
+    "newCampaignDescription": "Yeni bir mesaj kampanyası oluşturun ve yapılandırın.",
+    "stepOf": "Adım {current} / {total}",
+    "back": "Geri",
+    "next": "İleri",
+    "basicsTitle": "Kampanya Temelleri",
+    "basicsDescription": "Bu kampanyanın kimliğini ve amacını tanımlayın.",
+    "campaignName": "Kampanya Adı",
+    "internalDescription": "İç Açıklama",
+    "campaignType": "Kampanya Türü",
+    "broadcast": "Toplu Yayın",
+    "targeted": "Hedefli",
+    "stepSummary": "Adım Özeti",
+    "basicsSummary": "Bu adım, hedef kitle ve doğrulama yapılandırılmadan önce kampanyanın temel kimliğini belirler.",
+    "audienceTitle": "Hedef Kitle Oluşturucu",
+    "audienceDescription": "Bu kampanyaya kimlerin dahil edileceğini veya hariç tutulacağını belirleyin.",
+    "audienceType": "Hedef Kitle Türü",
+    "allEligibleMembers": "Tüm uygun üyeler",
+    "selectedRoles": "Seçili roller",
+    "uploadedUserList": "Yüklenen kullanıcı listesi",
+    "savedSegment": "Kayıtlı segment",
+    "includeRoles": "Dahil Edilecek Roller",
+    "excludeRoles": "Hariç Tutulacak Roller",
+    "excludeOptOut": "Vazgeçen kullanıcıları hariç tut",
+    "excludeBlacklist": "Kara listedekileri hariç tut",
+    "audienceSummary": "Hedef Kitle Özeti",
+    "estimatedAudience": "Tahmini hedef kitle",
+    "filtersApplied": "Uygulanan filtreler",
+    "safeAudienceNote": "Hedef kitle kısıtları doğrulama ve gönderimden önce uygulanır.",
+    "messageTitle": "Mesaj Oluşturucu",
+    "messageDescription": "Mesaj içeriğini tanımlayın ve nasıl görüneceğini önizleyin.",
+    "messageType": "Mesaj Türü",
+    "textMessage": "Metin Mesajı",
+    "embedMessage": "Embed Mesaj",
+    "messageSubject": "Mesaj Başlığı",
+    "messageBody": "Mesaj İçeriği",
+    "variables": "Değişkenler",
+    "preview": "Önizleme",
+    "insertVariable": "Değişken Ekle",
+    "messagePreviewNote": "Önizleme mevcut mesaj girişinize göre güncellenir.",
+    "validationTitle": "Doğrulama",
+    "validationDescription": "Başlatmadan önce hedef kitle güvenliğini, gönderim tahminlerini ve risk seviyesini inceleyin.",
+    "rawAudience": "Ham hedef kitle",
+    "eligibleAudience": "Uygun hedef kitle",
+    "optOutExcluded": "Vazgeçen hariç",
+    "blacklistExcluded": "Kara liste hariç",
+    "likelyFailures": "Olası başarısızlık",
+    "riskLevel": "Risk seviyesi",
+    "launchReadiness": "Başlatma durumu",
+    "readyToLaunch": "Başlatmaya hazır",
+    "needsReview": "Gözden geçirilmeli",
+    "validationSummary": "Doğrulama Özeti",
+    "validationSafeNote": "Bu tahmini üretmek için hedef kitle hariç tutmaları ve gönderim kontrolleri uygulandı.",
+    "launchTitle": "Başlatma",
+    "launchDescription": "Bu kampanyanın nasıl ve ne zaman başlayacağını seçin.",
+    "launchMode": "Başlatma Modu",
+    "startNow": "Hemen Başlat",
+    "scheduleForLater": "Daha Sonra Zamanla",
+    "scheduledDate": "Planlanan Tarih",
+    "scheduledTime": "Planlanan Saat",
+    "finalReview": "Son Kontrol",
+    "campaignReady": "Kampanya hazır",
+    "campaignNotReady": "Kampanya başlatılmadan önce gözden geçirilmeli",
+    "finalAudience": "Son hedef kitle",
+    "finalMessageType": "Mesaj türü",
+    "finalRiskLevel": "Son risk seviyesi",
+    "launchNote": "Bu özet, çalıştırma öncesi mevcut wizard durumunu yansıtır.",
+    "launchCampaign": "Kampanyayı Başlat"
+  },
+  "featureInfo": {
+    "memberVerification": {
+      "title": "Üye Doğrulama",
+      "description": "Sunucunuza katılan üyeleri denetler ve erişim vermeden önce doğrulama politikanızı uygular.",
+      "usage": "Rolleri, kanalları, risk kontrollerini, Yüksek Riskli Sunucuları ve Beyaz Listedeki Kullanıcıları yapılandırmak için Doğrulama Ayarları'nı açın."
+    },
+    "manualVerification": {
+      "title": "Manuel Doğrulama",
+      "description": "Risk politikanızca işaretlenen üyeler — örneğin yapılandırılmış bir Yüksek Riskli Sunucuya üye olanlar — burada insan kararını bekler.",
+      "usage": "Risk analizini ve tetikleyiciyi görmek için bir üyenin incelemesini açın; ardından erişim vermek için Onayla veya doğrulanmamış bırakmak için Reddet'i seçin."
+    },
+    "leveling": {
+      "title": "Seviye ve Etkinlik",
+      "description": "Mesaj ve sesten kazanılan XP ve seviyelerle üye etkinliğini ödüllendirir; isteğe bağlı rol ödülleri sunar.",
+      "usage": "XP oranlarını ve çarpanı ayarlayın, seviye atlama duyurularını yapılandırın ve aşağıdan rol ödülleri ekleyin."
+    },
+    "leaderboard": {
+      "title": "Sıralamalar",
+      "description": "Üyeleri Metin XP, Ses XP veya Top Trending All-Time net upvote’a göre sıralar.",
+      "usage": "Metin XP, Ses XP ve Top Upvote sekmeleri arasında geçiş yapın. Net upvote sıralaması için Top Trending’i yapılandırın."
+    },
+    "feedChannels": {
+      "title": "Top Trending",
+      "description": "Kaynak mesajlardaki upvote/downvote tepkilerini izler ve en iyi gönderileri Günlük, Haftalık, Aylık ve All-Time Top Trending kanallarına yansıtır.",
+      "usage": "Upvote/downvote emojilerini ve kaynak kanalları seçin, her UTC penceresi için bir hedef kanal atayın, ardından başlıktan Top Trending’i etkinleştirin. Eksik kanalları yeniden oluşturmak için Repair kullanın. Kartların altından Feed Category ve Refresh Interval ayarlayın. Next Refresh geri sayımı bir sonraki otomatik senkrona kalan süreyi gösterir.",
+      "feedCategory": "Akış Kategorisi",
+      "selectCategory": "Kategori seç",
+      "noCategory": "Kategori yok (üst seviye)",
+      "nextRefresh": "Sonraki yenileme",
+      "refreshInterval": "Akış Yenileme Aralığı",
+      "repair": "Onar"
+    },
+    "autoModeration": {
+      "title": "Otomatik Moderasyon",
+      "description": "Yasaklı kelimeler, spam, davetler ve toplu etiketleme gibi içerik kurallarını mesajlarda otomatik uygular.",
+      "usage": "Aşağıdaki kuralları tek tek yapılandırın, ardından sayfa başlığından Otomatik Moderasyon'u etkinleştirin."
+    },
+    "raidProtection": {
+      "title": "Baskın Koruması",
+      "description": "Koordineli katılım baskınlarını ve ani şüpheli etkinlikleri tespit eder ve azaltır.",
+      "usage": "Katılım eşiklerini ve otomatik yanıtları ayarlayın, ardından başlıktan korumayı etkinleştirin."
+    },
+    "honeypot": {
+      "title": "Bal Küpü (Honeypot)",
+      "description": "Gizli tuzak kanalları veya rolleri kullanarak kötü niyetli hesapları yakalar ve işaretler.",
+      "usage": "Tuzağı ve uyarı mesajını (TinyMCE + Embed Kitaplığı) yapılandırın, ardından başlıktan bal küpünü etkinleştirin.",
+      "alertActive": "Bal küpü aktif. Meşru üyeler tuzak kanalını asla kullanmamaları konusunda uyarılmalıdır. Yöneticiler ve yapılandırılmış istisnalar korunur. Mesaj göndermek anında otomatik cezaya yol açabilir. Tetiklemeler Logging Configurations (Security olay grubu) üzerinden kaydedilir.",
+      "alertInactive": "Bal küpü tuzağı şu anda pasif. Spam botlarını yakalamaya başlamak için başlıktan etkinleştirin. Etkinleştirildiğinde meşru üyeler tuzak kanalını asla kullanmamaları konusunda uyarılmalıdır."
+    },
+    "selfAssignableRoles": {
+      "title": "Kendi Kendine Atanan Roller",
+      "description": "Üyelerin yayınlanmış bir mesajdan buton, açılır liste veya tepkilerle kendi rollerini seçmesini sağlar.",
+      "usage": "Önce mesajı Embed Kitaplığı'nda oluşturun, ardından buraya bir menü ekleyip rol kontrollerini o yayınlanmış mesaja bağlayın."
+    },
+    "welcomeLeave": {
+      "title": "Karşılama ve Ayrılma",
+      "description": "Üyeler katıldığında veya ayrıldığında mesaj gönderir; canlı teslim durumu ve test gönderimi sunar.",
+      "usage": "Katılma ve ayrılma mesajlarını hazırlayın ve hedef kanallarını seçin."
+    },
+    "embedMessages": {
+      "title": "Embed Kitaplığı",
+      "description": "Zengin Discord embed taslaklarını merkezi bir şablon kitaplığı olarak oluşturun, kaydedin ve yeniden kullanın.",
+      "usage": "Burada bir embed taslağı tasarlayın; bir kanala dağıtın veya diğer özelliklerden yeniden kullanın, düzenlemeden sonra dağıtılan kopyaları yeniden eşitleyin."
+    },
+    "tickets": {
+      "title": "Destek Talepleri",
+      "description": "Panel butonundan özel destek kanalları açar; talep kapandığında dökümleri kaydeder.",
+      "usage": "Kendi kategorisi ve kayıt kanalı olan bir panel oluşturun, yayınlayın ve açık talepleri buradan yönetin."
+    },
+    "auditLogs": {
+      "title": "Denetim Kayıtları",
+      "description": "Bu sunucu için moderasyon işlemleri ve sunucu olaylarını tek bir zaman çizelgesinde gösterir.",
+      "usage": "Moderasyon veya Sunucu Olayları ile filtreleyin, tarih aralığı seçin ve en son kayıtlar için yenileyin."
+    },
+    "discordLogs": {
+      "title": "Discord Kayıtları",
+      "description": "Hangi Discord olaylarının sunucunuzdaki kayıt kanallarına yönlendirileceğini yapılandırın.",
+      "usage": "Üst bilgiden ana kayıt anahtarını açın/kapatın; ardından kategorileri etkinleştirip her kategorinin kanalını ve olaylarını düzenleyin."
+    },
+    "contentNotifications": {
+      "title": "İçerik Bildirimleri",
+      "description": "YouTube, Twitch, Kick, X ve TikTok içerik üreticilerinden gelen yeni içerikleri doğrudan Discord'a duyurur.",
+      "usage": "İzlenecek içerik üreticilerini ekleyin ve uyarıları gönderecek kanalları yapılandırın."
+    },
+    "campaigns": {
+      "title": "Kampanya Mesajlaşması",
+      "description": "Hedeflenen üyelere yönelik DM kampanyalarını tam teslim takibiyle oluşturun ve yönetin.",
+      "usage": "Bir hedef kitle ve mesaj oluşturun, kampanyayı doğrulayın, ardından başlatın ve teslimatı izleyin."
+    },
+    "inviteTracking": {
+      "title": "Davet Takibi",
+      "description": "Her üyeyi kimin davet ettiğini takip eder ve katılımları belirli davet bağlantılarına atfeder.",
+      "usage": "Bu sunucu için davet sıralamalarını ve üye bazlı atıfları inceleyin."
+    },
+    "autoRole": {
+      "title": "Otomatik Rol",
+      "description": "Sunucuya katılan her üyeye seçilen bir rolü otomatik olarak verir.",
+      "usage": "Katılımda verilecek rolü seçin ve etkinleştirin."
+    },
+    "autoResponses": {
+      "title": "Otomatik Yanıtlar",
+      "description": "Anahtar kelime tetikleyicilerine, yapılandırılabilir eşleşme modları ve bekleme süreleriyle otomatik yanıt verir.",
+      "usage": "Tetikleyici kelimeler ve yanıtlar ekleyin, ardından eşleşme modlarını ve kural başına bekleme sürelerini ayarlayın."
+    }
+  }
+}

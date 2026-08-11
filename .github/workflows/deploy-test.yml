@@ -1,0 +1,74 @@
+name: Deploy test
+
+on:
+  push:
+    branches: [test]
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy-test
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and deploy staging
+    runs-on: ubuntu-latest
+    environment: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image namespace
+        id: meta
+        run: |
+          owner="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          echo "owner=${owner}" >> "$GITHUB_OUTPUT"
+          echo "tag=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push images
+        env:
+          OWNER: ${{ steps.meta.outputs.owner }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          cp Norgoth/deploy/docker/.dockerignore.api Norgoth/apps/api/.dockerignore
+          cp Norgoth/deploy/docker/.dockerignore.bot Norgoth/apps/bot/.dockerignore
+          cp Norgoth/deploy/docker/.dockerignore.web Norgoth/apps/dashboard/.dockerignore
+          docker build -f Norgoth/deploy/docker/Dockerfile.api -t "ghcr.io/${OWNER}/norbot-api:${TAG}" Norgoth/apps/api
+          docker build -f Norgoth/deploy/docker/Dockerfile.bot -t "ghcr.io/${OWNER}/norbot-bot:${TAG}" Norgoth/apps/bot
+          docker build -f Norgoth/deploy/docker/Dockerfile.web \
+            --build-arg NEXT_PUBLIC_DASHBOARD_URL=https://test.norbot.io \
+            --build-arg NORGOTH_API_INTERNAL_URL=http://api:8000 \
+            -t "ghcr.io/${OWNER}/norbot-web:${TAG}" Norgoth/apps/dashboard
+          docker push "ghcr.io/${OWNER}/norbot-api:${TAG}"
+          docker push "ghcr.io/${OWNER}/norbot-bot:${TAG}"
+          docker push "ghcr.io/${OWNER}/norbot-web:${TAG}"
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            export NORBOT_IMAGE_TAG="${{ github.sha }}"
+            export NORBOT_API_IMAGE="ghcr.io/${{ steps.meta.outputs.owner }}/norbot-api"
+            export NORBOT_BOT_IMAGE="ghcr.io/${{ steps.meta.outputs.owner }}/norbot-bot"
+            export NORBOT_WEB_IMAGE="ghcr.io/${{ steps.meta.outputs.owner }}/norbot-web"
+            cd /opt/norbot
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+            docker compose -f deploy/compose.yml -f deploy/compose.test.yml pull
+            /opt/norbot/scripts/migrate.sh test
+            docker compose -f deploy/compose.yml -f deploy/compose.test.yml up -d
+            /opt/norbot/scripts/smoke-check.sh test
+            /opt/norbot/scripts/record-release.sh "${NORBOT_IMAGE_TAG}" test

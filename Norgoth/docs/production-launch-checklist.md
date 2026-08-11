@@ -1,0 +1,23 @@
+# NorBot Production Launch Checklist
+
+- [ ] `test` and `main` branch protections enabled (PR required, no force-push)
+- [ ] GitHub Environments `test` and `production` created (`production` requires reviewers)
+- [ ] Environment secrets set: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`
+- [ ] GHCR packages `norbot-api`, `norbot-bot`, `norbot-web` publishing works
+- [ ] Images tagged by git SHA; `/opt/norbot/releases/CURRENT` + `PREVIOUS` written
+- [ ] `norbot_prod` / `norbot_test` isolated credentials and volumes
+- [ ] Scheduled + pre-deploy Postgres backups; off-host copy configured
+- [ ] Backup restore drill completed on a throwaway restore target
+- [ ] Alembic migrate path proven on test then prod
+- [ ] DNS A/CNAME for `norbot.io`, `www`, `api`, `test`, `api.test`
+- [ ] TLS via Certbot for prod (+ test) hosts; auto-renew timer enabled
+- [ ] Discord OAuth redirect URIs registered for prod (and separate test app recommended)
+- [ ] CORS allowlist + Secure cookies (`NORGOTH_ENVIRONMENT=production`) + `NORGOTH_AUTH_ENFORCED=true`
+- [ ] Nginx only public ingress; Postgres/Redis not published
+- [ ] Content-notification worker running in Compose
+- [ ] Campaign Postgres durability gate completed (`NORGOTH_CAMPAIGN_PG_ENABLED=true`)
+- [ ] Ticket ingest dual-write verified (open/close lands in Postgres)
+- [ ] Rollback drill completed (app images only)
+- [ ] Rehydrate guards verified fail-closed against prod
+- [ ] Smoke: `https://www.norbot.io`, `https://api.norbot.io/api/v1/health`, bot heartbeat
+- [ ] Product-facing NorBot naming on landing tracked if not already shipped

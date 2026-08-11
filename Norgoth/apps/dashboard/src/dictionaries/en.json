@@ -1,0 +1,319 @@
+{
+  "common": {
+    "language": "Language",
+    "notifications": "Notifications",
+    "user": "User",
+    "refresh": "Refresh",
+    "createCampaign": "Create Campaign",
+    "viewDetails": "View Details",
+    "live": "Live",
+    "overview": "Overview",
+    "guildSelector": "Guild Selector",
+    "searchPlaceholder": "Search features…",
+    "notConfigured": "Not Configured",
+    "filters": "Filters",
+    "clearAll": "Clear All",
+    "status": "Status",
+    "saveSettings": "Save Settings",
+    "saving": "Saving…"
+  },
+  "sidebar": {
+    "overview": "Overview",
+    "dashboard": "Dashboard",
+    "serverHealth": "Server Health",
+    "activitySummary": "Activity Summary",
+    "automation": "Automation",
+    "welcomeGoodbyeInvite": "Welcome & Leave",
+    "autoRole": "Auto Role",
+    "autoNickname": "Auto Nickname",
+    "emojiRole": "Emoji Role",
+    "selfAssignableRoles": "Self-Assignable Roles",
+    "autoResponse": "Auto Response",
+    "autoResponses": "Auto-Responses",
+    "community": "Community",
+    "onboarding": "Member Verification",
+    "leveling": "Leveling",
+    "feedChannels": "Top Trending",
+    "leaderboard": "Leaderboards",
+    "support": "Support",
+    "tickets": "Tickets",
+    "supportTeams": "Support Teams",
+    "forms": "Forms",
+    "moderation": "Moderation",
+    "commands": "Commands",
+    "actionLogs": "Action Logs",
+    "campaigns": "Campaigns",
+    "campaignMessaging": "Campaign Messaging",
+    "blacklistOptOut": "Blacklist / Opt-out",
+    "reports": "Reports",
+    "advanced": "Advanced",
+    "inviteRules": "Invite Rules",
+    "voiceAutomations": "Voice Automations",
+    "settings": "Settings",
+    "general": "General",
+    "permissions": "Permissions",
+    "templates": "Templates",
+    "auditLogs": "Audit Logs",
+    "discordLogs": "Discord Logs",
+    "workspace": "Workspace",
+    "workspaceStatus": "Core dashboard shell active"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "description": "Operational overview for your Norgoth workspace.",
+    "botStatus": "Bot Status",
+    "activeCampaigns": "Active Campaigns",
+    "recentActivity": "Recent Activity"
+  },
+  "status": {
+    "healthy": "Healthy",
+    "warning": "Warning",
+    "critical": "Critical",
+    "info": "Info",
+    "active": "Active",
+    "success": "Success",
+    "event": "Event"
+  },
+  "table": {
+    "label": "Table",
+    "empty": "No records found."
+  },
+  "campaignTable": {
+    "title": "Campaign Snapshot",
+    "description": "Recent campaign activity across active and draft operations.",
+    "campaign": "Campaign",
+    "status": "Status",
+    "audience": "Audience",
+    "sent": "Sent",
+    "failed": "Failed",
+    "running": "Running",
+    "draft": "Draft",
+    "completed": "Completed"
+  },
+  "campaignsPage": {
+    "title": "Campaign Messaging",
+    "description": "Create, monitor, and control outreach operations across your workspace.",
+    "newCampaign": "New Campaign",
+    "export": "Export",
+    "active": "Active",
+    "completed": "Completed",
+    "failed": "Failed",
+    "optOuts": "Opt-outs",
+    "todayDeliveries": "Today's Deliveries",
+    "createdBy": "Created By",
+    "startedAt": "Started At"
+  },
+  "settingsPage": {
+    "title": "Settings",
+    "description": "Manage workspace preferences and system-wide configuration.",
+    "languageTitle": "Language Preference",
+    "languageDescription": "Choose the default interface language for your current workspace session.",
+    "currentLanguage": "Current Language",
+    "availableLanguages": "Available Languages",
+    "english": "English",
+    "turkish": "Turkish",
+    "savePreference": "Save Preference",
+    "savedState": "Current route language is active"
+  },
+  "campaignDetail": {
+    "title": "Campaign Detail",
+    "description": "Review campaign performance, message state, and operational risks.",
+    "validate": "Validate",
+    "start": "Start",
+    "pause": "Pause",
+    "cancel": "Cancel",
+    "summary": "Summary",
+    "audience": "Audience",
+    "message": "Message",
+    "deliveryStatus": "Delivery Status",
+    "auditTrail": "Audit Trail",
+    "statusTimeline": "Status Timeline",
+    "draft": "Draft",
+    "validated": "Validated",
+    "running": "Running",
+    "completed": "Completed",
+    "deliveryRate": "Delivery Rate",
+    "riskSummary": "Risk Summary",
+    "optOutFiltered": "Opt-out filtered",
+    "blacklistFiltered": "Blacklist filtered",
+    "expectedFailures": "Expected failures",
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low"
+  },
+  "campaignWizard": {
+    "newCampaignTitle": "New Campaign",
+    "newCampaignDescription": "Create and configure a new messaging campaign.",
+    "stepOf": "Step {current} of {total}",
+    "back": "Back",
+    "next": "Next",
+    "basicsTitle": "Campaign Basics",
+    "basicsDescription": "Define the identity and purpose of this campaign.",
+    "campaignName": "Campaign Name",
+    "internalDescription": "Internal Description",
+    "campaignType": "Campaign Type",
+    "broadcast": "Broadcast",
+    "targeted": "Targeted",
+    "stepSummary": "Step Summary",
+    "basicsSummary": "This step defines the base identity of the campaign before audience and validation are configured.",
+    "audienceTitle": "Audience Builder",
+    "audienceDescription": "Define who should be included or excluded from this campaign.",
+    "audienceType": "Audience Type",
+    "allEligibleMembers": "All eligible members",
+    "selectedRoles": "Selected roles",
+    "uploadedUserList": "Uploaded user list",
+    "savedSegment": "Saved segment",
+    "includeRoles": "Include Roles",
+    "excludeRoles": "Exclude Roles",
+    "excludeOptOut": "Exclude opt-out users",
+    "excludeBlacklist": "Exclude blacklisted users",
+    "audienceSummary": "Audience Summary",
+    "estimatedAudience": "Estimated audience",
+    "filtersApplied": "Filters applied",
+    "safeAudienceNote": "Audience constraints are applied before validation and delivery.",
+    "messageTitle": "Message Builder",
+    "messageDescription": "Define the message content and preview how it will appear.",
+    "messageType": "Message Type",
+    "textMessage": "Text Message",
+    "embedMessage": "Embed Message",
+    "messageSubject": "Message Subject",
+    "messageBody": "Message Body",
+    "variables": "Variables",
+    "preview": "Preview",
+    "insertVariable": "Insert Variable",
+    "messagePreviewNote": "Preview updates based on your current message input.",
+    "validationTitle": "Validation",
+    "validationDescription": "Review audience safety, delivery estimates, and risk level before launch.",
+    "rawAudience": "Raw audience",
+    "eligibleAudience": "Eligible audience",
+    "optOutExcluded": "Opt-out excluded",
+    "blacklistExcluded": "Blacklist excluded",
+    "likelyFailures": "Likely failures",
+    "riskLevel": "Risk level",
+    "launchReadiness": "Launch readiness",
+    "readyToLaunch": "Ready to launch",
+    "needsReview": "Needs review",
+    "validationSummary": "Validation Summary",
+    "validationSafeNote": "Audience exclusions and delivery checks were applied to produce this estimate.",
+    "launchTitle": "Launch",
+    "launchDescription": "Choose how and when this campaign should start.",
+    "launchMode": "Launch Mode",
+    "startNow": "Start Now",
+    "scheduleForLater": "Schedule for Later",
+    "scheduledDate": "Scheduled Date",
+    "scheduledTime": "Scheduled Time",
+    "finalReview": "Final Review",
+    "campaignReady": "Campaign is ready",
+    "campaignNotReady": "Campaign needs review before launch",
+    "finalAudience": "Final audience",
+    "finalMessageType": "Message type",
+    "finalRiskLevel": "Final risk level",
+    "launchNote": "This summary reflects the current wizard state before execution.",
+    "launchCampaign": "Launch Campaign"
+  },
+  "featureInfo": {
+    "memberVerification": {
+      "title": "Member Verification",
+      "description": "Screens members joining your server and applies your verification policy before granting access.",
+      "usage": "Open Verification Settings to configure roles, channels, risk checks, High Risk Servers, and Whitelisted Users."
+    },
+    "manualVerification": {
+      "title": "Manual Verification",
+      "description": "Members flagged by your risk policy — such as belonging to a configured High Risk Server — wait here for a human decision.",
+      "usage": "Open a member's review to see the risk analysis and trigger, then Approve to grant access or Deny to keep them unverified."
+    },
+    "leveling": {
+      "title": "Levels & Activity",
+      "description": "Rewards member activity with XP and levels earned from messages and voice, with optional role rewards.",
+      "usage": "Tune XP rates and the multiplier, configure level-up announcements, and add role rewards below."
+    },
+    "leaderboard": {
+      "title": "Leaderboards",
+      "description": "Ranks members by Text XP, Voice XP, or All-Time net upvotes from Top Trending.",
+      "usage": "Switch between Text XP, Voice XP, and Top Upvote tabs here. Configure Top Trending to populate net upvote rankings."
+    },
+    "feedChannels": {
+      "title": "Top Trending",
+      "description": "Tracks upvote and downvote reactions on source messages and mirrors top posts into Daily, Weekly, Monthly, and All-Time Top Trending channels.",
+      "usage": "Pick upvote/downvote emojis and source channels, assign a destination for each UTC window, then enable Top Trending from the header. Use Repair to recreate missing channels and restore posts. Set the Feed Category and Refresh Interval below the cards. The Next Refresh countdown shows time until the next automatic sync.",
+      "feedCategory": "Feed Category",
+      "selectCategory": "Select category",
+      "noCategory": "No category (top level)",
+      "nextRefresh": "Next refresh",
+      "refreshInterval": "Feed Refresh Interval",
+      "repair": "Repair"
+    },
+    "autoModeration": {
+      "title": "Auto-Moderation",
+      "description": "Automatically enforces content rules on messages such as banned words, spam, invites, and mass mentions.",
+      "usage": "Configure individual rules below, then enable Auto-Moderation from the page header."
+    },
+    "raidProtection": {
+      "title": "Raid Protection",
+      "description": "Detects and mitigates coordinated join raids and rapid suspicious activity.",
+      "usage": "Set join thresholds and automatic responses, then enable protection from the header."
+    },
+    "honeypot": {
+      "title": "Honeypot",
+      "description": "Traps and flags malicious accounts using hidden bait channels or roles.",
+      "usage": "Configure the trap and warning message (TinyMCE + Embed Library), then enable the honeypot from the header.",
+      "alertActive": "The honeypot is active. Legitimate members must be warned never to use the trap channel. Administrators and configured exemptions are protected. Posting may cause immediate automated punishment. Triggers are recorded through Logging Configurations (Security event group).",
+      "alertInactive": "The honeypot trap is currently inactive. Enable it from the header to start catching spam bots. Legitimate members must still be warned never to use the trap channel once it is enabled."
+    },
+    "selfAssignableRoles": {
+      "title": "Self-Assignable Roles",
+      "description": "Lets members pick their own roles from a published message using buttons, a dropdown, or reactions.",
+      "usage": "Create the message in Embed Library first, then add a menu here and attach role controls to that published message."
+    },
+    "welcomeLeave": {
+      "title": "Welcome & Leave",
+      "description": "Sends a message when members join or leave, with live delivery status and a test send.",
+      "usage": "Compose the join and leave messages and choose their destination channels."
+    },
+    "embedMessages": {
+      "title": "Embed Library",
+      "description": "Create, save, and reuse rich Discord embed drafts as a central template library.",
+      "usage": "Design an embed draft here; deploy it to a channel or reuse it from other features, then re-sync deployed copies after edits."
+    },
+    "tickets": {
+      "title": "Support Tickets",
+      "description": "Opens private support channels from a panel button, with transcripts saved when a ticket closes.",
+      "usage": "Create a panel with its own category and log channel, publish it, and manage open tickets here."
+    },
+    "auditLogs": {
+      "title": "Audit Logs",
+      "description": "Moderation actions and server events for this guild in one timeline.",
+      "usage": "Filter by Moderation or Server Events, set a date range, and refresh for the latest entries."
+    },
+    "discordLogs": {
+      "title": "Discord Logs",
+      "description": "Configure which Discord events are routed to log channels in your server.",
+      "usage": "Toggle master logging from the header, then enable categories and edit each category’s channel and events."
+    },
+    "contentNotifications": {
+      "title": "Content Notifications",
+      "description": "Announces new content from YouTube, Twitch, Kick, X, and TikTok creators directly into Discord.",
+      "usage": "Add creators to monitor and configure the channels that post the alerts."
+    },
+    "campaigns": {
+      "title": "Campaign Messaging",
+      "description": "Create and control DM outreach campaigns to targeted members with full delivery tracking.",
+      "usage": "Build an audience and message, validate the campaign, then launch and monitor delivery."
+    },
+    "inviteTracking": {
+      "title": "Invite Tracking",
+      "description": "Tracks who invited each member and attributes joins to specific invite links.",
+      "usage": "Review invite leaderboards and per-member attribution for this server."
+    },
+    "autoRole": {
+      "title": "Auto Role",
+      "description": "Automatically grants a chosen role to every member who joins the server.",
+      "usage": "Pick the role to grant on join and enable it."
+    },
+    "autoResponses": {
+      "title": "Auto-Responses",
+      "description": "Replies automatically to keyword triggers with configurable match modes and cooldowns.",
+      "usage": "Add trigger words and responses, then set match modes and per-rule cooldowns."
+    }
+  }
+}

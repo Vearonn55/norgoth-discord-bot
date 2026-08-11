@@ -1,0 +1,40 @@
+name: norbot-prod
+
+services:
+  postgres:
+    environment:
+      POSTGRES_DB: norbot_prod
+
+  api:
+    image: ${NORBOT_API_IMAGE:?}:${NORBOT_IMAGE_TAG:?}
+    env_file:
+      - /opt/norbot/env/production.env
+    environment:
+      NORGOTH_ENVIRONMENT: production
+      NORGOTH_AUTH_ENFORCED: "true"
+      NORGOTH_ENABLE_DOCS: "false"
+      NORGOTH_CAMPAIGN_PG_ENABLED: "true"
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  campaign-worker:
+    image: ${NORBOT_API_IMAGE:?}:${NORBOT_IMAGE_TAG:?}
+    env_file:
+      - /opt/norbot/env/production.env
+
+  content-worker:
+    image: ${NORBOT_API_IMAGE:?}:${NORBOT_IMAGE_TAG:?}
+    env_file:
+      - /opt/norbot/env/production.env
+
+  bot:
+    image: ${NORBOT_BOT_IMAGE:?}:${NORBOT_IMAGE_TAG:?}
+    env_file:
+      - /opt/norbot/env/production.env
+
+  web:
+    image: ${NORBOT_WEB_IMAGE:?}:${NORBOT_IMAGE_TAG:?}
+    env_file:
+      - /opt/norbot/env/production.env
+    ports:
+      - "127.0.0.1:3000:3000"
