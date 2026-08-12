@@ -26,7 +26,6 @@ const LANDING_KEYS = [
 ] as const;
 
 const SERVER_KEYS = [
-  "addBot",
   "notInstalled",
   "notConfigured",
   "configured",
@@ -34,6 +33,11 @@ const SERVER_KEYS = [
   "installNorBot",
   "refresh",
   "roleOwner",
+  "awaitingInstall",
+  "installTimedOut",
+  "pageOf",
+  "previousPage",
+  "nextPage",
 ] as const;
 
 describe("dictionary keys", () => {
@@ -46,8 +50,10 @@ describe("dictionary keys", () => {
       expect(en.servers[key].length).toBeGreaterThan(0);
       expect(tr.servers[key].length).toBeGreaterThan(0);
     }
-    expect(en.servers.addBot).toContain("NorBot");
-    expect(tr.servers.addBot).toContain("NorBot");
+    expect(en.servers.installNorBot).toContain("NorBot");
+    expect(tr.servers.installNorBot).toContain("NorBot");
+    expect(en.servers).not.toHaveProperty("addBot");
+    expect(tr.servers).not.toHaveProperty("addBot");
     expect(en.dashboard.description).toContain("NorBot");
   });
 
