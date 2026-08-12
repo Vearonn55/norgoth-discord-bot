@@ -246,7 +246,7 @@ export default function Sidebar({ lang: propLang }: SidebarProps) {
         </CSidebarBrand>
       </CSidebarHeader>
 
-      <CSidebarNav ref={navRef} className="norgoth-sidebar-scroll">
+      <CSidebarNav ref={navRef} className="norgoth-sidebar-scroll norgoth-scrollbar">
         {SIDEBAR_GROUPS.map((group) => (
           <div key={group.title}>
             <CNavTitle>{group.title}</CNavTitle>

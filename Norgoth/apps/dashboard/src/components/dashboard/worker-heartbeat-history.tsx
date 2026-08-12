@@ -134,7 +134,7 @@ export function WorkerHeartbeatHistory() {
           No heartbeat samples yet.
         </div>
       ) : (
-        <div className="overflow-auto pe-2" style={{ maxHeight: 420 }}>
+        <div className="overflow-auto pe-2 norgoth-scrollbar" style={{ maxHeight: 420 }}>
           <div className="row g-3">
             {samples.map((sample) => (
               <div key={sample.id} className="col-12 col-md-6 col-xl-4">

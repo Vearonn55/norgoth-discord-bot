@@ -9,12 +9,10 @@ export function LandingNav({
   lang,
   copy,
   loginHref,
-  addBotHref,
 }: {
   lang: string;
   copy: LandingCopy;
   loginHref: string;
-  addBotHref: string;
 }) {
   const otherLang = lang === "tr" ? "en" : "tr";
   const otherLabel = lang === "tr" ? copy.langEn : copy.langTr;
@@ -47,9 +45,6 @@ export function LandingNav({
           >
             {otherLabel}
           </Link>
-          <Button asChild variant="secondary">
-            <a href={addBotHref}>{copy.addToDiscord}</a>
-          </Button>
           <Button asChild variant="primary">
             <a href={loginHref}>{copy.login}</a>
           </Button>

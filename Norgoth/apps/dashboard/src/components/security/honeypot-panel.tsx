@@ -404,6 +404,7 @@ export function HoneypotPanel() {
                     embed={embed}
                     mode="embed"
                     showContentWithEmbed
+                    showImagePlaceholders
                   />
                 }
               />

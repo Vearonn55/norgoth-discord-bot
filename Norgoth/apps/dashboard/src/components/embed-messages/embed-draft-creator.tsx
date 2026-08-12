@@ -13,7 +13,11 @@ import {
   type EmbedMessage,
 } from "@/stores/embed-messages-store";
 import type { DiscordEmbedPayload } from "@/lib/discord/message-payload";
-import { DISCORD_LIMITS, validateEmbed } from "@/lib/discord/message-payload";
+import {
+  DISCORD_LIMITS,
+  scrubEmptyEmbedUrls,
+  validateEmbed,
+} from "@/lib/discord/message-payload";
 
 const EMPTY_EMBED: DiscordEmbedPayload = {
   title: "",
@@ -147,7 +151,7 @@ export function EmbedDraftCreator({
         name: name.trim(),
         description: description.trim(),
         content,
-        embed_json: embed,
+        embed_json: scrubEmptyEmbedUrls(embed),
       };
       const result =
         isEdit && messageId
@@ -267,6 +271,7 @@ export function EmbedDraftCreator({
         embed={embed}
         mode="embed"
         showContentWithEmbed
+        showImagePlaceholders
       />
     </div>
   );

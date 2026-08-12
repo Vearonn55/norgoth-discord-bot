@@ -327,9 +327,8 @@
   "servers": {
     "title": "Your Servers",
     "subtitle": "Choose a Discord server to manage. Only servers where you have Manage Server or Administrator permission are listed.",
-    "addBot": "Add NorBot to Discord",
     "loading": "Loading servers…",
-    "empty": "No manageable servers found. Make sure you have Manage Server permission, then add NorBot to your Discord server.",
+    "empty": "No manageable servers found. Make sure you have Manage Server permission, then install NorBot from a server card.",
     "available": "Available to manage",
     "notInstalled": "Not installed",
     "notConfigured": "Not configured",
@@ -349,7 +348,12 @@
     "errorScope": "Discord access is missing the guilds permission. Reconnect Discord and approve all requested scopes.",
     "errorRateLimited": "Discord is rate-limiting requests. Please wait a moment and retry.",
     "errorUnavailable": "Discord is temporarily unavailable. Please retry.",
-    "requestId": "Support reference: {id}"
+    "requestId": "Support reference: {id}",
+    "awaitingInstall": "Waiting for NorBot to join {name}…",
+    "installTimedOut": "Still waiting for install on {name}. Refresh or open Install again if you finished in Discord.",
+    "pageOf": "Page {page} of {pages}",
+    "previousPage": "Previous",
+    "nextPage": "Next"
   },
   "landing": {
     "metaTitle": "NorBot — Community Command Center",
@@ -395,7 +399,7 @@
     "howLoginTitle": "Login",
     "howLoginBody": "Sign in with Discord OAuth. NorBot only lists servers where you are owner, Administrator, or have Manage Server.",
     "howInstallTitle": "Install",
-    "howInstallBody": "Add NorBot to a guild you manage. Installation is Discord’s Guild Install flow — separate from dashboard login.",
+    "howInstallBody": "From Server Selector, install NorBot on a guild you manage. Installation is Discord’s Guild Install flow — separate from dashboard login.",
     "howConfigureTitle": "Configure",
     "howConfigureBody": "Open the Command Center and set up the features you actually run. Guild data stays scoped to the server you selected.",
     "trustTitle": "What you can trust",

@@ -7,11 +7,9 @@ import type { LandingCopy } from "@/components/landing/landing-copy";
 export function LandingHero({
   copy,
   loginHref,
-  addBotHref,
 }: {
   copy: LandingCopy;
   loginHref: string;
-  addBotHref: string;
 }) {
   return (
     <section className="norgoth-landing-hero py-5">
@@ -43,9 +41,6 @@ export function LandingHero({
             <div className="d-flex flex-wrap gap-2">
               <Button asChild variant="primary" size="lg">
                 <a href={loginHref}>{copy.login}</a>
-              </Button>
-              <Button asChild variant="secondary" size="lg">
-                <a href={addBotHref}>{copy.addNorBot}</a>
               </Button>
             </div>
           </div>

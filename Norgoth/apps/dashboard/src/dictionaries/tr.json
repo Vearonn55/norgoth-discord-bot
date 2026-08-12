@@ -327,9 +327,8 @@
   "servers": {
     "title": "Sunucularınız",
     "subtitle": "Yönetmek istediğiniz Discord sunucusunu seçin. Yalnızca Sunucuyu Yönet veya Yönetici izniniz olan sunucular listelenir.",
-    "addBot": "NorBot’u Discord’a ekle",
     "loading": "Sunucular yükleniyor…",
-    "empty": "Yönetilebilir sunucu bulunamadı. Sunucuyu Yönet izniniz olduğundan emin olun, ardından NorBot’u Discord sunucunuza ekleyin.",
+    "empty": "Yönetilebilir sunucu bulunamadı. Sunucuyu Yönet izniniz olduğundan emin olun, ardından bir sunucu kartından NorBot’u yükleyin.",
     "available": "Yönetime hazır",
     "notInstalled": "Yüklü değil",
     "notConfigured": "Yapılandırılmadı",
@@ -349,7 +348,12 @@
     "errorScope": "Discord erişiminde sunucu (guilds) izni eksik. Discord’u yeniden bağlayın ve istenen tüm izinleri onaylayın.",
     "errorRateLimited": "Discord istekleri sınırlıyor. Lütfen biraz bekleyip yeniden deneyin.",
     "errorUnavailable": "Discord geçici olarak kullanılamıyor. Lütfen yeniden deneyin.",
-    "requestId": "Destek referansı: {id}"
+    "requestId": "Destek referansı: {id}",
+    "awaitingInstall": "{name} sunucusuna NorBot’un katılması bekleniyor…",
+    "installTimedOut": "{name} için kurulum hâlâ görünmüyor. Discord’da tamamladıysanız yenileyin veya Yükle’yi tekrar açın.",
+    "pageOf": "Sayfa {page} / {pages}",
+    "previousPage": "Önceki",
+    "nextPage": "Sonraki"
   },
   "landing": {
     "metaTitle": "NorBot — Topluluk Komuta Merkezi",
@@ -395,7 +399,7 @@
     "howLoginTitle": "Giriş",
     "howLoginBody": "Discord OAuth ile oturum açın. NorBot yalnızca sahip, Yönetici olduğunuz veya Sunucuyu Yönet izniniz olan sunucuları listeler.",
     "howInstallTitle": "Yükleme",
-    "howInstallBody": "Yönettiğiniz bir sunucuya NorBot’u ekleyin. Yükleme, panel girişinden ayrı olan Discord Guild Install akışıdır.",
+    "howInstallBody": "Sunucu Seçici’den yönettiğiniz bir sunucuya NorBot’u yükleyin. Yükleme, panel girişinden ayrı olan Discord Guild Install akışıdır.",
     "howConfigureTitle": "Yapılandırma",
     "howConfigureBody": "Komuta Merkezini açın ve gerçekten kullandığınız özellikleri kurun. Sunucu verisi seçtiğiniz sunucuyla sınırlı kalır.",
     "trustTitle": "Güvenebileceğiniz noktalar",

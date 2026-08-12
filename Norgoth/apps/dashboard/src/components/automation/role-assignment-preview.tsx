@@ -73,7 +73,13 @@ export function RoleAssignmentPreview({
           </div>
         ) : (
           <div className="mb-2">
-            <MessagePreview content={content} embed={embed} mode="embed" showContentWithEmbed />
+            <MessagePreview
+              content={content}
+              embed={embed}
+              mode="embed"
+              showContentWithEmbed
+              showImagePlaceholders
+            />
           </div>
         )
       ) : (

@@ -66,6 +66,7 @@ export function TicketPanelPreview({
             embed={embed}
             mode="embed"
             showContentWithEmbed
+            showImagePlaceholders
           />
         </div>
       )}

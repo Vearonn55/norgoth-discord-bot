@@ -29,7 +29,16 @@ type MessagePreviewProps = {
    * existing media becomes clickable to replace. Enables in-preview uploads.
    */
   onPickMedia?: (slot: MediaSlot) => void;
+  /**
+   * Editor-only: reserve author/thumbnail/image/footer icon slots with subdued
+   * placeholders. Never writes URLs into embed state or Discord payloads.
+   */
+  showImagePlaceholders?: boolean;
 };
+
+function hasUrl(value?: string | null): boolean {
+  return Boolean(typeof value === "string" && value.trim());
+}
 
 export function MessagePreview({
   content,
@@ -38,10 +47,12 @@ export function MessagePreview({
   mode = "auto",
   showContentWithEmbed = false,
   onPickMedia,
+  showImagePlaceholders = false,
 }: MessagePreviewProps) {
   const color = parseEmbedColor(embed?.color) ?? 0x5865f2;
   const colorHex = `#${color.toString(16).padStart(6, "0")}`;
   const interactive = typeof onPickMedia === "function";
+  const showPlaceholders = showImagePlaceholders || interactive;
   const trimmed = content?.trim() ?? "";
 
   const renderEmbed =
@@ -54,6 +65,15 @@ export function MessagePreview({
       : mode === "embed"
         ? showContentWithEmbed && Boolean(trimmed)
         : true; // auto: legacy always-on content slot
+
+  const authorName = embed?.author?.name?.trim() ?? "";
+  const authorIcon = embed?.author?.icon_url;
+  const footerText = embed?.footer?.trim() ?? "";
+  const footerIcon = embed?.footer_icon_url;
+  const showAuthorRow = Boolean(authorName) || (showPlaceholders && hasUrl(authorIcon));
+  const showAuthorPlaceholder = showPlaceholders && Boolean(authorName) && !hasUrl(authorIcon);
+  const showFooterRow = Boolean(footerText) || (showPlaceholders && hasUrl(footerIcon));
+  const showFooterPlaceholder = showPlaceholders && Boolean(footerText) && !hasUrl(footerIcon);
 
   return (
     <div className="norgoth-discord-preview border rounded p-3">
@@ -85,20 +105,24 @@ export function MessagePreview({
           <div className="p-3">
             <div className="d-flex justify-content-between gap-3">
               <div className="flex-grow-1 min-w-0">
-                {embed.author?.name ? (
+                {showAuthorRow ? (
                   <div className="d-flex align-items-center gap-2 mb-1">
-                    {embed.author.icon_url ? (
+                    {hasUrl(authorIcon) ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={embed.author.icon_url}
+                        src={authorIcon!.trim()}
                         alt=""
                         className="rounded-circle"
                         style={{ width: 20, height: 20, objectFit: "cover" }}
                       />
+                    ) : showAuthorPlaceholder ? (
+                      <IconPlaceholder size={20} label="Author icon" />
                     ) : null}
-                    <span className="small fw-semibold text-white text-break">
-                      {embed.author.name}
-                    </span>
+                    {authorName ? (
+                      <span className="small fw-semibold text-white text-break">
+                        {authorName}
+                      </span>
+                    ) : null}
                   </div>
                 ) : null}
                 {embed.title ? (
@@ -116,6 +140,7 @@ export function MessagePreview({
                 slot="thumbnail"
                 url={embed.thumbnail_url}
                 interactive={interactive}
+                showPlaceholder={showPlaceholders}
                 onPick={onPickMedia}
               />
             </div>
@@ -139,24 +164,29 @@ export function MessagePreview({
               slot="image"
               url={embed.image_url}
               interactive={interactive}
+              showPlaceholder={showPlaceholders}
               onPick={onPickMedia}
               banner
             />
 
-            {embed.footer ? (
+            {showFooterRow ? (
               <div className="d-flex align-items-center gap-2 mt-2">
-                {embed.footer_icon_url ? (
+                {hasUrl(footerIcon) ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={embed.footer_icon_url}
+                    src={footerIcon!.trim()}
                     alt=""
                     className="rounded-circle"
                     style={{ width: 16, height: 16, objectFit: "cover" }}
                   />
+                ) : showFooterPlaceholder ? (
+                  <IconPlaceholder size={16} label="Footer icon" />
                 ) : null}
-                <div className="small text-body-tertiary text-break">
-                  {embed.footer}
-                </div>
+                {footerText ? (
+                  <div className="small text-body-tertiary text-break">
+                    {footerText}
+                  </div>
+                ) : null}
               </div>
             ) : null}
           </div>
@@ -170,16 +200,36 @@ export function MessagePreview({
   );
 }
 
+function IconPlaceholder({ size, label }: { size: number; label: string }) {
+  return (
+    <span
+      className="norgoth-embed-icon-placeholder rounded-circle flex-shrink-0 border border-dashed border-secondary"
+      style={{
+        width: size,
+        height: size,
+        display: "inline-block",
+        background: "rgba(241, 244, 250, 0.06)",
+      }}
+      title={label}
+      aria-hidden="true"
+    >
+      <span className="visually-hidden">{label}</span>
+    </span>
+  );
+}
+
 function MediaSlotView({
   slot,
   url,
   interactive,
+  showPlaceholder,
   onPick,
   banner = false,
 }: {
   slot: MediaSlot;
   url?: string;
   interactive: boolean;
+  showPlaceholder: boolean;
   onPick?: (slot: MediaSlot) => void;
   banner?: boolean;
 }) {
@@ -187,12 +237,13 @@ function MediaSlotView({
   const sizeStyle = banner
     ? { width: "100%", maxHeight: 220 }
     : { width: 72, height: 72 };
+  const trimmed = typeof url === "string" ? url.trim() : "";
 
-  if (url) {
+  if (trimmed) {
     const img = (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={url}
+        src={trimmed}
         alt={label}
         className="rounded"
         style={{ ...sizeStyle, objectFit: "cover" }}
@@ -214,20 +265,37 @@ function MediaSlotView({
     );
   }
 
-  if (!interactive) return null;
+  if (!showPlaceholder) return null;
+
+  if (interactive) {
+    return (
+      <button
+        type="button"
+        onClick={() => onPick?.(slot)}
+        className={`norgoth-embed-placeholder btn btn-outline-secondary border-dashed d-flex flex-column align-items-center justify-content-center text-body-secondary ${banner ? "mt-3 w-100" : "flex-shrink-0"}`}
+        style={banner ? { minHeight: 90 } : { width: 72, height: 72, padding: 4 }}
+        title={`Add ${label.toLowerCase()}`}
+      >
+        <span className="small fw-semibold">{label}</span>
+        <span className="text-body-tertiary" style={{ fontSize: banner ? 12 : 10 }}>
+          Click to upload or use URL
+        </span>
+      </button>
+    );
+  }
 
   return (
-    <button
-      type="button"
-      onClick={() => onPick?.(slot)}
-      className={`norgoth-embed-placeholder btn btn-outline-secondary border-dashed d-flex flex-column align-items-center justify-content-center text-body-secondary ${banner ? "mt-3 w-100" : "flex-shrink-0"}`}
-      style={banner ? { minHeight: 90 } : { width: 72, height: 72, padding: 4 }}
-      title={`Add ${label.toLowerCase()}`}
+    <div
+      className={`norgoth-embed-placeholder border border-dashed border-secondary rounded d-flex flex-column align-items-center justify-content-center text-body-secondary ${banner ? "mt-3 w-100" : "flex-shrink-0"}`}
+      style={
+        banner
+          ? { minHeight: 90, background: "rgba(241, 244, 250, 0.04)" }
+          : { width: 72, height: 72, padding: 4, background: "rgba(241, 244, 250, 0.04)" }
+      }
+      aria-hidden="true"
     >
       <span className="small fw-semibold">{label}</span>
-      <span className="text-body-tertiary" style={{ fontSize: banner ? 12 : 10 }}>
-        Click to upload or use URL
-      </span>
-    </button>
+      <span className="visually-hidden">{label} placeholder</span>
+    </div>
   );
 }

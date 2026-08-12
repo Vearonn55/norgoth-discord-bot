@@ -56,6 +56,13 @@ def _apply(text: Any, substitute: Substitute | None) -> str:
     return substitute(text) if substitute else text
 
 
+def _clean_url(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    trimmed = value.strip()
+    return trimmed or None
+
+
 def build_embed_from_json(
     embed_json: dict[str, Any] | None,
     substitute: Substitute | None = None,
@@ -85,21 +92,17 @@ def build_embed_from_json(
     if isinstance(author, dict):
         name = _apply(author.get("name"), substitute)[: _LIMITS["author_name"]]
         if name:
-            url = author.get("url") if isinstance(author.get("url"), str) else None
-            icon = (
-                author.get("icon_url")
-                if isinstance(author.get("icon_url"), str)
-                else None
-            )
-            embed.set_author(name=name, url=url or None, icon_url=icon or None)
+            url = _clean_url(author.get("url"))
+            icon = _clean_url(author.get("icon_url"))
+            embed.set_author(name=name, url=url, icon_url=icon)
 
-    thumbnail = embed_json.get("thumbnail_url")
-    if isinstance(thumbnail, str) and thumbnail.strip():
-        embed.set_thumbnail(url=thumbnail.strip())
+    thumbnail = _clean_url(embed_json.get("thumbnail_url"))
+    if thumbnail:
+        embed.set_thumbnail(url=thumbnail)
 
-    image = embed_json.get("image_url")
-    if isinstance(image, str) and image.strip():
-        embed.set_image(url=image.strip())
+    image = _clean_url(embed_json.get("image_url"))
+    if image:
+        embed.set_image(url=image)
 
     fields = embed_json.get("fields")
     if isinstance(fields, list):
@@ -118,10 +121,9 @@ def build_embed_from_json(
 
     footer_text = _apply(embed_json.get("footer"), substitute)[: _LIMITS["footer"]]
     if footer_text:
-        footer_icon = embed_json.get("footer_icon_url")
         embed.set_footer(
             text=footer_text,
-            icon_url=footer_icon if isinstance(footer_icon, str) and footer_icon else None,
+            icon_url=_clean_url(embed_json.get("footer_icon_url")),
         )
 
     # An embed with only a colour renders as an empty coloured bar.

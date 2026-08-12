@@ -1132,6 +1132,7 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                         footer: "NorBot Campaign",
                       }}
                       mode="embed"
+                      showImagePlaceholders
                     />
                   ) : (
                     <div className="border rounded p-3 overflow-hidden">

@@ -1,15 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { CContainer } from "@coreui/react";
+import {
+  CButton,
+  CContainer,
+  CPagination,
+  CPaginationItem,
+} from "@coreui/react";
 import { apiUrl, browserApiUrl } from "@/lib/api";
 import {
   isReconnectErrorCode,
   isRetryErrorCode,
   readApiError,
 } from "@/lib/api-error";
-import { botInviteHref } from "@/lib/bot-invite";
 import { isSetupState } from "@/lib/server-setup-state";
 import { useGuildStore, type SelectedGuild } from "@/stores/guild-store";
 import { Button } from "@/components/ui/button";
@@ -18,10 +22,13 @@ import {
   type ServerGuildItem,
 } from "@/components/auth/server-guild-card";
 
+const PAGE_SIZE = 12;
+const INSTALL_POLL_MS = 5000;
+const INSTALL_POLL_MAX_MS = 120_000;
+
 type ServersCopy = {
   title: string;
   subtitle: string;
-  addBot: string;
   loading: string;
   empty: string;
   available: string;
@@ -44,6 +51,11 @@ type ServersCopy = {
   errorRateLimited: string;
   errorUnavailable: string;
   requestId: string;
+  awaitingInstall: string;
+  installTimedOut: string;
+  pageOf: string;
+  previousPage: string;
+  nextPage: string;
 };
 
 const FALLBACK_COPY: Record<"en" | "tr", ServersCopy> = {
@@ -51,10 +63,9 @@ const FALLBACK_COPY: Record<"en" | "tr", ServersCopy> = {
     title: "Your Servers",
     subtitle:
       "Choose a Discord server to manage. Only servers where you have Manage Server or Administrator permission are listed.",
-    addBot: "Add NorBot to Discord",
     loading: "Loading servers…",
     empty:
-      "No manageable servers found. Make sure you have Manage Server permission, then add NorBot to your Discord server.",
+      "No manageable servers found. Make sure you have Manage Server permission, then install NorBot from a server card.",
     available: "Available to manage",
     notInstalled: "Not installed",
     notConfigured: "Not configured",
@@ -78,15 +89,20 @@ const FALLBACK_COPY: Record<"en" | "tr", ServersCopy> = {
       "Discord is rate-limiting requests. Please wait a moment and retry.",
     errorUnavailable: "Discord is temporarily unavailable. Please retry.",
     requestId: "Support reference: {id}",
+    awaitingInstall: "Waiting for NorBot to join {name}…",
+    installTimedOut:
+      "Still waiting for install on {name}. Refresh or open Install again if you finished in Discord.",
+    pageOf: "Page {page} of {pages}",
+    previousPage: "Previous",
+    nextPage: "Next",
   },
   tr: {
     title: "Sunucularınız",
     subtitle:
       "Yönetmek istediğiniz Discord sunucusunu seçin. Yalnızca Sunucuyu Yönet veya Yönetici izniniz olan sunucular listelenir.",
-    addBot: "NorBot’u Discord’a ekle",
     loading: "Sunucular yükleniyor…",
     empty:
-      "Yönetilebilir sunucu bulunamadı. Sunucuyu Yönet izniniz olduğundan emin olun, ardından NorBot’u Discord sunucunuza ekleyin.",
+      "Yönetilebilir sunucu bulunamadı. Sunucuyu Yönet izniniz olduğundan emin olun, ardından bir sunucu kartından NorBot’u yükleyin.",
     available: "Yönetime hazır",
     notInstalled: "Yüklü değil",
     notConfigured: "Yapılandırılmadı",
@@ -110,6 +126,12 @@ const FALLBACK_COPY: Record<"en" | "tr", ServersCopy> = {
       "Discord istekleri sınırlıyor. Lütfen biraz bekleyip yeniden deneyin.",
     errorUnavailable: "Discord geçici olarak kullanılamıyor. Lütfen yeniden deneyin.",
     requestId: "Destek referansı: {id}",
+    awaitingInstall: "{name} sunucusuna NorBot’un katılması bekleniyor…",
+    installTimedOut:
+      "{name} için kurulum hâlâ görünmüyor. Discord’da tamamladıysanız yenileyin veya Yükle’yi tekrar açın.",
+    pageOf: "Sayfa {page} / {pages}",
+    previousPage: "Önceki",
+    nextPage: "Sonraki",
   },
 };
 
@@ -143,11 +165,17 @@ function normalizeServer(raw: ServerGuildItem): ServerGuildItem {
   };
 }
 
+function sortServers(list: ServerGuildItem[]): ServerGuildItem[] {
+  return [...list].sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+  );
+}
+
 function ServerGridSkeleton() {
   return (
     <div
-      className="norgoth-server-grid-scroll"
-      style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}
+      className="norgoth-server-grid-scroll norgoth-scrollbar"
+      style={{ flex: "1 1 auto", minHeight: 0 }}
       aria-hidden="true"
     >
       <div className="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3 pb-2">
@@ -199,43 +227,117 @@ export function ServerSelector({ copy }: { copy?: Partial<ServersCopy> }) {
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [page, setPage] = useState(1);
+  const [awaitingGuildId, setAwaitingGuildId] = useState<string | null>(null);
+  const [installTimedOut, setInstallTimedOut] = useState(false);
+  const awaitingStartedAt = useRef<number | null>(null);
+  const lastAwaitingName = useRef<string | null>(null);
+  const gridRef = useRef<HTMLDivElement | null>(null);
 
   const reconnectHref = browserApiUrl(
     `/api/v1/oauth/discord/dashboard/authorize?lang=${encodeURIComponent(lang)}`,
   );
 
-  const loadServers = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    setErrorCode(null);
-    setRequestId(null);
-    try {
-      const response = await fetch(apiUrl("/api/v1/sessions/servers"), {
-        cache: "no-store",
-        credentials: "include",
-      });
-      if (!response.ok) {
-        const apiError = await readApiError(response);
-        setErrorCode(apiError.code);
-        setRequestId(apiError.requestId);
-        setError(messageForCode(t, apiError.code));
-        setServers([]);
-        return;
+  const loadServers = useCallback(
+    async (opts?: { quiet?: boolean }) => {
+      if (!opts?.quiet) {
+        setLoading(true);
       }
-      const data = (await response.json()) as { servers: ServerGuildItem[] };
-      setServers((data.servers ?? []).map(normalizeServer));
-    } catch {
-      setErrorCode("http_error");
-      setError(t.errorGeneric);
-      setServers([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [t]);
+      setError(null);
+      setErrorCode(null);
+      setRequestId(null);
+      try {
+        const response = await fetch(apiUrl("/api/v1/sessions/servers"), {
+          cache: "no-store",
+          credentials: "include",
+        });
+        if (!response.ok) {
+          const apiError = await readApiError(response);
+          setErrorCode(apiError.code);
+          setRequestId(apiError.requestId);
+          setError(messageForCode(t, apiError.code));
+          setServers([]);
+          setPage(1);
+          return;
+        }
+        const data = (await response.json()) as { servers: ServerGuildItem[] };
+        const next = sortServers((data.servers ?? []).map(normalizeServer));
+        setServers(next);
+      } catch {
+        setErrorCode("http_error");
+        setError(t.errorGeneric);
+        setServers([]);
+        setPage(1);
+      } finally {
+        if (!opts?.quiet) {
+          setLoading(false);
+        }
+      }
+    },
+    [t],
+  );
 
   useEffect(() => {
     void loadServers();
   }, [loadServers, reloadKey, lang, router]);
+
+  // Clear awaiting when the target guild leaves not_installed.
+  useEffect(() => {
+    if (!awaitingGuildId) return;
+    const target = servers.find((s) => s.id === awaitingGuildId);
+    if (target && target.setup_state !== "not_installed") {
+      setAwaitingGuildId(null);
+      setInstallTimedOut(false);
+      awaitingStartedAt.current = null;
+    }
+  }, [servers, awaitingGuildId]);
+
+  // Poll while awaiting install (visibility + interval).
+  useEffect(() => {
+    if (!awaitingGuildId) return;
+
+    const tick = () => {
+      if (document.visibilityState === "hidden") return;
+      const started = awaitingStartedAt.current ?? Date.now();
+      if (Date.now() - started >= INSTALL_POLL_MAX_MS) {
+        setInstallTimedOut(true);
+        setAwaitingGuildId(null);
+        awaitingStartedAt.current = null;
+        return;
+      }
+      void loadServers({ quiet: true });
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") tick();
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    const interval = window.setInterval(tick, INSTALL_POLL_MS);
+    tick();
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.clearInterval(interval);
+    };
+  }, [awaitingGuildId, loadServers]);
+
+  const totalPages = Math.max(1, Math.ceil(servers.length / PAGE_SIZE));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  useEffect(() => {
+    if (page !== safePage) setPage(safePage);
+  }, [page, safePage]);
+
+  const pageServers = useMemo(() => {
+    const start = (safePage - 1) * PAGE_SIZE;
+    return servers.slice(start, start + PAGE_SIZE);
+  }, [servers, safePage]);
+
+  function goToPage(next: number) {
+    setPage(next);
+    requestAnimationFrame(() => {
+      gridRef.current?.focus();
+    });
+  }
 
   async function openServer(server: ServerGuildItem) {
     if (server.setup_state === "not_installed" || !server.bot_installed) {
@@ -252,9 +354,18 @@ export function ServerSelector({ copy }: { copy?: Partial<ServersCopy> }) {
     router.push(`/${lang}/dashboard`);
   }
 
-  const addBotHref = botInviteHref();
+  function startAwaitingInstall(server: ServerGuildItem) {
+    lastAwaitingName.current = server.name;
+    setAwaitingGuildId(server.id);
+    setInstallTimedOut(false);
+    awaitingStartedAt.current = Date.now();
+  }
+
   const showReconnect = errorCode ? isReconnectErrorCode(errorCode) : false;
   const showRetry = errorCode ? isRetryErrorCode(errorCode) : Boolean(error);
+  const awaitingServer = awaitingGuildId
+    ? servers.find((s) => s.id === awaitingGuildId)
+    : null;
 
   return (
     <CContainer
@@ -273,15 +384,42 @@ export function ServerSelector({ copy }: { copy?: Partial<ServersCopy> }) {
           <Button
             type="button"
             variant="secondary"
-            onClick={() => setReloadKey((key) => key + 1)}
+            onClick={() => {
+              setInstallTimedOut(false);
+              setReloadKey((key) => key + 1);
+            }}
           >
             {t.refresh}
           </Button>
-          <Button asChild variant="secondary">
-            <a href={addBotHref}>{t.addBot}</a>
-          </Button>
         </div>
       </div>
+
+      {awaitingServer ? (
+        <p className="small text-body-secondary mb-3 flex-shrink-0" role="status">
+          {t.awaitingInstall.replace("{name}", awaitingServer.name)}
+        </p>
+      ) : null}
+
+      {installTimedOut ? (
+        <div className="mb-3 flex-shrink-0">
+          <p className="text-warning mb-2" role="status">
+            {t.installTimedOut.replace(
+              "{name}",
+              lastAwaitingName.current ?? "server",
+            )}
+          </p>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              setInstallTimedOut(false);
+              setReloadKey((key) => key + 1);
+            }}
+          >
+            {t.retry}
+          </Button>
+        </div>
+      ) : null}
 
       {loading ? <ServerGridSkeleton /> : null}
 
@@ -313,23 +451,71 @@ export function ServerSelector({ copy }: { copy?: Partial<ServersCopy> }) {
       ) : null}
 
       {!loading && !error && servers.length > 0 ? (
-        <div
-          className="norgoth-server-grid-scroll"
-          style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto" }}
-        >
-          <div className="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3 pb-2">
-            {servers.map((server) => (
-              <div className="col" key={server.id}>
-                <ServerGuildCard
-                  server={server}
-                  selected={server.id === selectedGuildId}
-                  copy={t}
-                  onOpen={(item) => void openServer(item)}
-                />
-              </div>
-            ))}
+        <>
+          <div
+            ref={gridRef}
+            tabIndex={-1}
+            className="norgoth-server-grid-scroll norgoth-scrollbar"
+            style={{ flex: "1 1 auto", minHeight: 0 }}
+            aria-label={t.available}
+          >
+            <div className="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3 pb-2">
+              {pageServers.map((server) => (
+                <div className="col" key={server.id}>
+                  <ServerGuildCard
+                    server={server}
+                    selected={server.id === selectedGuildId}
+                    copy={t}
+                    onOpen={(item) => void openServer(item)}
+                    onInstall={startAwaitingInstall}
+                  />
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+
+          {servers.length > PAGE_SIZE ? (
+            <div className="d-flex align-items-center justify-content-between gap-3 flex-wrap norgoth-pagination-bar mt-3 flex-shrink-0">
+              <span className="small text-body-secondary">
+                {t.pageOf
+                  .replace("{page}", String(safePage))
+                  .replace("{pages}", String(totalPages))}
+              </span>
+              <div className="d-flex align-items-center gap-2">
+                <CButton
+                  color="secondary"
+                  variant="outline"
+                  size="sm"
+                  className="norgoth-pagination-btn"
+                  disabled={safePage <= 1}
+                  onClick={() => goToPage(safePage - 1)}
+                >
+                  {t.previousPage}
+                </CButton>
+                <CPagination
+                  className="mb-0 norgoth-pagination"
+                  aria-label={t.pageOf
+                    .replace("{page}", String(safePage))
+                    .replace("{pages}", String(totalPages))}
+                >
+                  <CPaginationItem active aria-current="page">
+                    {safePage} / {totalPages}
+                  </CPaginationItem>
+                </CPagination>
+                <CButton
+                  color="secondary"
+                  variant="outline"
+                  size="sm"
+                  className="norgoth-pagination-btn"
+                  disabled={safePage >= totalPages}
+                  onClick={() => goToPage(safePage + 1)}
+                >
+                  {t.nextPage}
+                </CButton>
+              </div>
+            </div>
+          ) : null}
+        </>
       ) : null}
 
       {!loading && !error && servers.length === 0 ? (
@@ -338,5 +524,3 @@ export function ServerSelector({ copy }: { copy?: Partial<ServersCopy> }) {
     </CContainer>
   );
 }
-
-

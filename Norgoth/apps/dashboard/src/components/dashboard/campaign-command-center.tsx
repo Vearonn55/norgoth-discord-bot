@@ -470,7 +470,7 @@ function CampaignListPanel({
       {campaigns.length === 0 ? (
         <EmptyBox text={emptyText} />
       ) : (
-        <div className="overflow-auto pe-2" style={{ maxHeight: 420 }}>
+        <div className="overflow-auto pe-2 norgoth-scrollbar" style={{ maxHeight: 420 }}>
           <div className="d-flex flex-column gap-3">
             {campaigns.map((campaign) => (
               <Card key={campaign.id} variant="interactive">

@@ -70,15 +70,23 @@ in Redis, a discord.py cog, FastAPI routes, and a dashboard page:
    must stay off unless you implement a full install-time code-grant exchange
    (NorBot does not). Login OAuth (`identify` + `guilds`) is a separate flow
    and does not need this setting.
-3. Installation context: enable **Guild Install** (not User Install). Default
+3. **OAuth / authorize branding (Application Icon):** Discord’s user authorize
+   and Guild Install screens show the **Application Icon** from
+   Developer Portal → Application → **General Information** → **App Icon** —
+   not the Bot Avatar and not any NorBot-hosted favicon. Upload a high-res App
+   Icon on the production application whose `client_id` matches
+   `DISCORD_APPLICATION_ID` / `DISCORD_CLIENT_ID`, wait for Discord CDN cache,
+   then verify the authorize URL’s `client_id`. Bot avatar / Server Profiles
+   only affect the bot user inside guilds.
+4. Installation context: enable **Guild Install** (not User Install). Default
    install scopes: `bot`, `applications.commands`.
-4. Invite the bot with: Manage Roles, Kick, Ban, Moderate Members,
+5. Invite the bot with: Manage Roles, Kick, Ban, Moderate Members,
    Send Messages, Manage Messages, Manage Channels (tickets),
    Manage Server (invite tracking), View Channels.
-5. Keep the bot's role **above** the verified/auto/reward roles.
-6. Register the OAuth redirect:
+6. Keep the bot's role **above** the verified/auto/reward roles.
+7. Register the OAuth redirect:
    `http://127.0.0.1:8000/api/v1/oauth/discord/callback`
-7. Auto-mod testing tip: staff with Manage Messages are exempt by default.
+8. Auto-mod testing tip: staff with Manage Messages are exempt by default.
    Turn off **Exempt Manage Messages** in Auto-Moderation (or test with a
    non-privileged account). Save config before expecting rules to fire;
    master enabled defaults off until saved.

@@ -569,6 +569,7 @@ export function LevelingPanel() {
                   ),
                 }}
                 mode="embed"
+                showImagePlaceholders
               />
             }
           />

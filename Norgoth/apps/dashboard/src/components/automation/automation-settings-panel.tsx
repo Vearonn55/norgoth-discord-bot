@@ -677,6 +677,7 @@ function MessageComposer({
             embed={selected.embed_json ?? undefined}
             mode="embed"
             showContentWithEmbed
+            showImagePlaceholders
           />
         ) : (
           <p className="small text-body-secondary mb-0">

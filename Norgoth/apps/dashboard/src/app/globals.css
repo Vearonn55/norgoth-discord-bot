@@ -309,6 +309,11 @@ body {
   padding-bottom: 2rem;
 }
 
+.norgoth-server-grid-scroll {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
 .norgoth-main-body > .container-fluid {
   padding-top: 1.25rem !important;
 }
@@ -843,7 +848,16 @@ body {
   background-color: rgba(20, 26, 36, 0.55);
 }
 
-/* Scrollbars */
+/* Scrollbars — shared themed thumb (WebKit + Firefox); never hide globally */
+.norgoth-scrollbar,
+.norgoth-main-body,
+.norgoth-sidebar-scroll,
+.norgoth-activity-panel-body {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(180, 198, 230, 0.45) transparent;
+}
+
+.norgoth-scrollbar::-webkit-scrollbar,
 .norgoth-main-body::-webkit-scrollbar,
 .norgoth-sidebar-scroll::-webkit-scrollbar,
 .norgoth-activity-panel-body::-webkit-scrollbar {
@@ -851,6 +865,7 @@ body {
   height: 10px;
 }
 
+.norgoth-scrollbar::-webkit-scrollbar-thumb,
 .norgoth-main-body::-webkit-scrollbar-thumb,
 .norgoth-sidebar-scroll::-webkit-scrollbar-thumb,
 .norgoth-activity-panel-body::-webkit-scrollbar-thumb {
@@ -860,6 +875,7 @@ body {
   background-clip: padding-box;
 }
 
+.norgoth-scrollbar::-webkit-scrollbar-thumb:hover,
 .norgoth-main-body::-webkit-scrollbar-thumb:hover,
 .norgoth-sidebar-scroll::-webkit-scrollbar-thumb:hover,
 .norgoth-activity-panel-body::-webkit-scrollbar-thumb:hover {

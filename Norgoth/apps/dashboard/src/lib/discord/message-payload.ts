@@ -69,6 +69,44 @@ export function embedTotalCharacters(embed: DiscordEmbedPayload): number {
   return total;
 }
 
+/** Omit empty/whitespace image URL fields so drafts never persist `""`. */
+export function scrubEmptyEmbedUrls(
+  embed: DiscordEmbedPayload
+): DiscordEmbedPayload {
+  const next: DiscordEmbedPayload = { ...embed };
+
+  const clean = (value?: string): string | undefined => {
+    if (typeof value !== "string") return undefined;
+    const trimmed = value.trim();
+    return trimmed || undefined;
+  };
+
+  const thumbnail = clean(next.thumbnail_url);
+  if (thumbnail) next.thumbnail_url = thumbnail;
+  else delete next.thumbnail_url;
+
+  const image = clean(next.image_url);
+  if (image) next.image_url = image;
+  else delete next.image_url;
+
+  const footerIcon = clean(next.footer_icon_url);
+  if (footerIcon) next.footer_icon_url = footerIcon;
+  else delete next.footer_icon_url;
+
+  if (next.author) {
+    const author = { ...next.author };
+    const icon = clean(author.icon_url);
+    if (icon) author.icon_url = icon;
+    else delete author.icon_url;
+    const url = clean(author.url);
+    if (url) author.url = url;
+    else delete author.url;
+    next.author = author;
+  }
+
+  return next;
+}
+
 export function validateEmbed(embed: DiscordEmbedPayload): string[] {
   const errors: string[] = [];
   if (embed.title && embed.title.length > DISCORD_LIMITS.embedTitle) {

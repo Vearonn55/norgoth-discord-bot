@@ -3,7 +3,6 @@
 import { useSearchParams } from "next/navigation";
 import { CAlert, CContainer } from "@coreui/react";
 import { browserApiUrl } from "@/lib/api";
-import { botInviteHref } from "@/lib/bot-invite";
 import type { LandingCopy } from "@/components/landing/landing-copy";
 import { LandingNav } from "@/components/landing/landing-nav";
 import { LandingHero } from "@/components/landing/landing-hero";
@@ -31,16 +30,9 @@ export function LandingPage({
         `/api/v1/oauth/discord/dashboard/authorize?lang=${encodeURIComponent(lang)}`,
       );
 
-  const addBotHref = botInviteHref();
-
   return (
     <>
-      <LandingNav
-        lang={lang}
-        copy={copy}
-        loginHref={loginHref}
-        addBotHref={addBotHref}
-      />
+      <LandingNav lang={lang} copy={copy} loginHref={loginHref} />
 
       {oauthError === "not_configured" ? (
         <CContainer style={{ maxWidth: 1100 }} className="pt-4">
@@ -60,11 +52,7 @@ export function LandingPage({
       ) : null}
 
       <main className="flex-grow-1">
-        <LandingHero
-          copy={copy}
-          loginHref={loginHref}
-          addBotHref={addBotHref}
-        />
+        <LandingHero copy={copy} loginHref={loginHref} />
         <LandingValue copy={copy} />
         <LandingFeatures copy={copy} />
         <LandingHowItWorks copy={copy} />

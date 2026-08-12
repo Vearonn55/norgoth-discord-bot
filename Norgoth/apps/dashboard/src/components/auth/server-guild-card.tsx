@@ -71,17 +71,24 @@ export function ServerGuildCard({
   selected,
   copy,
   onOpen,
+  onInstall,
 }: {
   server: ServerGuildItem;
   selected: boolean;
   copy: ServerGuildCopy;
   onOpen: (server: ServerGuildItem) => void;
+  /** Fired when the user starts guild install (new tab). */
+  onInstall?: (server: ServerGuildItem) => void;
 }) {
   const setupState: SetupState =
     server.setup_state ??
     (server.bot_installed ? "not_configured" : "not_installed");
   const accent =
-    setupState === "configured" ? "var(--cui-success)" : "var(--cui-danger)";
+    setupState === "configured"
+      ? "var(--cui-success)"
+      : setupState === "not_configured"
+        ? "var(--cui-danger)"
+        : "var(--cui-secondary)";
   const status = statusLabel(setupState, copy);
   const action = actionLabel(setupState, copy);
   const role = localizeRole(server.role_label, copy);
@@ -123,8 +130,13 @@ export function ServerGuildCard({
         {setupState === "not_installed" ? (
           <a
             href={botInviteHref(server.id)}
+            target="_blank"
+            rel="noopener noreferrer"
             className="btn btn-sm btn-primary norgoth-server-guild-action"
-            onClick={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              onInstall?.(server);
+            }}
           >
             {action}
           </a>

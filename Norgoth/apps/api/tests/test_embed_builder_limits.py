@@ -73,6 +73,24 @@ def test_build_embed_media_and_author() -> None:
     assert embed["footer"]["icon_url"] == "https://x/f.png"
 
 
+def test_build_embed_omits_whitespace_urls() -> None:
+    embed = build_embed_dict(
+        {
+            "title": "Hello",
+            "author": {"name": "Bot", "icon_url": "   ", "url": "\t"},
+            "thumbnail_url": " ",
+            "image_url": "",
+            "footer": "base",
+            "footer_icon_url": "  ",
+        }
+    )
+    assert embed is not None
+    assert embed["author"] == {"name": "Bot"}
+    assert "thumbnail" not in embed
+    assert "image" not in embed
+    assert "icon_url" not in embed["footer"]
+
+
 def test_footer_suffix_appends() -> None:
     embed = build_embed_dict(
         {"title": "Hi", "footer": "Base"}, footer_suffix="Unsub"
