@@ -58,17 +58,22 @@ check_json_true() {
   local delay=5
   local attempt
   local body
+  local http_code
 
   for attempt in $(seq 1 "${attempts}"); do
     echo -n "Checking ${name}: ${url} (${attempt}/${attempts}) … "
 
-    if body="$(curl -fsS --max-time 20 "${url}" 2>/dev/null)" \
+    body="$(curl -sS --max-time 20 -w '\n%{http_code}' "${url}" 2>/dev/null || true)"
+    http_code="$(printf '%s' "${body}" | tail -n1)"
+    body="$(printf '%s' "${body}" | sed '$d')"
+
+    if [[ "${http_code}" == "200" ]] \
       && FLAG="${flag}" BODY="${body}" python3 -c 'import json,os,sys; raise SystemExit(0 if json.loads(os.environ["BODY"]).get(os.environ["FLAG"]) is True else 1)'; then
       echo "ok"
       return 0
     fi
 
-    echo "not ready"
+    echo "not ready (http=${http_code:-?} body=${body:-<empty>})"
 
     if [[ "${attempt}" -lt "${attempts}" ]]; then
       sleep "${delay}"

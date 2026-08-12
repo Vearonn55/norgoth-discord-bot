@@ -22,6 +22,7 @@ from app.routes.automod import router as automod_router  # noqa: E402
 from app.routes.autoresponder import router as autoresponder_router  # noqa: E402
 from app.routes.bot import router as bot_router  # noqa: E402
 from app.routes.campaigns import router as campaigns_router  # noqa: E402
+from app.routes.campaigns import public_router as campaigns_public_router  # noqa: E402
 from app.routes.campaigns import internal_router as campaigns_internal_router  # noqa: E402
 from app.routes.honeypot import router as honeypot_router  # noqa: E402
 from app.routes.ingest import router as ingest_router  # noqa: E402
@@ -141,6 +142,7 @@ def create_application(settings: Settings | None = None) -> FastAPI:
 
     # Redis-backed product routes (campaigns, bot state, automation).
     application.include_router(campaigns_router)
+    application.include_router(campaigns_public_router)
     application.include_router(campaigns_internal_router)
     application.include_router(analytics_router)
     application.include_router(bot_router)

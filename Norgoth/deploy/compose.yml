@@ -79,6 +79,9 @@ services:
     image: ${NORBOT_API_IMAGE:-norbot-api}:${NORBOT_IMAGE_TAG:-local}
     <<: *default-restart
     command: ["python", "-m", "app.workers.campaign_worker"]
+    # API image HEALTHCHECK hits :8000; workers do not serve HTTP.
+    healthcheck:
+      disable: true
     env_file:
       - ${NORBOT_ENV_FILE:-./env/production.env.example}
     environment:
@@ -98,6 +101,8 @@ services:
     image: ${NORBOT_API_IMAGE:-norbot-api}:${NORBOT_IMAGE_TAG:-local}
     <<: *default-restart
     command: ["python", "-m", "app.workers.content_notification_worker"]
+    healthcheck:
+      disable: true
     env_file:
       - ${NORBOT_ENV_FILE:-./env/production.env.example}
     environment:

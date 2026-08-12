@@ -33,6 +33,8 @@ router = APIRouter(
     tags=["Campaigns"],
     dependencies=[Depends(require_operator_session)],
 )
+# Public (no session): deploy smoke + ops panels that only expose online/heartbeat.
+public_router = APIRouter(prefix="/campaigns", tags=["Campaigns"])
 internal_router = APIRouter(prefix="/internal/campaigns", tags=["Internal Campaigns"])
 
 QUEUE_STATE_KEY = "norgoth:campaign_queue_state"
@@ -335,8 +337,9 @@ async def get_queue_state():
         await redis_client.aclose()
 
 
-@router.get("/worker/health")
+@public_router.get("/worker/health")
 async def get_worker_health():
+    """Unauthenticated heartbeat probe (same pattern as /bot/health)."""
     redis_client = await get_redis()
 
     try:
