@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { CContainer } from "@coreui/react";
 import { apiUrl, browserApiUrl } from "@/lib/api";
@@ -187,8 +187,6 @@ export function ServerSelector({ copy }: { copy?: Partial<ServersCopy> }) {
   const lang = String(params?.lang ?? "en");
   const locale = lang === "tr" ? "tr" : "en";
   const t: ServersCopy = { ...FALLBACK_COPY[locale], ...copy };
-  const copyRef = useRef(t);
-  copyRef.current = t;
   const router = useRouter();
   const selectGuild = useGuildStore((s) => s.selectGuild);
   const selectedGuildId = useGuildStore((s) => s.selectedGuild?.id);
@@ -204,7 +202,6 @@ export function ServerSelector({ copy }: { copy?: Partial<ServersCopy> }) {
   );
 
   const loadServers = useCallback(async () => {
-    const text = copyRef.current;
     setLoading(true);
     setError(null);
     setErrorCode(null);
@@ -218,7 +215,7 @@ export function ServerSelector({ copy }: { copy?: Partial<ServersCopy> }) {
         const apiError = await readApiError(response);
         setErrorCode(apiError.code);
         setRequestId(apiError.requestId);
-        setError(messageForCode(text, apiError.code));
+        setError(messageForCode(t, apiError.code));
         setServers([]);
         return;
       }
@@ -226,12 +223,12 @@ export function ServerSelector({ copy }: { copy?: Partial<ServersCopy> }) {
       setServers((data.servers ?? []).map(normalizeServer));
     } catch {
       setErrorCode("http_error");
-      setError(text.errorGeneric);
+      setError(t.errorGeneric);
       setServers([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void loadServers();

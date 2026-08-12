@@ -10,7 +10,8 @@ import { GuildIcon } from "@/components/ui/guild-icon";
 export type ServerGuildItem = {
   id: string;
   name: string;
-  icon?: string | null;\n  icon_url: string | null;
+  icon?: string | null;
+  icon_url: string | null;
   bot_installed: boolean;
   owner?: boolean;
   permissions?: string;
