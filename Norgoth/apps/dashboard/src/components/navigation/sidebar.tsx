@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import {
   CSidebar,
@@ -42,6 +42,7 @@ import { useParams, usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { useUiStore } from "@/stores/ui-store";
 import { useGuildStore } from "@/stores/guild-store";
+import { GuildIcon } from "@/components/ui/guild-icon";
 
 type SidebarProps = {
   lang?: string;
@@ -182,6 +183,15 @@ export const SIDEBAR_GROUPS: SidebarGroup[] = [
   },
 ];
 
+function localizedSidebarLabel(lang: string, item: SidebarItem): string {
+  if (item.href === "/audit/logs") {
+    return lang === "tr" ? "Denetim Kayıtları" : "Audit Logs";
+  }
+  if (item.href === "/audit/discord-logs") {
+    return lang === "tr" ? "Discord Kayıtları" : "Discord Logs";
+  }
+  return item.label;
+}
 export function getSidebarNavItems(lang: string) {
   return SIDEBAR_GROUPS.flatMap((group) =>
     group.items.map((item) => ({
@@ -229,7 +239,7 @@ export default function Sidebar({ lang: propLang }: SidebarProps) {
     <CSidebar className="norgoth-sidebar" colorScheme="dark" visible>
       <CSidebarHeader>
         <CSidebarBrand as={Link} href={`/${lang}`} scroll={false}>
-          <span className="fw-semibold fs-5">Norgoth</span>
+          <span className="fw-semibold fs-5">NorBot</span>
           <span className="d-block small text-body-secondary text-uppercase">
             Community Command Center
           </span>
@@ -251,7 +261,7 @@ export default function Sidebar({ lang: propLang }: SidebarProps) {
                 <CNavItem key={`${group.title}-${item.href}`}>
                   <CNavLink as={Link} href={href} active={active} scroll={false}>
                     <CIcon icon={item.icon} className="nav-icon me-2" />
-                    {item.label}
+                    {localizedSidebarLabel(lang, item)}
                   </CNavLink>
                 </CNavItem>
               );
@@ -271,34 +281,15 @@ function SidebarGuildFooter({ lang }: { lang: string }) {
   const selectedGuild = useGuildStore((s) => s.selectedGuild);
   const name = selectedGuild?.name ?? "No server selected";
   const iconUrl = selectedGuild?.icon_url ?? null;
-  const initial = name.trim().charAt(0).toUpperCase() || "?";
 
   return (
     <Link
       href={`/${lang}/servers`}
       scroll={false}
       className="norgoth-sidebar-guild d-flex align-items-center gap-3 px-3 py-2 text-decoration-none text-reset"
-      aria-label="Change selected server"
+      aria-label={`Change selected server: ${name}`}
     >
-      {iconUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={iconUrl}
-          alt=""
-          width={40}
-          height={40}
-          className="rounded-circle flex-shrink-0"
-          style={{ objectFit: "cover" }}
-        />
-      ) : (
-        <div
-          aria-hidden="true"
-          className="d-flex align-items-center justify-content-center rounded-circle border fw-semibold flex-shrink-0"
-          style={{ width: 40, height: 40 }}
-        >
-          {initial}
-        </div>
-      )}
+      <GuildIcon url={iconUrl} name={name} size={40} />
       <div className="min-w-0">
         <div className="text-truncate small fw-medium" title={name}>
           {name}
@@ -313,4 +304,5 @@ function SidebarGuildFooter({ lang }: { lang: string }) {
     </Link>
   );
 }
+
 

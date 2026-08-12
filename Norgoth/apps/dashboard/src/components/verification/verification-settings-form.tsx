@@ -15,7 +15,10 @@ import { Badge } from "@/components/ui/badge";
 import { NumberInput } from "@/components/ui/number-input";
 import { browserApiUrl } from "@/lib/api";
 import { useFirstGuild } from "@/lib/use-first-guild";
-import { useVerificationStore } from "@/stores/verification-store";
+import {
+  canPublishOrCopy,
+  useVerificationStore,
+} from "@/stores/verification-store";
 
 /**
  * Self-contained Verification (Guild Configuration) settings form. Handles its
@@ -23,13 +26,20 @@ import { useVerificationStore } from "@/stores/verification-store";
  * can be dropped into either a standalone page or a modal without prop wiring.
  */
 export function VerificationSettingsForm() {
-  const { guildId, resources, loading: guildLoading, error: guildError, reload } =
-    useFirstGuild();
+  const {
+    guildId,
+    resources,
+    loading: guildLoading,
+    error: guildError,
+    reload,
+    selectedGuild,
+  } = useFirstGuild();
 
   const config = useVerificationStore((s) => s.config);
   const configured = useVerificationStore((s) => s.configured);
   const loading = useVerificationStore((s) => s.loading);
   const saving = useVerificationStore((s) => s.saving);
+  const validating = useVerificationStore((s) => s.validating);
   const error = useVerificationStore((s) => s.error);
   const savedAt = useVerificationStore((s) => s.savedAt);
   const publishing = useVerificationStore((s) => s.publishing);
@@ -38,6 +48,7 @@ export function VerificationSettingsForm() {
   const setConfig = useVerificationStore((s) => s.setConfig);
   const loadConfig = useVerificationStore((s) => s.loadConfig);
   const save = useVerificationStore((s) => s.save);
+  const validateDiscord = useVerificationStore((s) => s.validateDiscord);
   const publishPanel = useVerificationStore((s) => s.publishPanel);
   const copyVerifyLink = useVerificationStore((s) => s.copyVerifyLink);
 
@@ -70,15 +81,54 @@ export function VerificationSettingsForm() {
   const channels = resources?.channels ?? [];
   const roles = (resources?.roles ?? []).filter((role) => !role.managed);
   const verifyUrl = browserApiUrl(`/api/v1/oauth/discord/authorize/${guildId}`);
+  const setupState = config.setup_state ?? "not_configured";
+  const linkReady = canPublishOrCopy(config);
+  const missing = config.missing_bindings ?? [];
+
+  const setupBadgeVariant =
+    setupState === "active"
+      ? "success"
+      : setupState === "disabled"
+        ? "warning"
+        : "warning";
 
   return (
     <div className="d-flex flex-column gap-4">
-      <div className="d-flex align-items-center gap-2">
+      <div className="d-flex flex-wrap align-items-center gap-2">
+        {selectedGuild?.icon_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={selectedGuild.icon_url}
+            alt=""
+            width={28}
+            height={28}
+            className="rounded-circle"
+          />
+        ) : null}
         {resources && <Badge variant="success">{resources.guild_name}</Badge>}
-        <Badge variant={configured ? "success" : "warning"}>
-          {configured ? "Verification configured" : "Not configured yet"}
+        <Badge variant={setupBadgeVariant}>
+          {setupState === "active"
+            ? "Verification active"
+            : setupState === "disabled"
+              ? "Configured · disabled"
+              : setupState === "incomplete"
+                ? "Setup incomplete"
+                : setupState === "degraded"
+                  ? "Discord resources degraded"
+                  : configured
+                    ? "Verification configured"
+                    : "Not configured yet"}
         </Badge>
       </div>
+
+      {(setupState === "not_configured" || setupState === "incomplete") && (
+        <CAlert color="info" className="mb-0 py-2">
+          Create or reuse Discord channels and roles, then save them here. Public
+          verification and Discord panel publish stay locked until required
+          bindings are saved
+          {missing.length ? ` (missing: ${missing.join(", ")})` : ""}.
+        </CAlert>
+      )}
 
       <Card>
         <div className="d-flex flex-column gap-4">
@@ -89,7 +139,10 @@ export function VerificationSettingsForm() {
               <Select
                 label="Verification channel"
                 value={config.verification_channel_id}
-                options={channels.map((c) => ({ value: c.id, label: `#${c.name}` }))}
+                options={channels.map((c) => ({
+                  value: c.id,
+                  label: `#${c.name}`,
+                }))}
                 onChange={(value) =>
                   setConfig((c) => ({ ...c, verification_channel_id: value }))
                 }
@@ -99,7 +152,10 @@ export function VerificationSettingsForm() {
               <Select
                 label="Log channel"
                 value={config.log_channel_id}
-                options={channels.map((c) => ({ value: c.id, label: `#${c.name}` }))}
+                options={channels.map((c) => ({
+                  value: c.id,
+                  label: `#${c.name}`,
+                }))}
                 onChange={(value) =>
                   setConfig((c) => ({ ...c, log_channel_id: value }))
                 }
@@ -114,7 +170,10 @@ export function VerificationSettingsForm() {
               <Select
                 label="Unverified role"
                 value={config.unverified_role_id}
-                options={roles.map((r) => ({ value: r.id, label: `@${r.name}` }))}
+                options={roles.map((r) => ({
+                  value: r.id,
+                  label: `@${r.name}`,
+                }))}
                 onChange={(value) =>
                   setConfig((c) => ({ ...c, unverified_role_id: value }))
                 }
@@ -124,7 +183,10 @@ export function VerificationSettingsForm() {
               <Select
                 label="Base member role"
                 value={config.member_role_id}
-                options={roles.map((r) => ({ value: r.id, label: `@${r.name}` }))}
+                options={roles.map((r) => ({
+                  value: r.id,
+                  label: `@${r.name}`,
+                }))}
                 onChange={(value) =>
                   setConfig((c) => ({ ...c, member_role_id: value }))
                 }
@@ -133,7 +195,8 @@ export function VerificationSettingsForm() {
           </CRow>
           <p className="mb-0 small text-body-secondary">
             On successful verification the Unverified role is removed and the
-            Base member role is granted.
+            Base member role is granted. NorBot does not create these Discord
+            resources — select existing ones.
           </p>
 
           <CRow className="g-3">
@@ -141,7 +204,10 @@ export function VerificationSettingsForm() {
               <Select
                 label="Manual review role (optional)"
                 value={config.manual_review_role_id}
-                options={roles.map((r) => ({ value: r.id, label: `@${r.name}` }))}
+                options={roles.map((r) => ({
+                  value: r.id,
+                  label: `@${r.name}`,
+                }))}
                 onChange={(value) =>
                   setConfig((c) => ({ ...c, manual_review_role_id: value }))
                 }
@@ -188,12 +254,8 @@ export function VerificationSettingsForm() {
           <h2 className="h5 mb-0">Verification link & Discord panel</h2>
           <p className="mb-0 text-body-secondary small">
             Members open this URL in a browser to complete Discord OAuth.
-            Requires{" "}
-            <code>
-              NORGOTH_DISCORD_CLIENT_ID / CLIENT_SECRET / REDIRECT_URI
-            </code>{" "}
-            in <code>Norgoth/.env</code> (redirect must match the Discord
-            Developer Portal).
+            Requires Discord OAuth env vars and an active setup (channels +
+            roles saved, master enabled).
           </p>
           <code className="d-block border rounded p-3 small text-success text-break">
             {verifyUrl}
@@ -201,22 +263,29 @@ export function VerificationSettingsForm() {
           <div className="d-flex flex-wrap align-items-center gap-2">
             <Button
               variant="secondary"
+              disabled={!linkReady}
               onClick={() => void copyVerifyLink(verifyUrl)}
             >
               {copied ? "Copied" : "Copy link"}
             </Button>
-            <a
-              href={verifyUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="d-inline-flex"
-            >
-              <Button variant="secondary">Open in browser</Button>
-            </a>
+            {linkReady ? (
+              <a
+                href={verifyUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="d-inline-flex"
+              >
+                <Button variant="secondary">Open in browser</Button>
+              </a>
+            ) : (
+              <Button variant="secondary" disabled>
+                Open in browser
+              </Button>
+            )}
             <Button
               variant="primary"
               onClick={() => void publishPanel(guildId)}
-              disabled={publishing || !config.verification_channel_id}
+              disabled={publishing || !linkReady}
             >
               {publishing ? "Publishing…" : "Publish Discord verify panel"}
             </Button>
@@ -229,13 +298,20 @@ export function VerificationSettingsForm() {
         </div>
       </Card>
 
-      <div className="d-flex align-items-center gap-3">
+      <div className="d-flex flex-wrap align-items-center gap-3">
         <Button
           variant="primary"
           onClick={() => void save(guildId)}
           disabled={saving}
         >
           {saving ? "Saving…" : "Save Verification Settings"}
+        </Button>
+        <Button
+          variant="secondary"
+          onClick={() => void validateDiscord(guildId)}
+          disabled={validating || !hasLocalRequired(config)}
+        >
+          {validating ? "Validating…" : "Validate Discord"}
         </Button>
 
         {savedAt && (
@@ -249,6 +325,20 @@ export function VerificationSettingsForm() {
         )}
       </div>
     </div>
+  );
+}
+
+function hasLocalRequired(config: {
+  verification_channel_id: string;
+  log_channel_id: string;
+  unverified_role_id: string;
+  member_role_id: string;
+}): boolean {
+  return Boolean(
+    config.verification_channel_id &&
+      config.log_channel_id &&
+      config.unverified_role_id &&
+      config.member_role_id
   );
 }
 

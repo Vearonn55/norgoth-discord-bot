@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
-  cilCheckCircle,
   cilMediaPlay,
   cilSend,
   cilSpeedometer,
@@ -9,6 +8,7 @@ import {
 import { CAlert, CCol, CRow } from "@/components/ui/coreui";
 import { PageHeader } from "@/components/layout/page-header";
 import { DashboardAutoRefresh } from "@/components/dashboard/dashboard-auto-refresh";
+import { HomeVerificationMetric } from "@/components/dashboard/home-verification-metric";
 import { ActivitySummary } from "@/components/dashboard/activity-summary";
 import { EngagementChart } from "@/components/dashboard/engagement-chart";
 import { Card } from "@/components/ui/card";
@@ -22,7 +22,6 @@ type HomeStatus = {
   botConnected: boolean;
   guildName: string | null;
   guildId: string | null;
-  verificationEnabled: boolean | null;
   workerOnline: boolean;
   queuePaused: boolean;
   queuedCount: number;
@@ -54,18 +53,10 @@ async function getHomeStatus(): Promise<HomeStatus> {
   };
   const guild = status.guilds?.[0] ?? null;
 
-  let verificationEnabled: boolean | null = null;
-
-  if (guild) {
-    const config = await fetchJson(`/api/v1/guilds/${guild.id}/configuration`);
-    verificationEnabled = config ? Boolean(config.enabled) : null;
-  }
-
   return {
     botConnected: Boolean(botHealth?.connected),
     guildName: guild?.name ?? null,
     guildId: guild?.id ?? null,
-    verificationEnabled,
     workerOnline: Boolean(workerHealth?.online),
     queuePaused: Boolean(queueState?.is_paused),
     queuedCount: Number(queueState?.queued_count ?? 0),
@@ -110,7 +101,7 @@ export default async function DashboardPage({
 
       <div className="d-flex flex-column gap-4">
         <PageHeader
-          title="Norgoth"
+          title="NorBot"
           category="dashboard"
           icon={<Icon icon={cilSpeedometer} size="xl" />}
           description={
@@ -178,30 +169,7 @@ export default async function DashboardPage({
             </Link>
           </CCol>
           <CCol md={6} xl={3}>
-            <Link
-              href={`/${lang}/community/onboarding`}
-              className="text-decoration-none d-block h-100"
-            >
-              <MetricWidget
-                label="Verification"
-                value={
-                  status.verificationEnabled === null
-                    ? "Not configured"
-                    : status.verificationEnabled
-                      ? "Enabled"
-                      : "Disabled"
-                }
-                accent={
-                  status.verificationEnabled === null
-                    ? "warning"
-                    : status.verificationEnabled
-                      ? "success"
-                      : "warning"
-                }
-                helper="OAuth checks and role grants"
-                icon={<Icon icon={cilCheckCircle} size="lg" />}
-              />
-            </Link>
+            <HomeVerificationMetric lang={lang} />
           </CCol>
         </CRow>
 

@@ -365,6 +365,18 @@ class DiscordBotClient:
             )
         return response.json()
 
+    async def list_guild_roles(self, guild_id: str) -> list[dict[str, Any]]:
+        response = await self._request(
+            "GET", f"{DISCORD_API_BASE_URL}/guilds/{guild_id}/roles"
+        )
+        if response.status_code != 200:
+            raise DiscordBotAPIError(
+                f"Failed to list roles: HTTP {response.status_code} {response.text}",
+                status_code=response.status_code,
+            )
+        data = response.json()
+        return data if isinstance(data, list) else []
+
     async def list_guild_channels(self, guild_id: str) -> list[dict[str, Any]]:
         response = await self._request(
             "GET", f"{DISCORD_API_BASE_URL}/guilds/{guild_id}/channels"

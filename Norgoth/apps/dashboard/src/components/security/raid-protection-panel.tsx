@@ -165,7 +165,7 @@ export function RaidProtectionPanel() {
             <div>
               <div className="fw-medium">Respond Automatically</div>
               <p className="mb-0 mt-1 small text-body-secondary">
-                When enabled, Norgoth applies the responses below the moment a
+                When enabled, NorBot applies the responses below the moment a
                 raid is detected.
               </p>
             </div>

@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Path
 from app.core.config import get_settings
 from app.services.campaign_store import get_redis
 from app.services.feature_config_store import FEATURE_REGISTRY, read_through
+from app.services.verification_join_config import load_verification_join_config
 
 SNOWFLAKE = r"^[0-9]{5,25}$"
 
@@ -26,6 +27,19 @@ router = APIRouter(
     tags=["Internal Config"],
     dependencies=[Depends(require_bot_token)],
 )
+
+
+@router.get("/verification/{guild_id}")
+async def hydrate_verification_join_config(
+    guild_id: str = Path(pattern=SNOWFLAKE),
+) -> dict[str, Any]:
+    """Return join-time verification snapshot for the Gateway bot.
+
+    Postgres remains the source of truth; Redis caches a short-lived snapshot.
+    """
+
+    payload = await load_verification_join_config(guild_id)
+    return {"guild_id": guild_id, "config": payload}
 
 
 @router.get("/{guild_id}/{feature_key}")

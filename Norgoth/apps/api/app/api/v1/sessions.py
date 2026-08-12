@@ -19,7 +19,8 @@ from app.api.v1.dependencies_auth import (
 )
 from app.api.v1.discord_http import http_detail
 from app.api.v1.operator_discord import fetch_operator_guilds
-from app.security.discord_permissions import can_manage_guild
+from app.integrations.discord.cdn import discord_icon_url
+from app.security.discord_permissions import can_manage_guild, guild_role_label
 from app.security.session import (
     COOKIE_NAME,
     SESSION_TTL_SECONDS,
@@ -27,6 +28,10 @@ from app.security.session import (
     SessionService,
 )
 from app.services.campaign_store import get_redis
+from app.services.guild_setup_state import (
+    derive_setup_state,
+    lookup_configured_guild_ids,
+)
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
@@ -73,8 +78,6 @@ async def current_session(
     if session is not None:
         return {"authenticated": True, "user": session.to_public_dict()}
     if not settings.auth_enforced:
-        # Dev convenience: report an anonymous "Developer" operator so the
-        # dashboard behaves as signed-in while Discord login is bypassed.
         stub = OperatorSession(
             session_id="dev",
             user_id="0",
@@ -100,53 +103,6 @@ async def logout(
     return {"status": "ok"}
 
 
-async def _fetch_user_guilds(
-    *,
-    sessions: SessionService,
-    oauth_client: DiscordOAuthClientDependency,
-    user_id: str,
-    request: Request,
-    route: str,
-):
-    token = await sessions.get_valid_access_token(
-        user_id,
-        oauth_client=oauth_client,
-    )
-    if not token:
-        raise HTTPException(
-            status_code=401,
-            detail=http_detail(
-                "discord_token_invalid",
-                "Session token expired. Please reconnect Discord.",
-            ),
-        )
-
-    try:
-        return await oauth_client.get_current_user_guilds(access_token=token)
-    except DiscordOAuthError as error:
-        if error.http_status in {401, 403}:
-            refreshed = await sessions.get_valid_access_token(
-                user_id,
-                oauth_client=oauth_client,
-                force_refresh=True,
-            )
-            if refreshed:
-                try:
-                    return await oauth_client.get_current_user_guilds(
-                        access_token=refreshed
-                    )
-                except DiscordOAuthError as retry_error:
-                    if retry_error.http_status in {401, 403}:
-                        await sessions.clear_oauth_tokens(user_id)
-                    raise_discord_oauth_http_error(
-                        retry_error,
-                        request=request,
-                        route=route,
-                    )
-            await sessions.clear_oauth_tokens(user_id)
-        raise_discord_oauth_http_error(error, request=request, route=route)
-
-
 @router.get("/servers")
 async def list_manageable_servers(
     request: Request,
@@ -158,6 +114,7 @@ async def list_manageable_servers(
     redis_client = await get_redis()
     try:
         bot_guild_ids: set[str] = set()
+        bot_icon_by_id: dict[str, str | None] = {}
         bot_guilds: list[dict[str, Any]] = []
         status_raw = await redis_client.get("norgoth:bot:status")
         if status_raw:
@@ -169,15 +126,24 @@ async def list_manageable_servers(
                     if isinstance(guild, dict) and guild.get("id"):
                         gid = str(guild["id"])
                         bot_guild_ids.add(gid)
+                        icon_hash = guild.get("icon")
+                        normalized_icon = str(icon_hash) if isinstance(icon_hash, str) else None
+                        bot_icon_by_id[gid] = normalized_icon
                         bot_guilds.append(
                             {
                                 "id": gid,
                                 "name": str(guild.get("name") or gid),
-                                "icon_url": None,
+                                "icon": normalized_icon,
+                                "icon_url": discord_icon_url(gid, normalized_icon),
                                 "owner": False,
                                 "permissions": "0",
+                                "role_label": guild_role_label(
+                                    owner=False,
+                                    permissions="0",
+                                ),
                                 "bot_installed": True,
                                 "manageable": True,
+                                "setup_state": "not_configured",
                             }
                         )
             except json.JSONDecodeError:
@@ -192,14 +158,18 @@ async def list_manageable_servers(
     finally:
         await redis_client.aclose()
 
-    # Soft-auth / missing token: show bot-connected guilds only.
-    if not settings.auth_enforced and session.user_id == "0":
+    async def _bot_only_servers() -> dict[str, Any]:
+        configured = await lookup_configured_guild_ids(bot_guild_ids)
+        _apply_setup_state(bot_guilds, bot_guild_ids, configured)
         return {"servers": bot_guilds}
+
+    if not settings.auth_enforced and session.user_id == "0":
+        return await _bot_only_servers()
 
     if not settings.auth_enforced:
         token = await sessions.get_access_token(session.user_id)
         if not token:
-            return {"servers": bot_guilds}
+            return await _bot_only_servers()
 
     user_guilds = await fetch_operator_guilds(
         sessions=sessions,
@@ -209,25 +179,57 @@ async def list_manageable_servers(
         route="/sessions/servers",
     )
 
-    servers = []
+    eligible_ids: set[str] = set()
+    pending: list[tuple[Any, bool]] = []
     for guild in user_guilds:
         if not can_manage_guild(owner=guild.owner, permissions=guild.permissions):
             continue
-        bot_installed = guild.id in bot_guild_ids
-        icon_url = None
-        if guild.icon:
-            icon_url = f"https://cdn.discordapp.com/icons/{guild.id}/{guild.icon}.png?size=128"
+        eligible_ids.add(guild.id)
+        pending.append((guild, guild.id in bot_guild_ids))
+
+    configured_ids = await lookup_configured_guild_ids(eligible_ids | bot_guild_ids)
+
+    servers = []
+    for guild, bot_installed in pending:
+        icon_hash = guild.icon or bot_icon_by_id.get(guild.id)
         servers.append(
             {
                 "id": guild.id,
                 "name": guild.name,
-                "icon_url": icon_url,
+                "icon": icon_hash,
+                "icon_url": discord_icon_url(guild.id, icon_hash),
                 "owner": guild.owner,
                 "permissions": guild.permissions,
+                "role_label": guild_role_label(
+                    owner=guild.owner,
+                    permissions=guild.permissions,
+                ),
                 "bot_installed": bot_installed,
-                "manageable": bot_installed,
+                "manageable": True,
+                "setup_state": derive_setup_state(
+                    bot_installed=bot_installed,
+                    configured=guild.id in configured_ids,
+                ),
             }
         )
 
-    servers.sort(key=lambda item: (not item["bot_installed"], item["name"].lower()))
+    state_rank = {"configured": 0, "not_configured": 1, "not_installed": 2}
+    servers.sort(
+        key=lambda item: (
+            state_rank.get(item["setup_state"], 9),
+            item["name"].lower(),
+        )
+    )
     return {"servers": servers}
+
+
+def _apply_setup_state(
+    bot_guilds: list[dict[str, Any]],
+    bot_guild_ids: set[str],
+    configured_ids: set[str],
+) -> None:
+    for item in bot_guilds:
+        item["setup_state"] = derive_setup_state(
+            bot_installed=item["id"] in bot_guild_ids,
+            configured=item["id"] in configured_ids,
+        )

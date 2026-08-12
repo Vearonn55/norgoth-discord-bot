@@ -8,10 +8,16 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 
 from app.api.v1.dependencies_auth import guild_manager_dependency
 from app.core.config import get_settings
+from app.db.session import get_session_factory
+from app.models.guild import Guild
+from app.repositories.configuration_repository import ConfigurationRepository
 from app.services.campaign_store import now_iso
+from app.services.configuration_service import ConfigurationService
+from app.services.verification_setup import derive_verification_setup_state, has_required_bindings
 
 router = APIRouter(
     tags=["Verification Panel"],
@@ -61,6 +67,40 @@ async def publish_verification_panel(
                 "NORGOTH_DISCORD_CLIENT_SECRET, and NORGOTH_DISCORD_REDIRECT_URI."
             ),
         )
+
+    try:
+        factory = get_session_factory()
+        async with factory() as session:
+            guild = (
+                await session.execute(
+                    select(Guild).where(Guild.discord_guild_id == str(guild_id))
+                )
+            ).scalar_one_or_none()
+            if guild is None:
+                raise HTTPException(status_code=404, detail="Discord guild not found.")
+            configuration = await ConfigurationService(
+                ConfigurationRepository(session)
+            ).get_by_guild_id(guild.id)
+            setup = derive_verification_setup_state(configuration)
+            if configuration is None or not has_required_bindings(configuration):
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "verification_setup_incomplete",
+                        "message": (
+                            "Save verification channels and roles before publishing "
+                            "the Discord panel."
+                        ),
+                        "setup_state": setup.state,
+                    },
+                )
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Could not load verification configuration: {error}",
+        ) from error
 
     # Prefer public API base; fall back to local API so the link always works in dev.
     api_base = (

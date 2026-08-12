@@ -235,10 +235,10 @@ export function LoggingSetupWizard({ guildId, channels, onComplete }: Props) {
           <div className="d-flex flex-column gap-3">
             <div className="d-flex align-items-center justify-content-between gap-3 border rounded p-3">
               <div>
-                <div className="fw-medium">Create a Norgoth-managed category</div>
+                <div className="fw-medium">Create a NorBot-managed category</div>
                 <p className="mb-0 mt-1 small text-body-secondary">
                   Groups new log channels under a dedicated category that
-                  Norgoth can manage and repair.
+                  NorBot can manage and repair.
                 </p>
               </div>
               <Switch

@@ -248,7 +248,7 @@ export function LoggingConfigurationsPanel() {
             </p>
             <CFormCheck
               id="delete-discord-logging"
-              label="Also delete Norgoth-managed log channels and category in Discord"
+              label="Also delete NorBot-managed log channels and category in Discord"
               checked={deleteDiscord}
               onChange={(e) => setDeleteDiscord(e.target.checked)}
             />

@@ -1,7 +1,8 @@
-"use client";
+﻿"use client";
 
 import { create } from "zustand";
 import { apiUrl } from "@/lib/api";
+import { discordIconUrl } from "@/lib/discord-icon-url";
 
 export type GuildChannel = {
   id: string;
@@ -41,11 +42,13 @@ export type GuildResources = {
 export type SelectedGuild = {
   id: string;
   name: string;
+  icon?: string | null;
   icon_url?: string | null;
   bot_installed: boolean;
 };
 
 const SELECTED_GUILD_KEY = "norgoth:selected-guild:v1";
+const RESOURCE_TIMEOUT_MS = 20_000;
 
 type GuildState = {
   guildId: string | null;
@@ -58,12 +61,88 @@ type GuildState = {
   reload: () => Promise<void>;
 };
 
-async function loadResources(guildId: string): Promise<GuildResources | null> {
-  const resourcesResponse = await fetch(
-    apiUrl(`/guilds/${guildId}/discord-resources`),
-    { cache: "no-store", credentials: "include" }
-  );
-  if (!resourcesResponse.ok) return null;
+type ResourceLoadFailure = {
+  message: string;
+  code: string;
+};
+
+function mapResourceErrorCode(code: string): string {
+  switch (code) {
+    case "bot_not_installed":
+      return "NorBot is not installed in this server yet.";
+    case "guild_resources_unavailable":
+      return "Guild resources are not available yet. Make sure the bot is online and invited.";
+    case "missing_bot_permissions":
+      return "NorBot is missing permissions to read channels or roles in this server.";
+    case "discord_rate_limited":
+      return "Discord is rate-limiting guild resources. Please retry shortly.";
+    case "discord_temporarily_unavailable":
+      return "Discord is temporarily unavailable. Please retry shortly.";
+    case "guild_access_denied":
+      return "You do not have access to this server in NorBot.";
+    case "authentication_required":
+      return "Your session has expired. Sign in again to continue.";
+    default:
+      return "Could not load guild resources.";
+  }
+}
+
+function resolvedGuildIcon(guild: {
+  id: string;
+  icon?: string | null;
+  icon_url?: string | null;
+}): string | null {
+  return guild.icon_url ?? discordIconUrl(guild.id, guild.icon ?? null) ?? null;
+}
+
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+async function loadResources(guildId: string): Promise<GuildResources> {
+  let resourcesResponse: Response;
+  try {
+    resourcesResponse = await fetchWithTimeout(
+      apiUrl(`/guilds/${guildId}/discord-resources`),
+      { cache: "no-store", credentials: "include" },
+      RESOURCE_TIMEOUT_MS,
+    );
+  } catch {
+    throw {
+      code: "resource_fetch_timeout",
+      message:
+        "Guild resource request timed out. Please retry while NorBot reconnects to Discord.",
+    } satisfies ResourceLoadFailure;
+  }
+
+  if (!resourcesResponse.ok) {
+    const body = await resourcesResponse.json().catch(() => null);
+    const detail = body?.detail;
+    const code =
+      typeof detail === "object" && typeof detail?.code === "string"
+        ? detail.code
+        : resourcesResponse.status === 401
+          ? "authentication_required"
+          : resourcesResponse.status === 403
+            ? "guild_access_denied"
+            : "guild_resources_unavailable";
+    const message =
+      typeof detail === "object" && typeof detail?.message === "string"
+        ? detail.message
+        : mapResourceErrorCode(code);
+    throw { code, message } satisfies ResourceLoadFailure;
+  }
+
   return (await resourcesResponse.json()) as GuildResources;
 }
 
@@ -88,21 +167,39 @@ export const useGuildStore = create<GuildState>((set, get) => ({
   },
 
   selectGuild: async (guild) => {
+    const normalizedGuild: SelectedGuild = {
+      ...guild,
+      icon_url: resolvedGuildIcon({
+        id: guild.id,
+        icon: guild.icon,
+        icon_url: guild.icon_url,
+      }),
+    };
+
     set({
       loading: true,
       error: null,
-      guildId: guild.id,
-      selectedGuild: guild,
+      guildId: normalizedGuild.id,
+      selectedGuild: normalizedGuild,
       resources: null,
     });
+
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(SELECTED_GUILD_KEY, JSON.stringify(guild));
+      window.localStorage.setItem(
+        SELECTED_GUILD_KEY,
+        JSON.stringify(normalizedGuild),
+      );
     }
+
     try {
-      const resources = await loadResources(guild.id);
-      set({ resources, loading: false, error: resources ? null : "Could not load guild resources." });
-    } catch {
-      set({ loading: false, error: "Could not reach the Norgoth API." });
+      const resources = await loadResources(normalizedGuild.id);
+      set({ resources, loading: false, error: null });
+    } catch (error) {
+      const failure = error as ResourceLoadFailure;
+      set({
+        loading: false,
+        error: failure?.message || "Could not reach the NorBot API.",
+      });
     }
   },
 
@@ -121,15 +218,51 @@ export const useGuildStore = create<GuildState>((set, get) => ({
       }
 
       if (selected?.id) {
+        try {
+          const response = await fetchWithTimeout(
+            apiUrl("/api/v1/sessions/servers"),
+            { cache: "no-store", credentials: "include" },
+            RESOURCE_TIMEOUT_MS,
+          );
+          if (response.ok) {
+            const data = (await response.json()) as {
+              servers?: Array<{
+                id: string;
+                name?: string;
+                icon?: string | null;
+                icon_url?: string | null;
+                bot_installed?: boolean;
+              }>;
+            };
+            const match = (data.servers ?? []).find(
+              (server) => String(server.id) === selected.id,
+            );
+            if (match) {
+              selected = {
+                id: String(match.id),
+                name: String(match.name ?? selected.name),
+                icon: match.icon ?? selected.icon ?? null,
+                icon_url: resolvedGuildIcon({
+                  id: String(match.id),
+                  icon: match.icon ?? selected.icon ?? null,
+                  icon_url: match.icon_url ?? selected.icon_url ?? null,
+                }),
+                bot_installed: Boolean(match.bot_installed),
+              };
+            }
+          }
+        } catch {
+          // Keep the last stored icon/name if the refresh fails.
+        }
         await get().selectGuild(selected);
         return;
       }
 
-      // Fallback: first bot guild (dev / pre-selector)
-      const healthResponse = await fetch(apiUrl(`/bot/health`), {
-        cache: "no-store",
-        credentials: "include",
-      });
+      const healthResponse = await fetchWithTimeout(
+        apiUrl(`/bot/health`),
+        { cache: "no-store", credentials: "include" },
+        RESOURCE_TIMEOUT_MS,
+      );
       const health = healthResponse.ok ? await healthResponse.json() : null;
       const guilds = health?.status?.guilds;
 
@@ -145,14 +278,25 @@ export const useGuildStore = create<GuildState>((set, get) => ({
         return;
       }
 
+      const first = guilds[0] as {
+        id?: unknown;
+        name?: unknown;
+        icon?: unknown;
+        icon_url?: unknown;
+      };
+      const iconHash = typeof first.icon === "string" ? first.icon : null;
+      const fallbackIcon =
+        typeof first.icon_url === "string" ? first.icon_url : null;
       await get().selectGuild({
-        id: String(guilds[0].id),
-        name: String(guilds[0].name ?? "Server"),
+        id: String(first.id),
+        name: String(first.name ?? "Server"),
+        icon: iconHash,
+        icon_url: discordIconUrl(String(first.id), iconHash) ?? fallbackIcon,
         bot_installed: true,
       });
     } catch {
       set({
-        error: "Could not reach the Norgoth API. Is it running on port 8000?",
+        error: "Could not reach the NorBot API. Is it running on port 8000?",
         loading: false,
       });
     }

@@ -1,12 +1,12 @@
 """Discord OAuth2 endpoints for the verification flow."""
 
-import html
+from __future__ import annotations
+
 import logging
 from typing import Annotated
 
 from fastapi import (
     APIRouter,
-    HTTPException,
     Path,
     Query,
     Request,
@@ -34,8 +34,26 @@ from app.integrations.proxycheck import (
     InvalidProxycheckIPAddressError,
     ProxycheckError,
 )
+from app.security.oauth_nonce import OAuthNonceReplayError, consume_oauth_nonce
 from app.security.oauth_state import InvalidOAuthStateError
+from app.security.verification_rate_limit import (
+    AUTHORIZE_LIMIT,
+    AUTHORIZE_WINDOW_SECONDS,
+    CALLBACK_LIMIT,
+    CALLBACK_WINDOW_SECONDS,
+    VerificationRateLimitExceeded,
+    enforce_verification_rate_limit,
+)
+from app.services.guild_meta import resolve_guild_public_meta
+from app.services.verification_html import (
+    message_for_setup_state,
+    render_verification_result_page,
+    render_verification_unavailable_page,
+    t,
+)
 from app.services.verification_service import VerificationRequest
+from app.services.verification_setup import derive_verification_setup_state
+from app.services.views import ConfigurationView
 
 logger = logging.getLogger(__name__)
 
@@ -43,142 +61,6 @@ router = APIRouter(
     prefix="/oauth/discord",
     tags=["discord-oauth"],
 )
-
-REASON_DESCRIPTIONS = {
-    "allowed": "You passed all verification checks.",
-    "whitelisted": "You are on this server's whitelist.",
-    "user_blacklisted": "You are blacklisted on this server.",
-    "vpn_or_proxy_detected": "A VPN or proxy connection was detected.",
-    "shared_ip_detected": "Your connection matches another verified account.",
-    "account_too_new": "Your Discord account is too new for this server.",
-    "high_risk_guild": "Your account is being reviewed by the moderation team.",
-}
-
-
-def render_verification_result_page(
-    *,
-    allowed: bool,
-    manual_review: bool,
-    reason: str,
-    username: str,
-    guild_name: str,
-) -> str:
-    safe_username = html.escape(username)
-    safe_guild_name = html.escape(guild_name)
-    description = REASON_DESCRIPTIONS.get(reason, reason)
-
-    if allowed:
-        headline = "Verification complete"
-        accent = "#34d399"
-        detail = (
-            f"Welcome, {safe_username}. You now have access to "
-            f"{safe_guild_name}. You can close this tab and return to Discord."
-        )
-    elif manual_review:
-        headline = "Verification pending review"
-        accent = "#fbbf24"
-        detail = (
-            f"Thanks, {safe_username}. Your access to {safe_guild_name} is "
-            "pending manual review by the moderation team. You can close this "
-            "tab; you will receive access once a moderator approves your request."
-        )
-    else:
-        headline = "Verification denied"
-        accent = "#f87171"
-        detail = (
-            f"Sorry, {safe_username}. Access to {safe_guild_name} was denied: "
-            f"{description}"
-        )
-
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Norgoth Verification</title>
-<style>
-  body {{
-    margin: 0;
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: #09090b;
-    color: #fafafa;
-    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
-  }}
-  .panel {{
-    max-width: 420px;
-    padding: 40px 36px;
-    border: 1px solid #27272a;
-    border-radius: 20px;
-    background: #101012;
-    text-align: center;
-  }}
-  .dot {{
-    width: 56px;
-    height: 56px;
-    margin: 0 auto 20px;
-    border-radius: 50%;
-    background: {accent};
-  }}
-  h1 {{ font-size: 22px; margin: 0 0 12px; }}
-  p {{ font-size: 15px; line-height: 1.6; color: #a1a1aa; margin: 0; }}
-  .brand {{
-    margin-top: 28px;
-    font-size: 11px;
-    letter-spacing: 0.28em;
-    text-transform: uppercase;
-    color: #52525b;
-  }}
-</style>
-</head>
-<body>
-  <div class="panel">
-    <div class="dot"></div>
-    <h1>{headline}</h1>
-    <p>{detail}</p>
-    <div class="brand">Norgoth Verification</div>
-  </div>
-</body>
-</html>"""
-
-def render_verification_unavailable_page(*, guild_name: str, message: str) -> str:
-    """Render a neutral notice when verification cannot be started."""
-
-    safe_guild_name = html.escape(guild_name)
-    safe_message = html.escape(message)
-
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Norgoth Verification</title>
-<style>
-  body {{ margin: 0; min-height: 100vh; display: flex; align-items: center;
-    justify-content: center; background: #09090b; color: #fafafa;
-    font-family: -apple-system, "Segoe UI", Roboto, sans-serif; }}
-  .panel {{ max-width: 420px; padding: 40px 36px; border: 1px solid #27272a;
-    border-radius: 20px; background: #101012; text-align: center; }}
-  .dot {{ width: 56px; height: 56px; margin: 0 auto 20px; border-radius: 50%;
-    background: #a1a1aa; }}
-  h1 {{ font-size: 22px; margin: 0 0 12px; }}
-  p {{ font-size: 15px; line-height: 1.6; color: #a1a1aa; margin: 0; }}
-  .brand {{ margin-top: 28px; font-size: 11px; letter-spacing: 0.28em;
-    text-transform: uppercase; color: #52525b; }}
-</style>
-</head>
-<body>
-  <div class="panel">
-    <div class="dot"></div>
-    <h1>Verification unavailable</h1>
-    <p>{safe_message} ({safe_guild_name})</p>
-    <div class="brand">Norgoth Verification</div>
-  </div>
-</body>
-</html>"""
-
 
 DiscordGuildIDPath = Annotated[
     str,
@@ -189,33 +71,48 @@ DiscordGuildIDPath = Annotated[
     ),
 ]
 
-AuthorizationCodeQuery = Annotated[
-    str,
-    Query(
-        min_length=1,
-        max_length=2048,
-    ),
-]
 
-OAuthStateQuery = Annotated[
-    str,
-    Query(
-        min_length=1,
-        max_length=4096,
-    ),
-]
+def _request_lang(request: Request, fallback: str = "en") -> str:
+    query_lang = request.query_params.get("lang")
+    if query_lang in {"en", "tr"}:
+        return query_lang
+    return fallback if fallback in {"en", "tr"} else "en"
 
 
 def _get_client_ip(request: Request) -> str:
-    """Return the direct client IP address for verification."""
+    """Return the real client IP, preferring trusted proxy headers."""
+
+    real_ip = (request.headers.get("x-real-ip") or "").strip()
+    if real_ip:
+        return real_ip.split(",")[0].strip()
+
+    forwarded = (request.headers.get("x-forwarded-for") or "").strip()
+    if forwarded:
+        return forwarded.split(",")[0].strip()
 
     if request.client is None or not request.client.host:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="The client IP address could not be determined.",
-        )
+        raise ValueError("client_ip_unavailable")
 
     return request.client.host
+
+
+def _html_unavailable(
+    *,
+    guild_name: str,
+    icon_url: str | None,
+    state: str,
+    lang: str,
+    retry_href: str | None = None,
+    message: str | None = None,
+) -> HTMLResponse:
+    content = render_verification_unavailable_page(
+        guild_name=guild_name,
+        message=message or message_for_setup_state(state, lang=lang),
+        icon_url=icon_url,
+        lang=lang,
+        retry_href=retry_href,
+    )
+    return HTMLResponse(content=content, status_code=status.HTTP_200_OK)
 
 
 @router.get(
@@ -224,44 +121,84 @@ def _get_client_ip(request: Request) -> str:
     status_code=status.HTTP_307_TEMPORARY_REDIRECT,
 )
 async def authorize_discord(
+    request: Request,
     discord_guild_id: DiscordGuildIDPath,
     oauth_client: DiscordOAuthClientDependency,
     oauth_state_service: DiscordOAuthStateServiceDependency,
     guild_service: GuildServiceDependency,
     configuration_service: ConfigurationServiceDependency,
+    bot_client: DiscordBotClientDependency,
 ) -> Response:
-    """Redirect a verification attempt to Discord authorization.
+    """Redirect a verification attempt to Discord authorization when active."""
 
-    When verification is disabled (or not configured) for the guild, show a
-    neutral notice instead of bouncing the member through Discord OAuth only to
-    fail at the callback.
-    """
+    lang = _request_lang(request)
+    retry_href = str(request.url)
+
+    try:
+        client_ip = _get_client_ip(request)
+        await enforce_verification_rate_limit(
+            bucket="authorize",
+            identity=f"{client_ip}:{discord_guild_id}",
+            limit=AUTHORIZE_LIMIT,
+            window_seconds=AUTHORIZE_WINDOW_SECONDS,
+        )
+    except VerificationRateLimitExceeded:
+        logger.warning(
+            "verification_authorize_rate_limited guild_id=%s",
+            discord_guild_id,
+        )
+        return _html_unavailable(
+            guild_name="this server",
+            icon_url=None,
+            state="error",
+            lang=lang,
+            retry_href=retry_href,
+        )
+    except Exception:
+        logger.info("authorize rate-limit check skipped", exc_info=True)
 
     guild = await guild_service.get_by_discord_guild_id(discord_guild_id)
-    guild_name = guild.discord_guild_name if guild is not None else "this server"
-
-    configuration = (
-        await configuration_service.get_by_guild_id(guild.id)
-        if guild is not None
-        else None
+    fallback_name = guild.discord_guild_name if guild is not None else "this server"
+    meta = await resolve_guild_public_meta(
+        discord_guild_id=discord_guild_id,
+        fallback_name=fallback_name,
+        bot_client=bot_client,
     )
 
-    if configuration is None or not configuration.enabled:
-        message = (
-            "Verification is currently disabled for this server."
-            if configuration is not None
-            else "Verification is not configured for this server."
+    if guild is None:
+        logger.info(
+            "verification_authorize code=guild_not_found guild_id=%s",
+            discord_guild_id,
         )
-        return HTMLResponse(
-            content=render_verification_unavailable_page(
-                guild_name=guild_name,
-                message=message,
-            ),
-            status_code=status.HTTP_200_OK,
+        return _html_unavailable(
+            guild_name=meta.name,
+            icon_url=meta.icon_url,
+            state="guild_not_found",
+            lang=lang,
+        )
+
+    configuration = await configuration_service.get_by_guild_id(guild.id)
+    setup = derive_verification_setup_state(configuration)
+
+    if setup.state != "active":
+        logger.info(
+            "verification_authorize code=%s state=%s guild_id=%s",
+            setup.code,
+            setup.state,
+            discord_guild_id,
+        )
+        retry = retry_href if setup.state in {"degraded", "error"} else None
+        return _html_unavailable(
+            guild_name=meta.name,
+            icon_url=meta.icon_url,
+            state=setup.state,
+            lang=lang,
+            retry_href=retry,
         )
 
     state_value = oauth_state_service.create(
         discord_guild_id=discord_guild_id,
+        lang=lang,
     )
     authorization_url = oauth_client.build_authorization_url(
         state=state_value,
@@ -279,11 +216,6 @@ async def authorize_discord(
 )
 async def discord_callback(
     request: Request,
-    code: AuthorizationCodeQuery,
-    state_value: Annotated[
-        OAuthStateQuery,
-        Query(alias="state"),
-    ],
     oauth_client: DiscordOAuthClientDependency,
     oauth_state_service: DiscordOAuthStateServiceDependency,
     guild_service: GuildServiceDependency,
@@ -291,178 +223,365 @@ async def discord_callback(
     proxycheck_client: ProxycheckClientDependency,
     verification_service: VerificationServiceDependency,
     bot_client: DiscordBotClientDependency,
+    code: Annotated[str | None, Query(min_length=1, max_length=2048)] = None,
+    state_value: Annotated[
+        str | None,
+        Query(alias="state", min_length=1, max_length=4096),
+    ] = None,
+    error: Annotated[str | None, Query()] = None,
 ) -> HTMLResponse:
     """Authenticate through Discord, verify, apply roles, and show the result."""
 
+    lang = _request_lang(request)
+
+    if error:
+        return _html_unavailable(
+            guild_name="this server",
+            icon_url=None,
+            state="disabled",
+            lang=lang,
+            message=t(lang, "oauth_denied"),
+        )
+
+    if not code or not state_value:
+        return _html_unavailable(
+            guild_name="this server",
+            icon_url=None,
+            state="error",
+            lang=lang,
+            message=t(lang, "oauth_invalid"),
+        )
+
+    try:
+        client_ip = _get_client_ip(request)
+    except ValueError:
+        return _html_unavailable(
+            guild_name="this server",
+            icon_url=None,
+            state="error",
+            lang=lang,
+            message=message_for_setup_state("error", lang=lang),
+        )
+
+    try:
+        await enforce_verification_rate_limit(
+            bucket="callback",
+            identity=client_ip,
+            limit=CALLBACK_LIMIT,
+            window_seconds=CALLBACK_WINDOW_SECONDS,
+        )
+    except VerificationRateLimitExceeded:
+        return _html_unavailable(
+            guild_name="this server",
+            icon_url=None,
+            state="error",
+            lang=lang,
+            message=message_for_setup_state("error", lang=lang),
+        )
+    except Exception:
+        logger.info("callback rate-limit check skipped", exc_info=True)
+
     try:
         verified_state = oauth_state_service.verify(state_value)
+    except InvalidOAuthStateError:
+        logger.info("verification_callback code=oauth_state_invalid")
+        return _html_unavailable(
+            guild_name="this server",
+            icon_url=None,
+            state="error",
+            lang=lang,
+            message=t(lang, "oauth_invalid"),
+        )
 
-        token = await oauth_client.exchange_code(
-            code=code,
+    lang = verified_state.lang if verified_state.lang in {"en", "tr"} else lang
+
+    try:
+        await consume_oauth_nonce(verified_state.nonce)
+    except OAuthNonceReplayError:
+        logger.info("verification_callback code=oauth_state_invalid replay")
+        return _html_unavailable(
+            guild_name="this server",
+            icon_url=None,
+            state="error",
+            lang=lang,
+            message=t(lang, "oauth_invalid"),
         )
-        user = await oauth_client.get_current_user(
-            access_token=token.access_token,
+    except Exception:
+        logger.exception("verification_callback code=oauth_state_invalid nonce_backend")
+        return _html_unavailable(
+            guild_name="this server",
+            icon_url=None,
+            state="error",
+            lang=lang,
+            message=t(lang, "oauth_invalid"),
         )
+
+    try:
+        token = await oauth_client.exchange_code(code=code)
+        user = await oauth_client.get_current_user(access_token=token.access_token)
         user_guilds = await oauth_client.get_current_user_guilds(
             access_token=token.access_token,
         )
-
         account_age_days = get_discord_account_age_days(user.id)
-    except InvalidOAuthStateError as error:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(error),
-        ) from error
-    except InvalidDiscordSnowflakeError as error:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Discord returned an invalid user ID.",
-        ) from error
-    except DiscordOAuthError as error:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Discord authentication could not be completed.",
-        ) from error
+    except InvalidDiscordSnowflakeError:
+        return _html_unavailable(
+            guild_name="this server",
+            icon_url=None,
+            state="error",
+            lang=lang,
+            message=t(lang, "oauth_invalid"),
+        )
+    except DiscordOAuthError:
+        logger.info("verification_callback code=oauth_exchange_failed")
+        return _html_unavailable(
+            guild_name="this server",
+            icon_url=None,
+            state="error",
+            lang=lang,
+            message=message_for_setup_state("error", lang=lang),
+        )
 
     guild = await guild_service.get_by_discord_guild_id(verified_state.discord_guild_id)
+    meta = await resolve_guild_public_meta(
+        discord_guild_id=verified_state.discord_guild_id,
+        fallback_name=guild.discord_guild_name if guild is not None else "this server",
+        bot_client=bot_client,
+    )
 
     if guild is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="The Discord server is not registered.",
+        return _html_unavailable(
+            guild_name=meta.name,
+            icon_url=meta.icon_url,
+            state="guild_not_found",
+            lang=lang,
         )
 
     configuration = await configuration_service.get_by_guild_id(guild.id)
-
-    if configuration is None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=("Verification is not configured for this Discord server."),
+    setup = derive_verification_setup_state(configuration)
+    if configuration is None or setup.state != "active":
+        return _html_unavailable(
+            guild_name=meta.name,
+            icon_url=meta.icon_url,
+            state=setup.state,
+            lang=lang,
         )
 
-    if not configuration.enabled:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=("Verification is currently disabled for this Discord server."),
+    user_guild_ids = frozenset(user_guild.id for user_guild in user_guilds)
+    if verified_state.discord_guild_id not in user_guild_ids:
+        logger.info(
+            "verification_callback code=user_not_in_guild user_id=%s guild_id=%s",
+            user.id,
+            verified_state.discord_guild_id,
+        )
+        return _html_unavailable(
+            guild_name=meta.name,
+            icon_url=meta.icon_url,
+            state="disabled",
+            lang=lang,
+            message=t(lang, "not_in_guild"),
         )
 
-    client_ip = _get_client_ip(request)
+    if bot_client is not None:
+        try:
+            await bot_client.get_guild_member(
+                verified_state.discord_guild_id,
+                user.id,
+            )
+        except DiscordBotAPIError as membership_error:
+            if membership_error.status_code == 404:
+                return _html_unavailable(
+                    guild_name=meta.name,
+                    icon_url=meta.icon_url,
+                    state="disabled",
+                    lang=lang,
+                    message=t(lang, "not_in_guild"),
+                )
+            logger.info(
+                "verification_callback code=guild_metadata_unavailable status=%s",
+                membership_error.status_code,
+            )
+
     vpn_or_proxy_detected = False
-
     if configuration.deny_vpn_or_proxy:
         try:
             proxycheck_result = await proxycheck_client.check_ip(client_ip)
-        except InvalidProxycheckIPAddressError as error:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="The client IP address is invalid.",
-            ) from error
-        except ProxycheckError as error:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=("VPN and proxy detection could not be completed."),
-            ) from error
-
-        vpn_or_proxy_detected = proxycheck_result.vpn_or_proxy_detected
+            vpn_or_proxy_detected = proxycheck_result.vpn_or_proxy_detected
+        except InvalidProxycheckIPAddressError:
+            return _html_unavailable(
+                guild_name=meta.name,
+                icon_url=meta.icon_url,
+                state="error",
+                lang=lang,
+                message=message_for_setup_state("error", lang=lang),
+            )
+        except ProxycheckError:
+            return _html_unavailable(
+                guild_name=meta.name,
+                icon_url=meta.icon_url,
+                state="error",
+                lang=lang,
+                message=message_for_setup_state("error", lang=lang),
+            )
 
     verification_result = await verification_service.verify(
         configuration=configuration,
         request=VerificationRequest(
             guild_id=guild.id,
             discord_user_id=user.id,
-            discord_user_guild_ids=frozenset(user_guild.id for user_guild in user_guilds),
+            discord_user_guild_ids=user_guild_ids,
             discord_account_age_days=account_age_days,
             ip_address=client_ip,
             vpn_or_proxy_detected=vpn_or_proxy_detected,
         ),
     )
 
+    role_grant_failed = False
+    username = user.global_name or user.username
+
     if bot_client is not None:
-        if verification_result.allowed and configuration.member_role_id:
-            # Simplified role transition: grant the Base Member role and remove
-            # the Unverified role. There is no separate "verified" role.
-            try:
-                await bot_client.add_member_role(
-                    guild_id=verified_state.discord_guild_id,
-                    user_id=user.id,
-                    role_id=configuration.member_role_id,
-                    reason="Norgoth verification passed",
-                )
+        role_grant_failed = await _apply_verification_roles(
+            bot_client=bot_client,
+            discord_guild_id=verified_state.discord_guild_id,
+            user_id=user.id,
+            configuration=configuration,
+            allowed=verification_result.allowed,
+            reason=verification_result.reason,
+        )
 
-                if configuration.unverified_role_id:
-                    await bot_client.remove_member_role(
-                        guild_id=verified_state.discord_guild_id,
-                        user_id=user.id,
-                        role_id=configuration.unverified_role_id,
-                        reason="Norgoth verification passed",
-                    )
-            except DiscordBotAPIError:
-                logger.exception(
-                    "Base member role grant failed for user %s in guild %s",
-                    user.id,
-                    verified_state.discord_guild_id,
-                )
-        elif not verification_result.allowed and configuration.unverified_role_id:
-            # Denied and manual-review both keep the member unverified until a
-            # decision is made; manual-review additionally pings moderators.
-            try:
-                await bot_client.add_member_role(
-                    guild_id=verified_state.discord_guild_id,
-                    user_id=user.id,
-                    role_id=configuration.unverified_role_id,
-                    reason=f"Norgoth verification held: {verification_result.reason}",
-                )
-            except DiscordBotAPIError:
-                logger.exception(
-                    "Unverified role assignment failed for user %s in guild %s",
-                    user.id,
-                    verified_state.discord_guild_id,
-                )
-
-        if verification_result.manual_review and configuration.log_channel_id:
-            await _send_manual_review_ping(
-                bot_client=bot_client,
-                log_channel_id=configuration.log_channel_id,
-                review_role_id=configuration.manual_review_role_id,
-                user_id=user.id,
-                username=user.global_name or user.username,
-                vpn_or_proxy_detected=vpn_or_proxy_detected,
-                shared_ip_detected=verification_result.shared_ip_detected,
-                high_risk_guild_detected=(
-                    verification_result.high_risk_guild_detected
-                ),
-            )
+        await _send_verification_log_embed(
+            bot_client=bot_client,
+            log_channel_id=configuration.log_channel_id,
+            user_id=user.id,
+            username=username,
+            allowed=verification_result.allowed,
+            manual_review=verification_result.manual_review,
+            reason=verification_result.reason,
+            role_grant_failed=role_grant_failed,
+            review_role_id=configuration.manual_review_role_id,
+            vpn_or_proxy_detected=vpn_or_proxy_detected,
+            shared_ip_detected=verification_result.shared_ip_detected,
+            high_risk_guild_detected=verification_result.high_risk_guild_detected,
+        )
 
     return HTMLResponse(
         content=render_verification_result_page(
             allowed=verification_result.allowed,
             manual_review=verification_result.manual_review,
             reason=verification_result.reason,
-            username=user.global_name or user.username,
-            guild_name=guild.discord_guild_name,
+            username=username,
+            guild_name=meta.name,
+            icon_url=meta.icon_url,
+            lang=lang,
+            role_grant_failed=role_grant_failed and verification_result.allowed,
         ),
         status_code=status.HTTP_200_OK,
     )
 
 
-async def _send_manual_review_ping(
+async def _apply_verification_roles(
     *,
-    bot_client: "DiscordBotClient",
+    bot_client: DiscordBotClient,
+    discord_guild_id: str,
+    user_id: str,
+    configuration: ConfigurationView,
+    allowed: bool,
+    reason: str,
+) -> bool:
+    """Apply role transitions. Returns True when an allowed grant failed."""
+
+    already_verified = False
+    try:
+        member = await bot_client.get_guild_member(discord_guild_id, user_id)
+        member_roles = {str(role_id) for role_id in (member.get("roles") or [])}
+        if (
+            configuration.member_role_id
+            and configuration.member_role_id in member_roles
+            and (
+                not configuration.unverified_role_id
+                or configuration.unverified_role_id not in member_roles
+            )
+        ):
+            already_verified = True
+    except DiscordBotAPIError:
+        member_roles = set()
+
+    if allowed and configuration.member_role_id:
+        if already_verified:
+            return False
+        try:
+            await bot_client.add_member_role(
+                guild_id=discord_guild_id,
+                user_id=user_id,
+                role_id=configuration.member_role_id,
+                reason="NorBot verification passed",
+            )
+            if configuration.unverified_role_id:
+                await bot_client.remove_member_role(
+                    guild_id=discord_guild_id,
+                    user_id=user_id,
+                    role_id=configuration.unverified_role_id,
+                    reason="NorBot verification passed",
+                )
+            return False
+        except DiscordBotAPIError:
+            logger.exception(
+                "verification_callback code=role_assignment_failed user_id=%s guild_id=%s",
+                user_id,
+                discord_guild_id,
+            )
+            return True
+
+    if not allowed and configuration.unverified_role_id:
+        try:
+            await bot_client.add_member_role(
+                guild_id=discord_guild_id,
+                user_id=user_id,
+                role_id=configuration.unverified_role_id,
+                reason=f"NorBot verification held: {reason}",
+            )
+        except DiscordBotAPIError:
+            logger.exception(
+                "Unverified role assignment failed for user %s in guild %s",
+                user_id,
+                discord_guild_id,
+            )
+    return False
+
+
+async def _send_verification_log_embed(
+    *,
+    bot_client: DiscordBotClient,
     log_channel_id: str,
-    review_role_id: str,
     user_id: str,
     username: str,
-    vpn_or_proxy_detected: bool = False,
-    shared_ip_detected: bool = False,
-    high_risk_guild_detected: bool = False,
+    allowed: bool,
+    manual_review: bool,
+    reason: str,
+    role_grant_failed: bool,
+    review_role_id: str,
+    vpn_or_proxy_detected: bool,
+    shared_ip_detected: bool,
+    high_risk_guild_detected: bool,
 ) -> None:
-    """Post a manual-review notice to the log channel.
+    if not log_channel_id:
+        return
 
-    Mentions only the configured review role via a restricted
-    ``allowed_mentions`` payload so ``@everyone``/``@here`` can never fire, and
-    exposes only moderation-relevant fields (never OAuth tokens or IPs). Every
-    risk signal that routed the attempt to review is listed.
-    """
+    if allowed and not role_grant_failed:
+        title = "Verification succeeded"
+        color = 0x34D399
+        state = "Allowed"
+    elif allowed and role_grant_failed:
+        title = "Verification succeeded — role pending"
+        color = 0xFBBF24
+        state = "Role pending"
+    elif manual_review:
+        title = "Manual Review Required"
+        color = 0xFBBF24
+        state = "Manual Review"
+    else:
+        title = "Verification denied"
+        color = 0xF87171
+        state = "Denied"
 
     reasons: list[str] = []
     if vpn_or_proxy_detected:
@@ -471,27 +590,35 @@ async def _send_manual_review_ping(
         reasons.append("Shared IP / possible alternate account")
     if high_risk_guild_detected:
         reasons.append("Member of a configured High Risk Server")
+    if reason and reason not in {"allowed", "whitelisted"}:
+        reasons.append(reason.replace("_", " "))
 
-    trigger = "; ".join(reasons) if reasons else "Flagged for manual review"
+    trigger = "; ".join(reasons) if reasons else "Policy decision"
 
-    content = f"<@&{review_role_id}>" if review_role_id else None
+    content = None
+    allowed_roles: list[str] = []
+    if manual_review and review_role_id:
+        content = f"<@&{review_role_id}>"
+        allowed_roles = [review_role_id]
 
     embed = {
-        "title": "Manual Review Required",
-        "color": 0xFBBF24,
+        "title": title,
+        "color": color,
         "fields": [
-            {"name": "User", "value": f"<@{user_id}> (`{user_id}`)", "inline": False},
-            {"name": "State", "value": "Manual Review", "inline": True},
-            {"name": "Trigger", "value": trigger, "inline": True},
+            {
+                "name": "User",
+                "value": f"<@{user_id}> (`{user_id}`)",
+                "inline": False,
+            },
+            {"name": "Display", "value": username[:80] or "—", "inline": True},
+            {"name": "State", "value": state, "inline": True},
+            {"name": "Trigger", "value": trigger[:256], "inline": False},
         ],
     }
 
     payload: dict[str, object] = {
         "embeds": [embed],
-        "allowed_mentions": {
-            "parse": [],
-            "roles": [review_role_id] if review_role_id else [],
-        },
+        "allowed_mentions": {"parse": [], "roles": allowed_roles},
     }
     if content:
         payload["content"] = content
@@ -500,7 +627,7 @@ async def _send_manual_review_ping(
         await bot_client.send_channel_message(log_channel_id, payload)
     except DiscordBotAPIError:
         logger.exception(
-            "Manual-review ping failed for user %s in channel %s",
+            "Verification log embed failed for user %s in channel %s",
             user_id,
             log_channel_id,
         )

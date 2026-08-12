@@ -233,6 +233,11 @@ class NorgothBot(commands.Bot):
                         "id": str(guild.id),
                         "name": guild.name,
                         "member_count": guild.member_count,
+                        "icon": (
+                            getattr(guild.icon, "key", None)
+                            if guild.icon is not None
+                            else None
+                        ),
                     }
                     for guild in self.guilds
                 ],
@@ -609,6 +614,52 @@ class NorgothBot(commands.Bot):
             },
         )
 
+    async def assign_unverified_on_join(self, member: discord.Member) -> None:
+        """Assign the Unverified role when Member Verification is active."""
+
+        config = await self.state.get_verification_join_config(member.guild.id)
+        if not config.get("active"):
+            return
+
+        role_id = config.get("unverified_role_id")
+        if not isinstance(role_id, str) or not role_id.isdigit():
+            logger.warning(
+                "Verification active but unverified_role_id missing for guild %s",
+                member.guild.id,
+            )
+            return
+
+        role = member.guild.get_role(int(role_id))
+        if role is None:
+            logger.warning(
+                "Unverified role %s missing in guild %s",
+                role_id,
+                member.guild.id,
+            )
+            return
+
+        if role in member.roles:
+            return
+
+        try:
+            await member.add_roles(role, reason="NorBot verification: join Unverified")
+            logger.info(
+                "Assigned Unverified role %s to %s in guild %s",
+                role_id,
+                member.id,
+                member.guild.id,
+            )
+        except discord.Forbidden:
+            logger.warning(
+                "Missing permission to assign Unverified role in guild %s",
+                member.guild.id,
+            )
+        except discord.HTTPException:
+            logger.exception(
+                "Failed assigning Unverified role in guild %s",
+                member.guild.id,
+            )
+
     async def apply_auto_role(self, member: discord.Member) -> None:
         config = await self.state.get_automation_config(member.guild.id)
 
@@ -731,6 +782,15 @@ class NorgothBot(commands.Bot):
 
         if member.bot:
             return
+
+        try:
+            await self.assign_unverified_on_join(member)
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Join-time Unverified assignment crashed for %s in guild %s",
+                member,
+                member.guild.id,
+            )
 
         try:
             if await self.state.is_module_enabled(member.guild.id, "welcome"):

@@ -12,5 +12,14 @@ export default async function LangLayout({
 }) {
   const { lang } = await params;
   if (!hasLocale(lang)) notFound();
-  return children;
+  return (
+    <>
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `document.documentElement.lang=${JSON.stringify(lang)};`,
+        }}
+      />
+      {children}
+    </>
+  );
 }

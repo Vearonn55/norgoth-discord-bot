@@ -228,10 +228,10 @@ def build_message_payload(
         campaign_name=campaign_name,
     )
 
-    footer_text = "Norgoth Campaign"
+    footer_text = "NorBot Campaign"
     if include_unsubscribe:
         footer_text = (
-            "Norgoth Campaign · Use Unsubscribe or /unsubscribe to opt out"
+            "NorBot Campaign · Use Unsubscribe or /unsubscribe to opt out"
         )
 
     if message_type == "discord_text":

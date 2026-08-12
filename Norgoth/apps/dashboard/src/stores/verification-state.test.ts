@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_VERIFICATION_CONFIG,
+  canPublishOrCopy,
   deriveVerificationState,
+  hasRequiredBindings,
   type VerificationConfig,
 } from "@/stores/verification-store";
 
@@ -53,5 +55,64 @@ describe("deriveVerificationState", () => {
         deny_shared_ip: true,
       })
     ).toEqual({ enabled: true, deny_vpn_or_proxy: false, deny_shared_ip: true });
+  });
+});
+
+describe("setup gating", () => {
+  it("requires all bindings", () => {
+    expect(hasRequiredBindings(DEFAULT_VERIFICATION_CONFIG)).toBe(false);
+    expect(
+      hasRequiredBindings({
+        ...DEFAULT_VERIFICATION_CONFIG,
+        verification_channel_id: "1",
+        log_channel_id: "2",
+        unverified_role_id: "3",
+        member_role_id: "4",
+      })
+    ).toBe(true);
+  });
+
+  it("gates copy/publish until bindings are persisted", () => {
+    expect(canPublishOrCopy(DEFAULT_VERIFICATION_CONFIG)).toBe(false);
+    expect(
+      canPublishOrCopy({
+        ...DEFAULT_VERIFICATION_CONFIG,
+        setup_state: "incomplete",
+        verification_channel_id: "1",
+        log_channel_id: "2",
+        unverified_role_id: "3",
+        member_role_id: "4",
+      })
+    ).toBe(false);
+    expect(
+      canPublishOrCopy({
+        ...DEFAULT_VERIFICATION_CONFIG,
+        setup_state: "active",
+        verification_channel_id: "1",
+        log_channel_id: "2",
+        unverified_role_id: "3",
+        member_role_id: "4",
+      })
+    ).toBe(true);
+    expect(
+      canPublishOrCopy({
+        ...DEFAULT_VERIFICATION_CONFIG,
+        setup_state: "disabled",
+        verification_channel_id: "1",
+        log_channel_id: "2",
+        unverified_role_id: "3",
+        member_role_id: "4",
+      })
+    ).toBe(true);
+    expect(
+      canPublishOrCopy({
+        ...DEFAULT_VERIFICATION_CONFIG,
+        setup_state: "not_configured",
+        verification_channel_id: "1",
+        log_channel_id: "2",
+        unverified_role_id: "3",
+        member_role_id: "4",
+      })
+    ).toBe(false);
   });
 });

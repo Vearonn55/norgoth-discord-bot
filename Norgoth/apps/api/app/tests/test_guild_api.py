@@ -64,6 +64,8 @@ def test_v1_router_contains_configuration_routes() -> None:
         f"{configuration_path}/enabled",
         "PATCH",
     ) in operations
+    assert (f"{configuration_path}/setup", "GET") in operations
+    assert (f"{configuration_path}/validate", "POST") in operations
 
 
 def test_guild_upsert_request_accepts_valid_payload() -> None:

@@ -1286,3 +1286,157 @@ body {
 .norgoth-stepper-connector.is-complete {
   background: var(--cui-success, #3dd68c);
 }
+
+/* ==========================================================================
+   Public landing scroll (app shell keeps html/body overflow hidden)
+   ========================================================================== */
+.norgoth-public {
+  min-height: 100%;
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.norgoth-sidebar-guild:hover,
+.norgoth-sidebar-guild:focus-visible {
+  background: rgba(241, 244, 250, 0.04);
+  outline: none;
+}
+
+.norgoth-server-guild-card.is-selected {
+  box-shadow: 0 0 0 0.15rem rgba(110, 168, 254, 0.35),
+    var(--cui-card-box-shadow);
+}
+
+.norgoth-server-guild-action {
+  min-height: 40px;
+  min-width: 40px;
+}
+
+.norgoth-skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(241, 244, 250, 0.06) 0%,
+    rgba(241, 244, 250, 0.14) 50%,
+    rgba(241, 244, 250, 0.06) 100%
+  );
+  background-size: 200% 100%;
+  animation: norgoth-skeleton-shimmer 1.2s ease-in-out infinite;
+  border-radius: 0.5rem;
+}
+
+@keyframes norgoth-skeleton-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+/* ==========================================================================
+   Landing page — CSS-only motion
+   ========================================================================== */
+.norgoth-landing-nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: rgba(11, 14, 20, 0.92);
+  backdrop-filter: blur(10px);
+}
+
+.norgoth-landing-section {
+  padding-top: 4rem;
+  padding-bottom: 4rem;
+}
+
+.norgoth-landing-hero {
+  min-height: 28rem;
+}
+
+.norgoth-landing-hero-copy {
+  animation: norgoth-landing-fade-up 0.7s ease both;
+}
+
+.norgoth-landing-reveal {
+  opacity: 0;
+  transform: translateY(12px);
+}
+
+.norgoth-landing-reveal.is-visible {
+  animation: norgoth-landing-fade-up 0.55s ease forwards;
+}
+
+@keyframes norgoth-landing-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.norgoth-landing-silhouette {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr;
+  gap: 0.75rem;
+  min-height: 16rem;
+  padding: 0.85rem;
+  border-radius: 0.85rem;
+  border: 1px solid var(--norgoth-card-border-secondary);
+  background: var(--norgoth-surface);
+}
+
+.norgoth-landing-silhouette-sidebar {
+  border-radius: 0.5rem;
+  background: rgba(241, 244, 250, 0.06);
+}
+
+.norgoth-landing-silhouette-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.norgoth-landing-silhouette-bar {
+  height: 1.25rem;
+  width: 42%;
+  border-radius: 0.35rem;
+  background: rgba(110, 168, 254, 0.28);
+}
+
+.norgoth-landing-silhouette-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem;
+  flex: 1 1 auto;
+}
+
+.norgoth-landing-silhouette-grid > div {
+  border-radius: 0.5rem;
+  border-left: 3px solid rgba(110, 168, 254, 0.45);
+  background: rgba(241, 244, 250, 0.05);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .norgoth-skeleton {
+    animation: none;
+  }
+
+  .norgoth-landing-hero-copy,
+  .norgoth-landing-reveal,
+  .norgoth-landing-reveal.is-visible {
+    opacity: 1;
+    transform: none;
+    animation: none;
+  }
+
+  .norgoth-mini-card:hover,
+  .norgoth-mini-card:focus-visible,
+  .norgoth-card-interactive:hover,
+  .norgoth-card-interactive:focus-visible {
+    transform: none;
+  }
+}

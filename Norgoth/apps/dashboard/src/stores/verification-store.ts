@@ -9,6 +9,14 @@ import { apiUrl } from "@/lib/api";
 
 export type RiskAction = "deny" | "manual_review";
 
+export type VerificationSetupState =
+  | "not_configured"
+  | "incomplete"
+  | "disabled"
+  | "active"
+  | "degraded"
+  | "error";
+
 export type VerificationConfig = {
   verification_channel_id: string;
   log_channel_id: string;
@@ -22,6 +30,8 @@ export type VerificationConfig = {
   vpn_or_proxy_action: RiskAction;
   shared_ip_action: RiskAction;
   enabled: boolean;
+  setup_state?: VerificationSetupState;
+  missing_bindings?: string[];
 };
 
 export type DetectorPatch = Partial<
@@ -65,6 +75,24 @@ export function deriveVerificationState(
   return { enabled, deny_vpn_or_proxy: vpn, deny_shared_ip: shared };
 }
 
+export function hasRequiredBindings(config: VerificationConfig): boolean {
+  return Boolean(
+    config.verification_channel_id &&
+      config.log_channel_id &&
+      config.unverified_role_id &&
+      config.member_role_id
+  );
+}
+
+export function canPublishOrCopy(config: VerificationConfig): boolean {
+  const state = config.setup_state;
+  // Only allow after required bindings are persisted (server setup states).
+  if (state === "active" || state === "disabled" || state === "degraded") {
+    return hasRequiredBindings(config);
+  }
+  return false;
+}
+
 export type VerificationLog = {
   id: string;
   discord_user_id: string;
@@ -99,14 +127,41 @@ export const DEFAULT_VERIFICATION_CONFIG: VerificationConfig = {
   deny_shared_ip: true,
   vpn_or_proxy_action: "deny",
   shared_ip_action: "deny",
-  enabled: true,
+  enabled: false,
+  setup_state: "not_configured",
+  missing_bindings: [
+    "verification_channel_id",
+    "log_channel_id",
+    "unverified_role_id",
+    "member_role_id",
+  ],
 };
+
+function mapStoredConfig(stored: VerificationConfig): VerificationConfig {
+  return {
+    verification_channel_id: stored.verification_channel_id ?? "",
+    log_channel_id: stored.log_channel_id ?? "",
+    unverified_role_id: stored.unverified_role_id ?? "",
+    member_role_id: stored.member_role_id ?? "",
+    manual_review_role_id: stored.manual_review_role_id ?? "",
+    minimum_account_age_days: stored.minimum_account_age_days,
+    session_timeout_seconds: stored.session_timeout_seconds,
+    deny_vpn_or_proxy: stored.deny_vpn_or_proxy,
+    deny_shared_ip: stored.deny_shared_ip,
+    vpn_or_proxy_action: stored.vpn_or_proxy_action ?? "deny",
+    shared_ip_action: stored.shared_ip_action ?? "deny",
+    enabled: stored.enabled,
+    setup_state: stored.setup_state,
+    missing_bindings: stored.missing_bindings ?? [],
+  };
+}
 
 type VerificationState = {
   config: VerificationConfig;
   configured: boolean;
   loading: boolean;
   saving: boolean;
+  validating: boolean;
   error: string | null;
   savedAt: string | null;
   publishing: boolean;
@@ -125,6 +180,7 @@ type VerificationState = {
   setDateRange: (range: DateRangeValue) => void;
   loadConfig: (guildId: string) => Promise<void>;
   save: (guildId: string) => Promise<void>;
+  validateDiscord: (guildId: string) => Promise<{ ok: boolean; error?: string }>;
   patchDetectors: (
     guildId: string,
     patch: DetectorPatch
@@ -143,6 +199,7 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
   configured: false,
   loading: true,
   saving: false,
+  validating: false,
   error: null,
   savedAt: null,
   publishing: false,
@@ -162,34 +219,56 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
     set({ loading: true, error: null });
 
     try {
-      const response = await fetch(
-        apiUrl(`/api/v1/guilds/${guildId}/configuration`),
-        { cache: "no-store" }
-      );
+      const [configResponse, setupResponse] = await Promise.all([
+        fetch(apiUrl(`/api/v1/guilds/${guildId}/configuration`), {
+          cache: "no-store",
+        }),
+        fetch(apiUrl(`/api/v1/guilds/${guildId}/configuration/setup`), {
+          cache: "no-store",
+        }),
+      ]);
 
-      if (response.ok) {
-        const stored = (await response.json()) as VerificationConfig;
+      let setupState: VerificationSetupState = "not_configured";
+      let missing: string[] = DEFAULT_VERIFICATION_CONFIG.missing_bindings ?? [];
+      if (setupResponse.ok) {
+        const setup = (await setupResponse.json()) as {
+          setup_state?: VerificationSetupState;
+          missing_bindings?: string[];
+        };
+        setupState = setup.setup_state ?? "not_configured";
+        missing = setup.missing_bindings ?? [];
+      }
+
+      if (configResponse.ok) {
+        const stored = (await configResponse.json()) as VerificationConfig;
+        const mapped = mapStoredConfig(stored);
         set({
           config: {
-            verification_channel_id: stored.verification_channel_id,
-            log_channel_id: stored.log_channel_id,
-            unverified_role_id: stored.unverified_role_id,
-            member_role_id: stored.member_role_id,
-            manual_review_role_id: stored.manual_review_role_id ?? "",
-            minimum_account_age_days: stored.minimum_account_age_days,
-            session_timeout_seconds: stored.session_timeout_seconds,
-            deny_vpn_or_proxy: stored.deny_vpn_or_proxy,
-            deny_shared_ip: stored.deny_shared_ip,
-            vpn_or_proxy_action: stored.vpn_or_proxy_action ?? "deny",
-            shared_ip_action: stored.shared_ip_action ?? "deny",
-            enabled: stored.enabled,
+            ...mapped,
+            setup_state: mapped.setup_state ?? setupState,
+            missing_bindings: mapped.missing_bindings?.length
+              ? mapped.missing_bindings
+              : missing,
           },
-          configured: true,
+          configured:
+            (mapped.setup_state ?? setupState) === "active" ||
+            (mapped.setup_state ?? setupState) === "disabled" ||
+            ((mapped.setup_state ?? setupState) === "degraded" &&
+              hasRequiredBindings(mapped)),
+        });
+      } else if (configResponse.status === 404) {
+        set({
+          config: {
+            ...DEFAULT_VERIFICATION_CONFIG,
+            setup_state: setupState,
+            missing_bindings: missing,
+          },
+          configured: false,
         });
       }
     } catch {
       set({
-        error: "Could not reach the Norgoth API. Is it running on port 8000?",
+        error: "Could not reach the NorBot API. Is it running on port 8000?",
       });
     } finally {
       set({ loading: false });
@@ -219,23 +298,49 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(config),
+          body: JSON.stringify({
+            verification_channel_id: config.verification_channel_id,
+            log_channel_id: config.log_channel_id,
+            unverified_role_id: config.unverified_role_id,
+            member_role_id: config.member_role_id,
+            manual_review_role_id: config.manual_review_role_id,
+            minimum_account_age_days: config.minimum_account_age_days,
+            session_timeout_seconds: config.session_timeout_seconds,
+            deny_vpn_or_proxy: config.deny_vpn_or_proxy,
+            deny_shared_ip: config.deny_shared_ip,
+            vpn_or_proxy_action: config.vpn_or_proxy_action,
+            shared_ip_action: config.shared_ip_action,
+            enabled: config.enabled,
+          }),
         }
       );
 
       if (!response.ok) {
-        const body = await response.text();
+        const body = await response.json().catch(() => null);
+        const detail = body?.detail;
+        const message =
+          typeof detail === "object" && detail?.message
+            ? String(detail.message)
+            : typeof detail === "string"
+              ? detail
+              : await response.text().catch(() => "");
         set({
           error:
             response.status === 404
               ? "Guild is not registered yet. Make sure the bot is online (it registers the server automatically), then retry."
-              : `Save failed: ${body}`,
+              : `Save failed: ${message || `HTTP ${response.status}`}`,
         });
         return;
       }
 
+      const stored = (await response.json()) as VerificationConfig;
+      const mapped = mapStoredConfig(stored);
       set({
-        configured: true,
+        config: mapped,
+        configured:
+          mapped.setup_state === "active" ||
+          mapped.setup_state === "disabled" ||
+          mapped.setup_state === "degraded",
         savedAt: new Date().toLocaleTimeString(),
       });
     } catch {
@@ -244,9 +349,51 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
       set({ saving: false });
     }
   },
+  validateDiscord: async (guildId) => {
+    set({ validating: true, error: null });
+    try {
+      const response = await fetch(
+        apiUrl(`/api/v1/guilds/${guildId}/configuration/validate`),
+        { method: "POST" }
+      );
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message =
+          body?.detail?.message ||
+          body?.detail ||
+          `Validate failed (HTTP ${response.status})`;
+        set({ error: String(message) });
+        return { ok: false, error: String(message) };
+      }
+      if (!body?.ok) {
+        const issue = Array.isArray(body?.issues) ? body.issues[0] : null;
+        const message = issue?.message || "Discord validation failed.";
+        set({
+          config: {
+            ...get().config,
+            setup_state: body?.setup_state ?? "degraded",
+          },
+          configured: false,
+          error: String(message),
+        });
+        return { ok: false, error: String(message) };
+      }
+      set({
+        config: {
+          ...get().config,
+          setup_state: body?.setup_state ?? get().config.setup_state,
+        },
+        error: null,
+      });
+      return { ok: true };
+    } catch {
+      set({ error: "Could not reach the NorBot API to validate Discord." });
+      return { ok: false, error: "Could not reach the NorBot API." };
+    } finally {
+      set({ validating: false });
+    }
+  },
   patchDetectors: async (guildId, patch) => {
-    // Optimistically reflect the change so the mini-card feels instant, then
-    // reconcile with the persisted configuration returned by the API.
     const previous = get().config;
     set({ config: { ...previous, ...patch } });
 
@@ -276,22 +423,16 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
       set((state) => ({
         config: {
           ...state.config,
-          deny_vpn_or_proxy: stored.deny_vpn_or_proxy,
-          deny_shared_ip: stored.deny_shared_ip,
-          vpn_or_proxy_action: stored.vpn_or_proxy_action ?? "deny",
-          shared_ip_action: stored.shared_ip_action ?? "deny",
+          ...mapStoredConfig({ ...state.config, ...stored }),
         },
-        configured: true,
       }));
       return { ok: true };
     } catch {
       set({ config: previous });
-      return { ok: false, error: "Could not reach the Norgoth API." };
+      return { ok: false, error: "Could not reach the NorBot API." };
     }
   },
   applyVerificationState: async (guildId, patch) => {
-    // Single authoritative transition: master + both detectors move together
-    // per the backend state machine. Optimistically derive, then reconcile.
     const previous = get().config;
     const optimistic = deriveVerificationState(previous, patch);
     set({ config: { ...previous, ...optimistic } });
@@ -318,26 +459,21 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
 
       const stored = (await response.json()) as VerificationConfig;
       set((state) => ({
-        config: {
-          ...state.config,
-          enabled: stored.enabled,
-          deny_vpn_or_proxy: stored.deny_vpn_or_proxy,
-          deny_shared_ip: stored.deny_shared_ip,
-        },
-        configured: true,
+        config: mapStoredConfig({ ...state.config, ...stored }),
       }));
       return { ok: true };
     } catch {
       set({ config: previous });
-      return { ok: false, error: "Could not reach the Norgoth API." };
+      return { ok: false, error: "Could not reach the NorBot API." };
     }
   },
   publishPanel: async (guildId) => {
     const { config } = get();
 
-    if (!config.verification_channel_id) {
+    if (!canPublishOrCopy(config)) {
       set({
-        publishFeedback: "Choose a verification channel and save first.",
+        publishFeedback:
+          "Save verification channels and roles before publishing the Discord panel.",
       });
       return;
     }
@@ -361,6 +497,7 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
       if (!response.ok) {
         const message =
           body?.error?.message ||
+          body?.detail?.message ||
           body?.detail ||
           `Publish failed (HTTP ${response.status})`;
         set({ publishFeedback: String(message) });
@@ -380,6 +517,13 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
     }
   },
   copyVerifyLink: async (url) => {
+    if (!canPublishOrCopy(get().config)) {
+      set({
+        error:
+          "Save verification channels and roles before copying the public link.",
+      });
+      return;
+    }
     try {
       await navigator.clipboard.writeText(url);
       set({ copied: true });
@@ -410,9 +554,14 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
       const data = (await response.json()) as VerificationLogListResponse;
       set({ logs: data.items });
     } catch {
-      set({ logsError: "Could not reach the Norgoth API." });
+      set({ logsError: "Could not reach the NorBot API." });
     } finally {
       set({ logsLoading: false });
     }
   },
 }));
+
+
+
+
+

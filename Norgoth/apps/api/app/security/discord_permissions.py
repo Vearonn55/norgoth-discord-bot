@@ -26,6 +26,20 @@ def can_manage_guild(*, owner: bool, permissions: str | int) -> bool:
     return bool(bits & ADMINISTRATOR) or bool(bits & MANAGE_GUILD)
 
 
+def guild_role_label(*, owner: bool, permissions: str | int) -> str:
+    """Return Owner, Administrator, or Manage Server from Discord bits."""
+
+    if owner:
+        return "Owner"
+    try:
+        bits = int(permissions)
+    except (TypeError, ValueError):
+        return "Manage Server"
+    if bits & ADMINISTRATOR:
+        return "Administrator"
+    return "Manage Server"
+
+
 # Minimum practical bot invite permissions for shipped features.
 BOT_INVITE_PERMISSIONS = (
     ADMINISTRATOR  # temporary practical default for invite URL only when needed
@@ -84,4 +98,5 @@ __all__ = [
     "DISCORD_INTEGRATION_TYPE_GUILD",
     "build_bot_invite_url",
     "can_manage_guild",
+    "guild_role_label",
 ]

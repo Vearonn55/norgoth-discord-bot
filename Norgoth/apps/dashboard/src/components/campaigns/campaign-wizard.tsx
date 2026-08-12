@@ -845,8 +845,8 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                     <div>
                       <h3 className="h6 mb-1">Discord Delivery Channel</h3>
                       <p className="mb-0 text-body-secondary small">
-                        The campaign message is posted to this channel by the
-                        Norgoth bot.
+                        The campaign message is posted to this channel by
+                        NorBot.
                       </p>
                     </div>
 
@@ -1129,7 +1129,7 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                           wizardState.message.embedThumbnailUrl || undefined,
                         image_url:
                           wizardState.message.embedImageUrl || undefined,
-                        footer: "Norgoth Campaign",
+                        footer: "NorBot Campaign",
                       }}
                       mode="embed"
                     />

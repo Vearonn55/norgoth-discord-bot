@@ -49,7 +49,7 @@ type EmbedSourceMode = "INLINE" | "SELECT_EXISTING" | "CREATE_NEW";
 export function HoneypotPanel() {
   const params = useParams();
   const lang = String(params?.lang || "en");
-  const { guildId, resources, loading: guildLoading } = useFirstGuild();
+  const { guildId, resources, loading: guildLoading, error: guildError } = useFirstGuild();
   const config = useHoneypotStore((s) => s.config);
   const triggers = useHoneypotStore((s) => s.triggers);
   const loading = useHoneypotStore((s) => s.loading);
@@ -92,10 +92,10 @@ export function HoneypotPanel() {
     return embedMessages.filter((m) => m.name.toLowerCase().includes(q));
   }, [embedMessages, draftSearch]);
 
-  if (guildLoading || loading || !draft) {
+  if (guildLoading || loading) {
     return (
       <div className="d-flex align-items-center gap-2">
-        <CSpinner size="sm" /> Loading honeypot…
+        <CSpinner size="sm" /> Loading honeypot...
       </div>
     );
   }
@@ -104,6 +104,20 @@ export function HoneypotPanel() {
     return <p className="text-body-secondary">Select a server first.</p>;
   }
 
+  if (!draft) {
+    return (
+      <div className="d-flex flex-column gap-3">
+        <CAlert color="danger" className="mb-0">
+          {error || guildError || "Honeypot configuration could not be loaded."}
+        </CAlert>
+        <div className="d-flex gap-2">
+          <Button variant="secondary" onClick={() => void load(guildId)}>
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
+  }
   function patch(partial: Partial<HoneypotConfig>) {
     setDraft((prev) => (prev ? { ...prev, ...partial } : prev));
   }
@@ -626,3 +640,6 @@ export function HoneypotPanel() {
     </div>
   );
 }
+
+
+

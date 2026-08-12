@@ -94,10 +94,10 @@ class ConfigurationResponse(BaseModel):
 
     id: UUID
     guild_id: UUID
-    verification_channel_id: DiscordSnowflakeValue
-    log_channel_id: DiscordSnowflakeValue
-    unverified_role_id: DiscordSnowflakeValue
-    member_role_id: DiscordSnowflakeValue
+    verification_channel_id: OptionalDiscordSnowflakeValue = ""
+    log_channel_id: OptionalDiscordSnowflakeValue = ""
+    unverified_role_id: OptionalDiscordSnowflakeValue = ""
+    member_role_id: OptionalDiscordSnowflakeValue = ""
     manual_review_role_id: OptionalDiscordSnowflakeValue = ""
     minimum_account_age_days: int
     session_timeout_seconds: int
@@ -108,3 +108,22 @@ class ConfigurationResponse(BaseModel):
     enabled: bool
     created_at: datetime
     updated_at: datetime
+    setup_state: str = "incomplete"
+    missing_bindings: list[str] = Field(default_factory=list)
+
+
+class VerificationSetupResponse(BaseModel):
+    """Lightweight setup readiness for dashboard gating."""
+
+    setup_state: str
+    missing_bindings: list[str] = Field(default_factory=list)
+    enabled: bool = False
+    guild_name: str | None = None
+
+
+class VerificationValidateResponse(BaseModel):
+    """Result of Discord resource validation for verification."""
+
+    ok: bool
+    setup_state: str
+    issues: list[dict[str, str | None]] = Field(default_factory=list)

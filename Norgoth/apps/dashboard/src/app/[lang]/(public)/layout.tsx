@@ -16,7 +16,7 @@ export default async function PublicLayout({
   await getDictionary(lang as Locale);
 
   return (
-    <div className="norgoth-public min-vh-100 d-flex flex-column">
+    <div className="norgoth-public min-vh-100 d-flex flex-column" lang={lang}>
       {children}
     </div>
   );

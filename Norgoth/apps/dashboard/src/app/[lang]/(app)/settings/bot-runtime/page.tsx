@@ -67,7 +67,7 @@ export default async function BotRuntimeSettingsPage({
       <div className="d-flex flex-column gap-4">
         <PageHeader
           title="Bot Runtime"
-          description="Live connection state of the Norgoth Discord bot: gateway status, latency, intents, and connected servers."
+          description="Live connection state of NorBot: gateway status, latency, intents, and connected servers."
           actions={
             <Button asChild variant="secondary">
               <Link href={`/${lang}/settings`}>Back to Settings</Link>

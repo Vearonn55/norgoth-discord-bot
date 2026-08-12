@@ -179,6 +179,35 @@ class BotState:
             )
             return {}
 
+    async def get_verification_join_config(self, guild_id: int) -> dict[str, Any]:
+        """Load join-time verification snapshot (Redis via API/Postgres)."""
+
+        if not self._api_base_url or not self._bot_token:
+            return {}
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(
+                    f"{self._api_base_url}/internal/config/verification/{guild_id}",
+                    headers={"X-Norgoth-Bot-Token": self._bot_token},
+                )
+            if response.status_code != 200:
+                logger.warning(
+                    "Verification join hydrate for guild %s returned HTTP %s",
+                    guild_id,
+                    response.status_code,
+                )
+                return {}
+            data = response.json()
+            config = data.get("config") if isinstance(data, dict) else None
+            return config if isinstance(config, dict) else {}
+        except httpx.HTTPError:
+            logger.exception(
+                "Verification join hydrate failed for guild %s",
+                guild_id,
+            )
+            return {}
+
     async def get_automation_config(self, guild_id: int) -> dict[str, Any]:
         raw = await self._redis.get(automation_key(guild_id))
 

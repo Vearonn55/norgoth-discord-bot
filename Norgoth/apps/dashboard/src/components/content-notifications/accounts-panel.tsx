@@ -260,7 +260,7 @@ export function AccountsPanel() {
                 value={styleId}
                 onChange={(e) => setStyleId(e.target.value)}
               >
-                <option value="">Default Norgoth</option>
+                <option value="">Default NorBot</option>
                 {styles.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.display_name}
