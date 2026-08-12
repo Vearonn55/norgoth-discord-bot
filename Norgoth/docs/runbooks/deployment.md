@@ -20,6 +20,7 @@
    override with `SSH_PORT=...` if needed). Keep your current SSH session open
    and verify a second login before closing it.
 3. Sync `Norgoth/deploy/` → `/opt/norbot/deploy/` and docker scripts → `/opt/norbot/scripts/`.
+   Later deploys restore these from git (do not edit compose on the VDS).
 4. Create `/opt/norbot/env/production.env` and `test.env` from the examples.
 5. Install Nginx configs from `deploy/nginx/` and run `scripts/vds/install-certbot.sh`.
 6. Create GitHub Environments `test` and `production` with secrets:

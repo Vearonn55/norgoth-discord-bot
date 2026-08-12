@@ -1,3 +1,5 @@
+# Production overlay. Source of truth is git — deploy syncs this to
+# /opt/norbot/deploy/. Do not edit it on the VDS.
 name: norbot-prod
 
 services:
@@ -19,13 +21,21 @@ services:
 
   campaign-worker:
     image: ${NORBOT_API_IMAGE:?}:${NORBOT_IMAGE_TAG:?}
+    command: ["python", "-m", "app.workers.campaign_worker"]
     env_file:
       - /opt/norbot/env/production.env
+    environment:
+      NORGOTH_ENVIRONMENT: production
+      NORGOTH_CAMPAIGN_PG_ENABLED: "true"
+      NORGOTH_CAMPAIGN_REHYDRATE_ON_START: "true"
 
   content-worker:
     image: ${NORBOT_API_IMAGE:?}:${NORBOT_IMAGE_TAG:?}
+    command: ["python", "-m", "app.workers.content_notification_worker"]
     env_file:
       - /opt/norbot/env/production.env
+    environment:
+      NORGOTH_ENVIRONMENT: production
 
   bot:
     image: ${NORBOT_BOT_IMAGE:?}:${NORBOT_IMAGE_TAG:?}

@@ -19,13 +19,21 @@ services:
 
   campaign-worker:
     image: ${NORBOT_API_IMAGE:?}:${NORBOT_IMAGE_TAG:?}
+    command: ["python", "-m", "app.workers.campaign_worker"]
     env_file:
       - /opt/norbot/env/test.env
+    environment:
+      NORGOTH_ENVIRONMENT: staging
+      NORGOTH_CAMPAIGN_PG_ENABLED: "true"
+      NORGOTH_CAMPAIGN_REHYDRATE_ON_START: "true"
 
   content-worker:
     image: ${NORBOT_API_IMAGE:?}:${NORBOT_IMAGE_TAG:?}
+    command: ["python", "-m", "app.workers.content_notification_worker"]
     env_file:
       - /opt/norbot/env/test.env
+    environment:
+      NORGOTH_ENVIRONMENT: staging
 
   bot:
     image: ${NORBOT_BOT_IMAGE:?}:${NORBOT_IMAGE_TAG:?}

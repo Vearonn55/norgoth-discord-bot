@@ -44,6 +44,16 @@ jobs:
           docker push "ghcr.io/${OWNER}/norbot-api:${TAG}"
           docker push "ghcr.io/${OWNER}/norbot-bot:${TAG}"
           docker push "ghcr.io/${OWNER}/norbot-web:${TAG}"
+      - name: Sync compose and scripts to VDS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          source: "Norgoth/deploy,Norgoth/scripts/docker"
+          target: "/tmp/norbot-git"
+          rm: true
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -57,6 +67,9 @@ jobs:
             export NORBOT_API_IMAGE="ghcr.io/${{ steps.meta.outputs.owner }}/norbot-api"
             export NORBOT_BOT_IMAGE="ghcr.io/${{ steps.meta.outputs.owner }}/norbot-bot"
             export NORBOT_WEB_IMAGE="ghcr.io/${{ steps.meta.outputs.owner }}/norbot-web"
+            rsync -a --delete /tmp/norbot-git/Norgoth/deploy/ /opt/norbot/deploy/
+            rsync -a /tmp/norbot-git/Norgoth/scripts/docker/ /opt/norbot/scripts/
+            chmod +x /opt/norbot/scripts/*.sh
             cd /opt/norbot
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
             /opt/norbot/scripts/backup-db.sh production

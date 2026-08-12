@@ -49,19 +49,21 @@ check() {
   return 1
 }
 
-# /bot/health returns HTTP 200 even when connected=false — require connected:true.
-check_bot_connected() {
-  local url="$1"
+# HTTP 200 is not enough for these endpoints — require a JSON boolean flag.
+check_json_true() {
+  local name="$1"
+  local url="$2"
+  local flag="$3"
   local attempts=12
   local delay=5
   local attempt
   local body
 
   for attempt in $(seq 1 "${attempts}"); do
-    echo -n "Checking bot connected: ${url} (${attempt}/${attempts}) … "
+    echo -n "Checking ${name}: ${url} (${attempt}/${attempts}) … "
 
     if body="$(curl -fsS --max-time 20 "${url}" 2>/dev/null)" \
-      && printf '%s' "${body}" | python3 -c 'import json,sys; raise SystemExit(0 if json.load(sys.stdin).get("connected") is True else 1)'; then
+      && FLAG="${flag}" BODY="${body}" python3 -c 'import json,os,sys; raise SystemExit(0 if json.loads(os.environ["BODY"]).get(os.environ["FLAG"]) is True else 1)'; then
       echo "ok"
       return 0
     fi
@@ -73,7 +75,7 @@ check_bot_connected() {
     fi
   done
 
-  echo "FAIL: bot did not report connected=true after ${attempts} attempts."
+  echo "FAIL: ${name} did not report ${flag}=true after ${attempts} attempts."
   return 1
 }
 
@@ -87,10 +89,9 @@ if ! check "api" "${API_URL}/api/v1/health"; then
 fi
 
 # Bot must be gateway-connected (Redis heartbeat). Fail deploy otherwise.
-check_bot_connected "${LOCAL_API}/bot/health"
+check_json_true "bot connected" "${LOCAL_API}/bot/health" "connected"
 
-# Campaign worker remains best-effort (may be scaled down in some envs).
-curl -fsS --max-time 10 "${LOCAL_API}/campaigns/worker/health" >/dev/null 2>&1 \
-  && echo "campaign worker health: ok" || echo "campaign worker health: skipped/unavailable"
+# Campaign worker must publish a Redis heartbeat. Fail deploy otherwise.
+check_json_true "campaign worker" "${LOCAL_API}/campaigns/worker/health" "online"
 
 echo "Smoke checks passed for ${ENV_NAME}."
