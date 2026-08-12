@@ -251,6 +251,13 @@ class SessionService:
         try:
             await client.delete(user_token_key(user_id))
             await client.delete(user_refresh_key(user_id))
+            # Guild list is derived from the user token; drop it with the tokens.
+            from app.api.v1.operator_discord import invalidate_operator_guilds_cache
+
+            await invalidate_operator_guilds_cache(
+                user_id,
+                redis_client=client,
+            )
         finally:
             if owns_client:
                 await client.aclose()

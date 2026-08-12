@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { apiUrl } from "@/lib/api";
+import { readApiError } from "@/lib/api-error";
 import { discordIconUrl } from "@/lib/discord-icon-url";
 
 export type GuildChannel = {
@@ -126,20 +127,20 @@ async function loadResources(guildId: string): Promise<GuildResources> {
   }
 
   if (!resourcesResponse.ok) {
-    const body = await resourcesResponse.json().catch(() => null);
-    const detail = body?.detail;
+    const apiError = await readApiError(resourcesResponse);
     const code =
-      typeof detail === "object" && typeof detail?.code === "string"
-        ? detail.code
+      apiError.code !== "http_error"
+        ? apiError.code
         : resourcesResponse.status === 401
           ? "authentication_required"
           : resourcesResponse.status === 403
             ? "guild_access_denied"
             : "guild_resources_unavailable";
+    const mapped = mapResourceErrorCode(code);
     const message =
-      typeof detail === "object" && typeof detail?.message === "string"
-        ? detail.message
-        : mapResourceErrorCode(code);
+      apiError.code !== "http_error" && apiError.message
+        ? apiError.message
+        : mapped;
     throw { code, message } satisfies ResourceLoadFailure;
   }
 

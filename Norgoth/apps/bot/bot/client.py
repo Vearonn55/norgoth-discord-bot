@@ -186,12 +186,23 @@ class NorgothBot(commands.Bot):
         self.add_view(TicketCloseView(tickets_cog))
         self.heartbeat_loop.start()
         self.member_refresh_loop.start()
+        self._resources_tick = 0
 
     @tasks.loop(seconds=15)
     async def heartbeat_loop(self) -> None:
         try:
             await self.state.publish_heartbeat()
             await self.publish_status()
+            # Republish channel/role snapshots about once a minute so dashboard
+            # pickers recover quickly after Redis flushes without waiting for
+            # the 10-minute member refresh loop.
+            self._resources_tick = (self._resources_tick + 1) % 4
+            if self._resources_tick == 0:
+                for guild in self.guilds:
+                    await self.state.publish_guild_resources(
+                        guild.id,
+                        serialize_guild_resources(guild),
+                    )
         except Exception:  # noqa: BLE001 - keep the loop alive on Redis hiccups
             logger.exception("Failed to publish bot heartbeat")
 
@@ -201,11 +212,21 @@ class NorgothBot(commands.Bot):
 
     @tasks.loop(minutes=10)
     async def member_refresh_loop(self) -> None:
-        # Safety-net republish so display-name/avatar changes that slipped
-        # through the event handlers eventually reach the leaderboard. Reads
-        # from the local member cache only, so there is no Discord API cost.
+        # Safety-net republish so dashboard channel/role pickers and the
+        # leaderboard recover after Redis flushes without a bot restart.
+        # Reads from the local guild/member cache only (no Discord REST cost).
         for guild in self.guilds:
-            await self.sync_guild_members(guild)
+            try:
+                await self.state.publish_guild_resources(
+                    guild.id,
+                    serialize_guild_resources(guild),
+                )
+                await self.sync_guild_members(guild)
+            except Exception:  # noqa: BLE001 - keep the loop alive
+                logger.exception(
+                    "Failed to refresh cached resources for guild %s",
+                    guild.id,
+                )
 
     @member_refresh_loop.before_loop
     async def before_member_refresh(self) -> None:

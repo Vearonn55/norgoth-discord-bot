@@ -172,6 +172,21 @@ async def get_guild_discord_resources(
         return resources
 
     if bot_client is None:
+        # Prefer an actionable ops signal when the bot is alive but the API
+        # cannot live-fill because DISCORD_BOT_TOKEN is missing.
+        redis_client = await get_redis()
+        try:
+            heartbeat = await redis_client.get(BOT_HEARTBEAT_KEY)
+        finally:
+            await redis_client.aclose()
+        if heartbeat:
+            raise HTTPException(
+                status_code=503,
+                detail=http_detail(
+                    "guild_resources_unavailable",
+                    "Guild resources are not cached yet and the API cannot refresh them live. Check that DISCORD_BOT_TOKEN is set for the API service.",
+                ),
+            )
         raise HTTPException(
             status_code=404,
             detail=http_detail(

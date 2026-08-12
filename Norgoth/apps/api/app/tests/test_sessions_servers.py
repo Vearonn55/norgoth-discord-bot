@@ -153,20 +153,26 @@ def test_list_servers_returns_owned_guild_without_bot_install() -> None:
     redis = AsyncMock()
     redis.get = AsyncMock(return_value=None)
     redis.keys = AsyncMock(return_value=[])
+    redis.set = AsyncMock(return_value=True)
+    redis.delete = AsyncMock()
     redis.aclose = AsyncMock()
 
     app = _build_app(sessions=sessions, oauth=oauth, settings=_settings())
 
     with patch("app.api.v1.sessions.get_redis", AsyncMock(return_value=redis)):
         with patch(
-            "app.api.v1.sessions.lookup_configured_guild_ids",
-            AsyncMock(return_value=set()),
+            "app.api.v1.operator_discord.get_redis",
+            AsyncMock(return_value=redis),
         ):
-            with TestClient(app) as client:
-                response = client.get(
-                    "/api/v1/sessions/servers",
-                    headers={"X-Request-ID": "servers-owned-001"},
-                )
+            with patch(
+                "app.api.v1.sessions.lookup_configured_guild_ids",
+                AsyncMock(return_value=set()),
+            ):
+                with TestClient(app) as client:
+                    response = client.get(
+                        "/api/v1/sessions/servers",
+                        headers={"X-Request-ID": "servers-owned-001"},
+                    )
 
     assert response.status_code == 200
     body = response.json()
@@ -198,20 +204,26 @@ def test_list_servers_discord_401_returns_structured_error() -> None:
     redis = AsyncMock()
     redis.get = AsyncMock(return_value=None)
     redis.keys = AsyncMock(return_value=[])
+    redis.set = AsyncMock(return_value=True)
+    redis.delete = AsyncMock()
     redis.aclose = AsyncMock()
 
     app = _build_app(sessions=sessions, oauth=oauth, settings=_settings())
 
     with patch("app.api.v1.sessions.get_redis", AsyncMock(return_value=redis)):
         with patch(
-            "app.api.v1.sessions.lookup_configured_guild_ids",
-            AsyncMock(return_value=set()),
+            "app.api.v1.operator_discord.get_redis",
+            AsyncMock(return_value=redis),
         ):
-            with TestClient(app) as client:
-                response = client.get(
-                    "/api/v1/sessions/servers",
-                    headers={"X-Request-ID": "servers-401-001"},
-                )
+            with patch(
+                "app.api.v1.sessions.lookup_configured_guild_ids",
+                AsyncMock(return_value=set()),
+            ):
+                with TestClient(app) as client:
+                    response = client.get(
+                        "/api/v1/sessions/servers",
+                        headers={"X-Request-ID": "servers-401-001"},
+                    )
 
     assert response.status_code == 401
     body = response.json()
@@ -268,17 +280,23 @@ def test_list_servers_setup_state_and_animated_icon() -> None:
         )
     )
     redis.keys = AsyncMock(return_value=[])
+    redis.set = AsyncMock(return_value=True)
+    redis.delete = AsyncMock()
     redis.aclose = AsyncMock()
 
     app = _build_app(sessions=sessions, oauth=oauth, settings=_settings())
 
     with patch("app.api.v1.sessions.get_redis", AsyncMock(return_value=redis)):
         with patch(
-            "app.api.v1.sessions.lookup_configured_guild_ids",
-            AsyncMock(return_value={"333", "444"}),
+            "app.api.v1.operator_discord.get_redis",
+            AsyncMock(return_value=redis),
         ):
-            with TestClient(app) as client:
-                response = client.get("/api/v1/sessions/servers")
+            with patch(
+                "app.api.v1.sessions.lookup_configured_guild_ids",
+                AsyncMock(return_value={"333", "444"}),
+            ):
+                with TestClient(app) as client:
+                    response = client.get("/api/v1/sessions/servers")
 
     assert response.status_code == 200
     by_id = {item["id"]: item for item in response.json()["servers"]}
