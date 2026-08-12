@@ -17,16 +17,24 @@ from app.repositories.campaign_repository import (
 
 logger = logging.getLogger("norgoth.campaign_store")
 
-REDIS_URL = os.getenv("NORGOTH_REDIS_URL", "redis://localhost:6379/0")
+def _redis_url() -> str:
+    return os.getenv("NORGOTH_REDIS_URL", "redis://localhost:6379/0")
 
-# When true (default), campaign CRUD dual-writes Postgres as durable SoT.
-# Set false only for emergency Redis-only operation / rollback.
-CAMPAIGN_PG_ENABLED = os.getenv("NORGOTH_CAMPAIGN_PG_ENABLED", "true").strip().lower() in {
-    "1",
-    "true",
-    "yes",
-    "on",
-}
+
+def _campaign_pg_enabled() -> bool:
+    # Read at call-time so Docker/env_file values are visible even if this
+    # module was imported before a late load_dotenv() in workers.
+    return os.getenv("NORGOTH_CAMPAIGN_PG_ENABLED", "true").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+# Back-compat for tests that monkeypatch the module attribute.
+CAMPAIGN_PG_ENABLED = _campaign_pg_enabled()
+REDIS_URL = _redis_url()
 
 CAMPAIGNS_KEY = "norgoth:campaigns"
 CAMPAIGN_KEY_PREFIX = "norgoth:campaign:"
@@ -64,7 +72,11 @@ def claimed_key(campaign_id: str) -> str:
 
 
 async def get_redis() -> redis.Redis:
-    return redis.from_url(REDIS_URL, decode_responses=True)
+    # Prefer live env (Compose); fall back to module attr for tests/monkeypatch.
+    return redis.from_url(
+        os.getenv("NORGOTH_REDIS_URL") or REDIS_URL,
+        decode_responses=True,
+    )
 
 
 async def serialize_campaign(campaign: Dict[str, Any]) -> str:
@@ -150,15 +162,15 @@ async def _pg_list_activity(
         rows = await CampaignRepository(session).list_activity(
             campaign_id=campaign_id, limit=limit
         )
-    activities: List[Dict[str, Any]] = []
-    for row in rows:
-        payload = dict(row.payload) if isinstance(row.payload, dict) else {}
-        payload.setdefault("id", str(row.id))
-        payload.setdefault("campaign_id", str(row.campaign_id))
-        payload.setdefault("type", row.kind)
-        payload.setdefault("created_at", row.created_at.isoformat())
-        activities.append(payload)
-    return activities
+        activities: List[Dict[str, Any]] = []
+        for row in rows:
+            payload = dict(row.payload) if isinstance(row.payload, dict) else {}
+            payload.setdefault("id", str(row.id))
+            payload.setdefault("campaign_id", str(row.campaign_id))
+            payload.setdefault("type", row.kind)
+            payload.setdefault("created_at", row.created_at.isoformat())
+            activities.append(payload)
+        return activities
 
 
 async def _pg_upsert_unsubscribe(*, guild_id: str, user_id: str) -> None:
@@ -187,7 +199,9 @@ async def _pg_list_by_statuses(statuses: List[str]) -> List[Dict[str, Any]]:
     factory = get_session_factory()
     async with factory() as session:
         rows = await CampaignRepository(session).list_by_statuses(statuses)
-    return [row_to_campaign_dict(row) for row in rows]
+        # Convert while the session is open — closed/detached rows raise
+        # DetachedInstanceError / MissingGreenlet and crash the worker.
+        return [row_to_campaign_dict(row) for row in rows]
 
 
 async def add_activity(

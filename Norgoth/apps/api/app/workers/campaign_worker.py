@@ -763,13 +763,24 @@ async def worker_loop() -> None:
             "Campaign sends will fail until it is configured in Norgoth/.env."
         )
 
+    # Publish liveness before rehydrate so deploy smoke can pass even if
+    # Postgres rehydrate is slow or temporarily failing.
+    await heartbeat_tick()
+
     if REHYDRATE_ON_START:
-        await rehydrate_runtime_indexes()
+        try:
+            await rehydrate_runtime_indexes()
+            print("Campaign runtime indexes rehydrated from Postgres.")
+        except Exception as exc:  # noqa: BLE001 - keep the worker loop alive
+            print(f"WARNING: campaign rehydrate failed: {exc!r}")
 
     while True:
-        await heartbeat_tick()
-        await schedule_tick()
-        await execution_tick()
+        try:
+            await heartbeat_tick()
+            await schedule_tick()
+            await execution_tick()
+        except Exception as exc:  # noqa: BLE001 - never die silently in a restart loop
+            print(f"WARNING: campaign worker tick failed: {exc!r}")
         await asyncio.sleep(1)
 
 

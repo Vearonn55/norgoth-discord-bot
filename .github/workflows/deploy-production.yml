@@ -76,5 +76,14 @@ jobs:
             docker compose --env-file /opt/norbot/env/production.env -f deploy/compose.yml -f deploy/compose.production.yml pull
             /opt/norbot/scripts/migrate.sh production
             docker compose --env-file /opt/norbot/env/production.env -f deploy/compose.yml -f deploy/compose.production.yml up -d
-            /opt/norbot/scripts/smoke-check.sh production
+            if ! /opt/norbot/scripts/smoke-check.sh production; then
+              echo "==== campaign-worker logs ===="
+              docker logs norbot-prod-campaign-worker-1 --tail 120 || true
+              echo "==== content-worker logs ===="
+              docker logs norbot-prod-content-worker-1 --tail 80 || true
+              echo "==== bot logs ===="
+              docker logs norbot-prod-bot-1 --tail 40 || true
+              docker compose --env-file /opt/norbot/env/production.env -f deploy/compose.yml -f deploy/compose.production.yml ps || true
+              exit 1
+            fi
             /opt/norbot/scripts/record-release.sh "${NORBOT_IMAGE_TAG}" production
