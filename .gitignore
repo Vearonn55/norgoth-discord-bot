@@ -44,7 +44,9 @@ yarn-error.log*
 
 # ── Logs / runtime ───────────────────────────────────────────────────────
 *.log
-logs/
+# Root/runtime log dirs only — do not ignore Next.js App Router routes
+# like apps/dashboard/src/app/.../audit/logs/.
+/logs/
 
 # ── Legacy project: kept locally for git history only, not part of this repo
 # (see NorgothAuth/MIGRATED.md — merged into Norgoth/apps/api)
