@@ -229,9 +229,13 @@ export function ServerSelector({ copy }: { copy?: Partial<ServersCopy> }) {
   const [reloadKey, setReloadKey] = useState(0);
   const [page, setPage] = useState(1);
   const [awaitingGuildId, setAwaitingGuildId] = useState<string | null>(null);
+  const [awaitingGuildName, setAwaitingGuildName] = useState<string | null>(
+    null,
+  );
+  const [awaitingStartedAt, setAwaitingStartedAt] = useState<number | null>(
+    null,
+  );
   const [installTimedOut, setInstallTimedOut] = useState(false);
-  const awaitingStartedAt = useRef<number | null>(null);
-  const lastAwaitingName = useRef<string | null>(null);
   const gridRef = useRef<HTMLDivElement | null>(null);
 
   const reconnectHref = browserApiUrl(
@@ -287,22 +291,21 @@ export function ServerSelector({ copy }: { copy?: Partial<ServersCopy> }) {
     const target = servers.find((s) => s.id === awaitingGuildId);
     if (target && target.setup_state !== "not_installed") {
       setAwaitingGuildId(null);
+      setAwaitingStartedAt(null);
       setInstallTimedOut(false);
-      awaitingStartedAt.current = null;
     }
   }, [servers, awaitingGuildId]);
 
   // Poll while awaiting install (visibility + interval).
   useEffect(() => {
-    if (!awaitingGuildId) return;
+    if (!awaitingGuildId || awaitingStartedAt == null) return;
 
     const tick = () => {
       if (document.visibilityState === "hidden") return;
-      const started = awaitingStartedAt.current ?? Date.now();
-      if (Date.now() - started >= INSTALL_POLL_MAX_MS) {
+      if (Date.now() - awaitingStartedAt >= INSTALL_POLL_MAX_MS) {
         setInstallTimedOut(true);
         setAwaitingGuildId(null);
-        awaitingStartedAt.current = null;
+        setAwaitingStartedAt(null);
         return;
       }
       void loadServers({ quiet: true });
@@ -319,7 +322,7 @@ export function ServerSelector({ copy }: { copy?: Partial<ServersCopy> }) {
       document.removeEventListener("visibilitychange", onVisibility);
       window.clearInterval(interval);
     };
-  }, [awaitingGuildId, loadServers]);
+  }, [awaitingGuildId, awaitingStartedAt, loadServers]);
 
   const totalPages = Math.max(1, Math.ceil(servers.length / PAGE_SIZE));
   const safePage = Math.min(Math.max(1, page), totalPages);
@@ -354,18 +357,25 @@ export function ServerSelector({ copy }: { copy?: Partial<ServersCopy> }) {
     router.push(`/${lang}/dashboard`);
   }
 
-  function startAwaitingInstall(server: ServerGuildItem) {
-    lastAwaitingName.current = server.name;
+  const startAwaitingInstall = useCallback((server: ServerGuildItem) => {
+    setAwaitingGuildName(server.name);
     setAwaitingGuildId(server.id);
+    setAwaitingStartedAt(null);
     setInstallTimedOut(false);
-    awaitingStartedAt.current = Date.now();
-  }
+  }, []);
+
+  // Stamp poll start time in an effect (Date.now is impure during render/handlers under react-hooks/purity).
+  useEffect(() => {
+    if (!awaitingGuildId || awaitingStartedAt != null) return;
+    setAwaitingStartedAt(Date.now());
+  }, [awaitingGuildId, awaitingStartedAt]);
 
   const showReconnect = errorCode ? isReconnectErrorCode(errorCode) : false;
   const showRetry = errorCode ? isRetryErrorCode(errorCode) : Boolean(error);
   const awaitingServer = awaitingGuildId
     ? servers.find((s) => s.id === awaitingGuildId)
     : null;
+  const timedOutName = awaitingGuildName ?? "server";
 
   return (
     <CContainer
@@ -403,10 +413,7 @@ export function ServerSelector({ copy }: { copy?: Partial<ServersCopy> }) {
       {installTimedOut ? (
         <div className="mb-3 flex-shrink-0">
           <p className="text-warning mb-2" role="status">
-            {t.installTimedOut.replace(
-              "{name}",
-              lastAwaitingName.current ?? "server",
-            )}
+            {t.installTimedOut.replace("{name}", timedOutName)}
           </p>
           <Button
             type="button"
