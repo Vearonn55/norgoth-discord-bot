@@ -315,5 +315,24 @@
       "description": "Replies automatically to keyword triggers with configurable match modes and cooldowns.",
       "usage": "Add trigger words and responses, then set match modes and per-rule cooldowns."
     }
+  },
+  "servers": {
+    "title": "Your Servers",
+    "subtitle": "Choose a Discord server to manage. Only servers where you have Manage Server or Administrator permission are listed.",
+    "addBot": "Add Norgoth to Discord",
+    "loading": "Loading servers…",
+    "empty": "No manageable servers found. Make sure you have Manage Server permission, then add Norgoth to your Discord server.",
+    "available": "Available to manage",
+    "notInstalled": "Norgoth not installed",
+    "open": "Open →",
+    "addNorgoth": "Add Norgoth",
+    "retry": "Retry",
+    "reconnect": "Reconnect Discord",
+    "errorGeneric": "Could not load your Discord servers.",
+    "errorAuth": "Your Discord authorization expired or is missing required permissions. Reconnect Discord to continue.",
+    "errorScope": "Discord access is missing the guilds permission. Reconnect Discord and approve all requested scopes.",
+    "errorRateLimited": "Discord is rate-limiting requests. Please wait a moment and retry.",
+    "errorUnavailable": "Discord is temporarily unavailable. Please retry.",
+    "requestId": "Support reference: {id}"
   }
 }

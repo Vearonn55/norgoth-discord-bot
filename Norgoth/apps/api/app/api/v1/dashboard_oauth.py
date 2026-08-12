@@ -20,13 +20,19 @@ from app.api.v1.dependencies_auth import (
     OptionalOperatorSessionDependency,
     get_session_service,
 )
-from app.integrations.discord.oauth import DiscordOAuthClient, DiscordOAuthError
+from app.integrations.discord.oauth import (
+    DiscordOAuthClient,
+    DiscordOAuthError,
+    token_has_required_scopes,
+)
 from app.security.discord_permissions import (
     build_bot_invite_url,
     can_manage_guild,
 )
 from app.security.oauth_state import DiscordOAuthStateService, InvalidOAuthStateError
 from app.security.session import SessionService
+from app.api.v1.discord_http import http_detail
+from app.api.v1.operator_discord import fetch_operator_guilds
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +124,12 @@ async def dashboard_callback(
             code=code,
             redirect_uri=settings.discord_dashboard_redirect_uri,
         )
+        if not token_has_required_scopes(token.scope):
+            query = urlencode({"oauth_error": "missing_guilds_scope"})
+            return RedirectResponse(
+                url=f"{dashboard_base}/{oauth_state.lang}?{query}",
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
         user = await oauth_client.get_current_user(access_token=token.access_token)
     except DiscordOAuthError:
         logger.exception("Dashboard OAuth exchange failed")
@@ -130,6 +142,7 @@ async def dashboard_callback(
         global_name=user.global_name,
         avatar=user.avatar,
         access_token=token.access_token,
+        refresh_token=token.refresh_token,
         token_expires_in=token.expires_in,
     )
 
@@ -174,13 +187,6 @@ async def bot_invite(
         elif not settings.auth_enforced and session.user_id == "0":
             resolved_guild_id = guild_id
         else:
-            sessions = get_session_service()
-            token = await sessions.get_access_token(session.user_id)
-            if not token:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Session token expired. Please sign in again.",
-                )
             client_id, client_secret, redirect_uri = _require_discord_oauth_settings(
                 settings
             )
@@ -190,15 +196,13 @@ async def bot_invite(
                 redirect_uri=redirect_uri,
                 http_client=http_client,
             )
-            try:
-                user_guilds = await oauth_client.get_current_user_guilds(
-                    access_token=token
-                )
-            except DiscordOAuthError as error:
-                raise HTTPException(
-                    status_code=502,
-                    detail="Could not verify guild permissions.",
-                ) from error
+            sessions = get_session_service()
+            user_guilds = await fetch_operator_guilds(
+                sessions=sessions,
+                oauth_client=oauth_client,
+                user_id=session.user_id,
+                route="/oauth/discord/bot-invite",
+            )
 
             match = next((g for g in user_guilds if g.id == guild_id), None)
             if match is None or not can_manage_guild(
@@ -207,7 +211,10 @@ async def bot_invite(
             ):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail="You do not have permission to add NorBot to this guild.",
+                    detail=http_detail(
+                        "guild_permission_denied",
+                        "You do not have permission to add NorBot to this guild.",
+                    ),
                 )
             resolved_guild_id = guild_id
 

@@ -1,5 +1,5 @@
 import { ServerSelector } from "@/components/auth/server-selector";
-import { hasLocale } from "../../dictionaries";
+import { getDictionary, hasLocale } from "../../dictionaries";
 import { notFound } from "next/navigation";
 
 export default async function ServersPage({
@@ -9,5 +9,6 @@ export default async function ServersPage({
 }) {
   const { lang } = await params;
   if (!hasLocale(lang)) notFound();
-  return <ServerSelector />;
+  const dict = await getDictionary(lang);
+  return <ServerSelector copy={dict.servers} />;
 }

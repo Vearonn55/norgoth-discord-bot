@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from app.api.v1.dependencies import (
@@ -17,7 +17,8 @@ from app.api.v1.dependencies_auth import (
     OperatorSessionDependency,
     get_session_service,
 )
-from app.integrations.discord.oauth import DiscordOAuthError
+from app.api.v1.discord_http import http_detail
+from app.api.v1.operator_discord import fetch_operator_guilds
 from app.security.discord_permissions import can_manage_guild
 from app.security.session import (
     COOKIE_NAME,
@@ -43,7 +44,13 @@ async def exchange_session(
 ) -> dict[str, Any]:
     session = await sessions.exchange_code(body.code)
     if session is None:
-        raise HTTPException(status_code=400, detail="Invalid or expired exchange code.")
+        raise HTTPException(
+            status_code=400,
+            detail=http_detail(
+                "exchange_code_invalid",
+                "Invalid or expired exchange code.",
+            ),
+        )
 
     secure = settings.environment == "production"
     response.set_cookie(
@@ -93,8 +100,56 @@ async def logout(
     return {"status": "ok"}
 
 
+async def _fetch_user_guilds(
+    *,
+    sessions: SessionService,
+    oauth_client: DiscordOAuthClientDependency,
+    user_id: str,
+    request: Request,
+    route: str,
+):
+    token = await sessions.get_valid_access_token(
+        user_id,
+        oauth_client=oauth_client,
+    )
+    if not token:
+        raise HTTPException(
+            status_code=401,
+            detail=http_detail(
+                "discord_token_invalid",
+                "Session token expired. Please reconnect Discord.",
+            ),
+        )
+
+    try:
+        return await oauth_client.get_current_user_guilds(access_token=token)
+    except DiscordOAuthError as error:
+        if error.http_status in {401, 403}:
+            refreshed = await sessions.get_valid_access_token(
+                user_id,
+                oauth_client=oauth_client,
+                force_refresh=True,
+            )
+            if refreshed:
+                try:
+                    return await oauth_client.get_current_user_guilds(
+                        access_token=refreshed
+                    )
+                except DiscordOAuthError as retry_error:
+                    if retry_error.http_status in {401, 403}:
+                        await sessions.clear_oauth_tokens(user_id)
+                    raise_discord_oauth_http_error(
+                        retry_error,
+                        request=request,
+                        route=route,
+                    )
+            await sessions.clear_oauth_tokens(user_id)
+        raise_discord_oauth_http_error(error, request=request, route=route)
+
+
 @router.get("/servers")
 async def list_manageable_servers(
+    request: Request,
     session: OperatorSessionDependency,
     oauth_client: DiscordOAuthClientDependency,
     sessions: Annotated[SessionService, Depends(get_session_service)],
@@ -141,19 +196,18 @@ async def list_manageable_servers(
     if not settings.auth_enforced and session.user_id == "0":
         return {"servers": bot_guilds}
 
-    token = await sessions.get_access_token(session.user_id)
-    if not token:
-        if not settings.auth_enforced:
+    if not settings.auth_enforced:
+        token = await sessions.get_access_token(session.user_id)
+        if not token:
             return {"servers": bot_guilds}
-        raise HTTPException(
-            status_code=401,
-            detail="Session token expired. Please sign in again.",
-        )
 
-    try:
-        user_guilds = await oauth_client.get_current_user_guilds(access_token=token)
-    except DiscordOAuthError as error:
-        raise HTTPException(status_code=502, detail=str(error)) from error
+    user_guilds = await fetch_operator_guilds(
+        sessions=sessions,
+        oauth_client=oauth_client,
+        user_id=session.user_id,
+        request=request,
+        route="/sessions/servers",
+    )
 
     servers = []
     for guild in user_guilds:

@@ -32,11 +32,16 @@ def _build_client(
 
 def _build_response(
     payload: object,
+    *,
+    status_code: int = 200,
 ) -> MagicMock:
-    """Create a successful HTTP response mock."""
+    """Create an HTTP response mock."""
 
     response = MagicMock(spec=httpx.Response)
     response.json.return_value = payload
+    response.status_code = status_code
+    response.is_success = 200 <= status_code < 300
+    response.headers = {}
     response.raise_for_status.return_value = None
 
     return response
@@ -107,7 +112,6 @@ async def test_exchange_code_returns_oauth_token() -> None:
             "Content-Type": "application/x-www-form-urlencoded",
         },
     )
-    response.raise_for_status.assert_called_once_with()
 
 
 @pytest.mark.anyio
@@ -263,6 +267,87 @@ async def test_get_current_user_rejects_invalid_payload() -> None:
 
 
 @pytest.mark.anyio
+async def test_get_current_user_guilds_coerces_int_permissions_and_skips_bad_entries() -> None:
+    """Invalid guild rows are skipped; int permissions are coerced to strings."""
+
+    response = _build_response(
+        [
+            {
+                "id": "111111111111111111",
+                "name": "Owned Guild",
+                "owner": True,
+                "permissions": 8,
+            },
+            {
+                "id": "bad",
+                "name": "Broken",
+                "owner": "yes",
+                "permissions": "8",
+            },
+            {
+                "id": "222222222222222222",
+                "name": "Manage Guild",
+                "owner": False,
+                "permissions": "32",
+            },
+        ]
+    )
+
+    http_client = AsyncMock(spec=httpx.AsyncClient)
+    http_client.get.return_value = response
+
+    client = _build_client(http_client)
+    guilds = await client.get_current_user_guilds(access_token=ACCESS_TOKEN)
+
+    assert [guild.id for guild in guilds] == [
+        "111111111111111111",
+        "222222222222222222",
+    ]
+    assert guilds[0].permissions == "8"
+    assert guilds[0].owner is True
+
+
+@pytest.mark.anyio
+async def test_get_current_user_guilds_maps_unauthorized() -> None:
+    """Discord 401 on guilds must surface as DiscordOAuthError with status."""
+
+    response = _build_response({"message": "401: Unauthorized", "code": 0}, status_code=401)
+    http_client = AsyncMock(spec=httpx.AsyncClient)
+    http_client.get.return_value = response
+    client = _build_client(http_client)
+
+    with pytest.raises(DiscordOAuthError) as raised:
+        await client.get_current_user_guilds(access_token=ACCESS_TOKEN)
+
+    assert raised.value.http_status == 401
+
+
+@pytest.mark.anyio
+async def test_refresh_access_token_returns_token() -> None:
+    """Refresh token grant should return a typed OAuth token."""
+
+    response = _build_response(
+        {
+            "access_token": "new-access-token",
+            "token_type": "Bearer",
+            "expires_in": 3600,
+            "refresh_token": "new-refresh-token",
+            "scope": "identify guilds",
+        }
+    )
+    http_client = AsyncMock(spec=httpx.AsyncClient)
+    http_client.post.return_value = response
+    client = _build_client(http_client)
+
+    token = await client.refresh_access_token(refresh_token="old-refresh")
+
+    assert token.access_token == "new-access-token"
+    assert token.refresh_token == "new-refresh-token"
+    http_client.post.assert_awaited_once()
+    assert http_client.post.await_args.kwargs["data"]["grant_type"] == "refresh_token"
+
+
+@pytest.mark.anyio
 async def test_get_current_user_guilds_rejects_invalid_payload() -> None:
     """Guild endpoint should reject non-list response bodies."""
 
@@ -289,6 +374,9 @@ async def test_get_current_user_rejects_invalid_json() -> None:
     """Malformed JSON responses should be converted to OAuth errors."""
 
     response = MagicMock(spec=httpx.Response)
+    response.status_code = 200
+    response.is_success = True
+    response.headers = {}
     response.raise_for_status.return_value = None
     response.json.side_effect = ValueError("Invalid JSON")
 

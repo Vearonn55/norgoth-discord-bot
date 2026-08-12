@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import Cookie, Depends, HTTPException, Request, status
 
@@ -13,6 +13,8 @@ from app.api.v1.dependencies import (
     HTTPClientDependency,
     _require_discord_oauth_settings,
 )
+from app.api.v1.discord_http import http_detail
+from app.api.v1.operator_discord import fetch_operator_guilds
 from app.integrations.discord.oauth import DiscordOAuthClient
 
 
@@ -52,7 +54,10 @@ async def require_operator_session(
         )
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Authentication required.",
+        detail=http_detail(
+            "authentication_required",
+            "Authentication required.",
+        ),
     )
 
 
@@ -79,10 +84,6 @@ async def require_guild_manager(
     if not settings.auth_enforced and session.user_id == "0":
         return session
 
-    token = await sessions.get_access_token(session.user_id)
-    if not token:
-        raise HTTPException(status_code=401, detail="Session expired. Sign in again.")
-
     # Build the OAuth client lazily so the dev-bypass path never requires
     # Discord OAuth configuration (which would otherwise raise 503 eagerly
     # when this guard is resolved).
@@ -94,16 +95,23 @@ async def require_guild_manager(
         http_client=http_client,
     )
 
-    try:
-        guilds = await oauth_client.get_current_user_guilds(access_token=token)
-    except Exception as error:
-        raise HTTPException(status_code=502, detail="Could not verify guild permissions.") from error
+    guilds = await fetch_operator_guilds(
+        sessions=sessions,
+        oauth_client=oauth_client,
+        user_id=session.user_id,
+        route="require_guild_manager",
+    )
 
     match = next((g for g in guilds if g.id == guild_id), None)
-    if match is None or not can_manage_guild(owner=match.owner, permissions=match.permissions):
+    if match is None or not can_manage_guild(
+        owner=match.owner, permissions=match.permissions
+    ):
         raise HTTPException(
             status_code=403,
-            detail="You do not have permission to manage this guild.",
+            detail=http_detail(
+                "guild_permission_denied",
+                "You do not have permission to manage this guild.",
+            ),
         )
     return session
 

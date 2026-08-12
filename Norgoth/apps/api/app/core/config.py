@@ -96,6 +96,7 @@ class Settings:
     proxycheck_api_key: str | None = None
     auth_enforced: bool = False
     webhook_encryption_key: bytes | None = None
+    oauth_token_encryption_key: bytes | None = None
     youtube_api_key: str | None = None
     twitch_client_id: str | None = None
     twitch_client_secret: str | None = None
@@ -193,6 +194,15 @@ class Settings:
             )
             raise ValueError(message)
 
+        oauth_token_encryption_key = _read_optional_base64_bytes(
+            "NORGOTH_OAUTH_TOKEN_ENCRYPTION_KEY"
+        )
+        if oauth_token_encryption_key is not None and len(oauth_token_encryption_key) != 32:
+            message = (
+                "NORGOTH_OAUTH_TOKEN_ENCRYPTION_KEY must decode to exactly 32 bytes."
+            )
+            raise ValueError(message)
+
         discord_client_id = _read_optional_string("NORGOTH_DISCORD_CLIENT_ID")
         discord_client_secret = _read_optional_string("NORGOTH_DISCORD_CLIENT_SECRET")
         discord_redirect_uri = _read_optional_string("NORGOTH_DISCORD_REDIRECT_URI")
@@ -257,6 +267,7 @@ class Settings:
                 default=environment == "production",
             ),
             webhook_encryption_key=webhook_encryption_key,
+            oauth_token_encryption_key=oauth_token_encryption_key,
             youtube_api_key=_read_optional_string("YOUTUBE_API_KEY"),
             twitch_client_id=_read_optional_string("TWITCH_CLIENT_ID"),
             twitch_client_secret=_read_optional_string("TWITCH_CLIENT_SECRET"),

@@ -52,6 +52,18 @@ class _FakeSessions:
     async def get_access_token(self, user_id: str) -> str | None:
         return self._token
 
+    async def get_valid_access_token(
+        self,
+        user_id: str,
+        *,
+        oauth_client: object,
+        force_refresh: bool = False,
+    ) -> str | None:
+        return self._token
+
+    async def clear_oauth_tokens(self, user_id: str, **_: object) -> None:
+        self._token = None
+
 
 class _FakeOAuthClient:
     """Stands in for DiscordOAuthClient; returns a fixed guild list."""

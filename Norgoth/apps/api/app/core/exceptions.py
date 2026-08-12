@@ -10,6 +10,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.middleware.request_context import (
     apply_standard_response_headers,
 )
+from app.api.v1.discord_http import detail_as_mapping
 from app.schemas.errors import (
     ErrorDetail,
     ErrorResponse,
@@ -80,17 +81,22 @@ def register_exception_handlers(application: FastAPI) -> None:
     ) -> JSONResponse:
         request_id = _get_request_id(request)
 
-        message = (
-            exception.detail
-            if isinstance(exception.detail, str)
-            else "The request could not be completed."
-        )
+        structured = detail_as_mapping(exception.detail)
+        if structured is not None:
+            code = structured["code"]
+            message = structured["message"]
+        elif isinstance(exception.detail, str):
+            code = _get_http_error_code(exception.status_code)
+            message = exception.detail
+        else:
+            code = _get_http_error_code(exception.status_code)
+            message = "The request could not be completed."
 
         response_headers = dict(exception.headers) if exception.headers is not None else None
 
         return _create_error_response(
             status_code=exception.status_code,
-            code=_get_http_error_code(exception.status_code),
+            code=code,
             message=message,
             request_id=request_id,
             headers=response_headers,

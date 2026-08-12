@@ -2,17 +2,26 @@
 
 from __future__ import annotations
 
+import base64
 import json
+import logging
 import secrets
 import time
 from dataclasses import dataclass
 from typing import Any
 
+from app.core.config import get_settings
+from app.integrations.discord.oauth import DiscordOAuthClient, DiscordOAuthError
+from app.security.secret_box import SecretBox, SecretBoxError
 from app.services.campaign_store import get_redis
 
 SESSION_TTL_SECONDS = 60 * 60 * 24 * 7  # 7 days
 EXCHANGE_TTL_SECONDS = 120
+TOKEN_REFRESH_LOCK_SECONDS = 10
 COOKIE_NAME = "norgoth_session"
+_ENC_PREFIX = "enc:"
+
+logger = logging.getLogger(__name__)
 
 
 def session_key(session_id: str) -> str:
@@ -26,6 +35,15 @@ def exchange_key(code: str) -> str:
 def user_token_key(user_id: str) -> str:
     """Cache OAuth access token for guild permission refreshes."""
     return f"norgoth:operator_token:{user_id}"
+
+
+def user_refresh_key(user_id: str) -> str:
+    """Cache OAuth refresh token for access-token renewal."""
+    return f"norgoth:operator_refresh:{user_id}"
+
+
+def user_refresh_lock_key(user_id: str) -> str:
+    return f"norgoth:operator_token_lock:{user_id}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +67,44 @@ class OperatorSession:
         }
 
 
+def _oauth_secret_box() -> SecretBox | None:
+    settings = get_settings()
+    key = getattr(settings, "oauth_token_encryption_key", None)
+    if key is None:
+        key = getattr(settings, "webhook_encryption_key", None)
+    if key is None:
+        return None
+    try:
+        return SecretBox(key)
+    except SecretBoxError:
+        logger.warning("OAuth token encryption key is invalid; storing tokens in plaintext.")
+        return None
+
+
+def _seal_token(value: str) -> str:
+    box = _oauth_secret_box()
+    if box is None:
+        return value
+    blob = box.encrypt(value)
+    return _ENC_PREFIX + base64.b64encode(blob).decode("ascii")
+
+
+def _unseal_token(raw: str) -> str | None:
+    if not raw.startswith(_ENC_PREFIX):
+        # Legacy plaintext tokens remain readable for one release.
+        return raw
+    encoded = raw[len(_ENC_PREFIX) :]
+    box = _oauth_secret_box()
+    if box is None:
+        return None
+    try:
+        blob = base64.b64decode(encoded.encode("ascii"), validate=True)
+        return box.decrypt(blob)
+    except (SecretBoxError, ValueError):
+        logger.warning("Failed to decrypt stored OAuth token; treating as missing.")
+        return None
+
+
 class SessionService:
     """Create and validate operator sessions stored in Redis."""
 
@@ -60,6 +116,7 @@ class SessionService:
         global_name: str | None,
         avatar: str | None,
         access_token: str | None = None,
+        refresh_token: str | None = None,
         token_expires_in: int | None = None,
     ) -> tuple[OperatorSession, str]:
         """Return (session, one-time exchange code)."""
@@ -85,11 +142,12 @@ class SessionService:
                 ex=SESSION_TTL_SECONDS,
             )
             if access_token:
-                ttl = max(60, int(token_expires_in or 3600))
-                await redis_client.set(
-                    user_token_key(user_id),
-                    access_token,
-                    ex=min(ttl, SESSION_TTL_SECONDS),
+                await self._store_tokens(
+                    redis_client,
+                    user_id=user_id,
+                    access_token=access_token,
+                    refresh_token=refresh_token,
+                    token_expires_in=token_expires_in,
                 )
 
             exchange_code = secrets.token_urlsafe(24)
@@ -164,19 +222,135 @@ class SessionService:
             session = await self.get_session(session_id, redis_client=redis_client)
             await redis_client.delete(session_key(session_id))
             if session:
-                await redis_client.delete(user_token_key(session.user_id))
+                await self.clear_oauth_tokens(session.user_id, redis_client=redis_client)
         finally:
             await redis_client.aclose()
 
     async def get_access_token(self, user_id: str) -> str | None:
         redis_client = await get_redis()
         try:
-            token = await redis_client.get(user_token_key(user_id))
-            if isinstance(token, bytes):
-                return token.decode("utf-8")
-            return token
+            return await self._read_token(redis_client, user_token_key(user_id))
         finally:
             await redis_client.aclose()
+
+    async def get_refresh_token(self, user_id: str) -> str | None:
+        redis_client = await get_redis()
+        try:
+            return await self._read_token(redis_client, user_refresh_key(user_id))
+        finally:
+            await redis_client.aclose()
+
+    async def clear_oauth_tokens(
+        self,
+        user_id: str,
+        *,
+        redis_client: Any | None = None,
+    ) -> None:
+        owns_client = redis_client is None
+        client = redis_client or await get_redis()
+        try:
+            await client.delete(user_token_key(user_id))
+            await client.delete(user_refresh_key(user_id))
+        finally:
+            if owns_client:
+                await client.aclose()
+
+    async def get_valid_access_token(
+        self,
+        user_id: str,
+        *,
+        oauth_client: DiscordOAuthClient,
+        force_refresh: bool = False,
+    ) -> str | None:
+        """Return a usable access token, refreshing once when needed."""
+
+        redis_client = await get_redis()
+        try:
+            access = None if force_refresh else await self._read_token(
+                redis_client, user_token_key(user_id)
+            )
+            if access and not force_refresh:
+                return access
+
+            refresh = await self._read_token(redis_client, user_refresh_key(user_id))
+            if not refresh:
+                if access:
+                    await self.clear_oauth_tokens(user_id, redis_client=redis_client)
+                return None
+
+            lock_key = user_refresh_lock_key(user_id)
+            acquired = await redis_client.set(
+                lock_key,
+                "1",
+                nx=True,
+                ex=TOKEN_REFRESH_LOCK_SECONDS,
+            )
+            if not acquired:
+                # Another request is refreshing; wait briefly then re-read.
+                await _async_sleep(0.2)
+                return await self._read_token(redis_client, user_token_key(user_id))
+
+            try:
+                # Re-check after lock in case another worker finished.
+                if not force_refresh:
+                    raced = await self._read_token(redis_client, user_token_key(user_id))
+                    if raced:
+                        return raced
+
+                token = await oauth_client.refresh_access_token(refresh_token=refresh)
+                await self._store_tokens(
+                    redis_client,
+                    user_id=user_id,
+                    access_token=token.access_token,
+                    refresh_token=token.refresh_token or refresh,
+                    token_expires_in=token.expires_in,
+                )
+                return token.access_token
+            except DiscordOAuthError:
+                await self.clear_oauth_tokens(user_id, redis_client=redis_client)
+                return None
+            finally:
+                await redis_client.delete(lock_key)
+        finally:
+            await redis_client.aclose()
+
+    async def _store_tokens(
+        self,
+        redis_client: Any,
+        *,
+        user_id: str,
+        access_token: str,
+        refresh_token: str | None,
+        token_expires_in: int | None,
+    ) -> None:
+        access_ttl = max(60, int(token_expires_in or 3600))
+        await redis_client.set(
+            user_token_key(user_id),
+            _seal_token(access_token),
+            ex=min(access_ttl, SESSION_TTL_SECONDS),
+        )
+        if refresh_token:
+            await redis_client.set(
+                user_refresh_key(user_id),
+                _seal_token(refresh_token),
+                ex=SESSION_TTL_SECONDS,
+            )
+
+    async def _read_token(self, redis_client: Any, key: str) -> str | None:
+        raw = await redis_client.get(key)
+        if raw is None:
+            return None
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8")
+        if not isinstance(raw, str) or not raw:
+            return None
+        return _unseal_token(raw)
+
+
+async def _async_sleep(seconds: float) -> None:
+    import asyncio
+
+    await asyncio.sleep(seconds)
 
 
 __all__ = [

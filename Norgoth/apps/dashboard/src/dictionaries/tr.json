@@ -315,5 +315,24 @@
       "description": "Anahtar kelime tetikleyicilerine, yapılandırılabilir eşleşme modları ve bekleme süreleriyle otomatik yanıt verir.",
       "usage": "Tetikleyici kelimeler ve yanıtlar ekleyin, ardından eşleşme modlarını ve kural başına bekleme sürelerini ayarlayın."
     }
+  },
+  "servers": {
+    "title": "Sunucularınız",
+    "subtitle": "Yönetmek istediğiniz Discord sunucusunu seçin. Yalnızca Sunucuyu Yönet veya Yönetici izniniz olan sunucular listelenir.",
+    "addBot": "Norgoth’u Discord’a ekle",
+    "loading": "Sunucular yükleniyor…",
+    "empty": "Yönetilebilir sunucu bulunamadı. Sunucuyu Yönet izniniz olduğundan emin olun, ardından Norgoth’u Discord sunucunuza ekleyin.",
+    "available": "Yönetime hazır",
+    "notInstalled": "Norgoth yüklü değil",
+    "open": "Aç →",
+    "addNorgoth": "Norgoth ekle",
+    "retry": "Yeniden dene",
+    "reconnect": "Discord’u yeniden bağla",
+    "errorGeneric": "Discord sunucularınız yüklenemedi.",
+    "errorAuth": "Discord yetkinizin süresi dolmuş veya gerekli izinler eksik. Devam etmek için Discord’u yeniden bağlayın.",
+    "errorScope": "Discord erişiminde sunucu (guilds) izni eksik. Discord’u yeniden bağlayın ve istenen tüm izinleri onaylayın.",
+    "errorRateLimited": "Discord istekleri sınırlıyor. Lütfen biraz bekleyip yeniden deneyin.",
+    "errorUnavailable": "Discord geçici olarak kullanılamıyor. Lütfen yeniden deneyin.",
+    "requestId": "Destek referansı: {id}"
   }
 }

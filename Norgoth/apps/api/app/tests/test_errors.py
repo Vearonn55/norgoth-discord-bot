@@ -1,6 +1,6 @@
 """Tests for standardized application exception responses."""
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
@@ -73,6 +73,34 @@ def test_validation_error_returns_standardized_response() -> None:
         "body",
         "count",
     ]
+
+
+def test_structured_http_exception_preserves_error_code() -> None:
+    """HTTPException detail dicts should surface as error.code."""
+
+    application = create_application(_create_test_settings())
+
+    @application.get("/test/structured")
+    async def raise_structured() -> None:
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "code": "discord_token_invalid",
+                "message": "Please reconnect Discord.",
+            },
+        )
+
+    with TestClient(application) as client:
+        response = client.get(
+            "/test/structured",
+            headers={"X-Request-ID": "structured-request-001"},
+        )
+
+    body = response.json()
+    assert response.status_code == 401
+    assert body["error"]["code"] == "discord_token_invalid"
+    assert body["error"]["message"] == "Please reconnect Discord."
+    assert body["error"]["request_id"] == "structured-request-001"
 
 
 def test_unexpected_error_does_not_expose_internal_details() -> None:
