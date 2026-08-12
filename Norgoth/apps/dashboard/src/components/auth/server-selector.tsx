@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { CContainer } from "@coreui/react";
 import { apiUrl, browserApiUrl } from "@/lib/api";
@@ -186,7 +186,10 @@ export function ServerSelector({ copy }: { copy?: Partial<ServersCopy> }) {
   const params = useParams();
   const lang = String(params?.lang ?? "en");
   const locale = lang === "tr" ? "tr" : "en";
-  const t: ServersCopy = { ...FALLBACK_COPY[locale], ...copy };
+  const t = useMemo<ServersCopy>(
+    () => ({ ...FALLBACK_COPY[locale], ...copy }),
+    [locale, copy],
+  );
   const router = useRouter();
   const selectGuild = useGuildStore((s) => s.selectGuild);
   const selectedGuildId = useGuildStore((s) => s.selectedGuild?.id);

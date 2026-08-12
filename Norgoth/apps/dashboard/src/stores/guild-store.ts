@@ -218,6 +218,7 @@ export const useGuildStore = create<GuildState>((set, get) => ({
       }
 
       if (selected?.id) {
+        const current = selected;
         try {
           const response = await fetchWithTimeout(
             apiUrl("/api/v1/sessions/servers"),
@@ -235,17 +236,17 @@ export const useGuildStore = create<GuildState>((set, get) => ({
               }>;
             };
             const match = (data.servers ?? []).find(
-              (server) => String(server.id) === selected.id,
+              (server) => String(server.id) === current.id,
             );
             if (match) {
               selected = {
                 id: String(match.id),
-                name: String(match.name ?? selected.name),
-                icon: match.icon ?? selected.icon ?? null,
+                name: String(match.name ?? current.name),
+                icon: match.icon ?? current.icon ?? null,
                 icon_url: resolvedGuildIcon({
                   id: String(match.id),
-                  icon: match.icon ?? selected.icon ?? null,
-                  icon_url: match.icon_url ?? selected.icon_url ?? null,
+                  icon: match.icon ?? current.icon ?? null,
+                  icon_url: match.icon_url ?? current.icon_url ?? null,
                 }),
                 bot_installed: Boolean(match.bot_installed),
               };
