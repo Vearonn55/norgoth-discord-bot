@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   cilCalendar,
   cilCheckCircle,
@@ -11,6 +11,7 @@ import {
   cilSend,
   cilTrash,
 } from "@coreui/icons";
+import { CSpinner } from "@coreui/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -42,43 +43,60 @@ type Campaign = {
   updated_at?: string;
 };
 
+function parseCampaigns(data: unknown): Campaign[] {
+  if (Array.isArray(data)) return data as Campaign[];
+  if (data && typeof data === "object") {
+    const record = data as { items?: unknown; campaigns?: unknown };
+    if (Array.isArray(record.items)) return record.items as Campaign[];
+    if (Array.isArray(record.campaigns)) return record.campaigns as Campaign[];
+  }
+  return [];
+}
+
 export function CampaignCommandCenter() {
   const params = useParams();
   const lang = String(params?.lang || "en");
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Campaign | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  async function loadCampaigns() {
+  const loadCampaigns = useCallback(async (isInitial = false) => {
     try {
       const response = await fetch(apiUrl(`/campaigns`), {
         cache: "no-store",
       });
 
-      if (!response.ok) return;
+      if (!response.ok) {
+        if (isInitial) {
+          setLoadError("Could not load campaigns from the API.");
+        }
+        return;
+      }
 
       const data = await response.json();
-
-      if (Array.isArray(data)) {
-        setCampaigns(data);
-      } else if (Array.isArray(data.items)) {
-        setCampaigns(data.items);
-      } else if (Array.isArray(data.campaigns)) {
-        setCampaigns(data.campaigns);
-      }
+      setCampaigns(parseCampaigns(data));
+      setLoadError(null);
     } catch {
-      //
+      if (isInitial) {
+        setLoadError("Could not reach the NorBot API.");
+      }
+    } finally {
+      if (isInitial) setInitialLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
-    loadCampaigns();
+    void loadCampaigns(true);
 
-    const interval = window.setInterval(loadCampaigns, 5000);
+    const interval = window.setInterval(() => {
+      void loadCampaigns(false);
+    }, 5000);
 
     return () => window.clearInterval(interval);
-  }, []);
+  }, [loadCampaigns]);
 
   const summary = useMemo(() => {
     const total = campaigns.length;
@@ -145,6 +163,42 @@ export function CampaignCommandCenter() {
     } finally {
       setDeleting(false);
     }
+  }
+
+  if (initialLoading) {
+    return (
+      <Card>
+        <div
+          className="d-flex flex-column align-items-center justify-content-center gap-3 py-5 text-body-secondary"
+          role="status"
+          aria-live="polite"
+        >
+          <CSpinner />
+          <div className="small">Loading Command Center…</div>
+        </div>
+      </Card>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <Card>
+        <div className="d-flex flex-column align-items-start gap-3 py-4">
+          <p className="mb-0 text-body-secondary">{loadError}</p>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              setInitialLoading(true);
+              setLoadError(null);
+              void loadCampaigns(true);
+            }}
+          >
+            Retry
+          </Button>
+        </div>
+      </Card>
+    );
   }
 
   return (
