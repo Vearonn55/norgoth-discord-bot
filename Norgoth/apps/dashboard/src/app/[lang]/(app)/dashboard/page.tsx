@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { MetricWidget } from "@/components/ui/metric-widget";
 import { apiUrl } from "@/lib/api";
-import { formatDict } from "@/lib/locale-dict";
+import { formatDict } from "@/lib/locale-format";
 import { getDictionary, hasLocale } from "../../dictionaries";
 
 type HomeStatus = {
