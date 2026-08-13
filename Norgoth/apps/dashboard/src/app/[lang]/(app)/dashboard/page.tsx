@@ -7,6 +7,7 @@ import {
 } from "@coreui/icons";
 import { CAlert, CCol, CRow } from "@/components/ui/coreui";
 import { PageHeader } from "@/components/layout/page-header";
+import { ManagingGuildLabel } from "@/components/layout/managing-guild-label";
 import { DashboardAutoRefresh } from "@/components/dashboard/dashboard-auto-refresh";
 import { HomeVerificationMetric } from "@/components/dashboard/home-verification-metric";
 import { ActivitySummary } from "@/components/dashboard/activity-summary";
@@ -31,8 +32,6 @@ function fillTemplate(
 
 type HomeStatus = {
   botConnected: boolean;
-  guildName: string | null;
-  guildId: string | null;
   workerOnline: boolean;
   queuePaused: boolean;
   queuedCount: number;
@@ -59,15 +58,8 @@ async function getHomeStatus(): Promise<HomeStatus> {
     fetchJson("/campaigns/queue/state"),
   ]);
 
-  const status = (botHealth?.status ?? {}) as {
-    guilds?: { id: string; name: string }[];
-  };
-  const guild = status.guilds?.[0] ?? null;
-
   return {
     botConnected: Boolean(botHealth?.connected),
-    guildName: guild?.name ?? null,
-    guildId: guild?.id ?? null,
     workerOnline: Boolean(workerHealth?.online),
     queuePaused: Boolean(queueState?.is_paused),
     queuedCount: Number(queueState?.queued_count ?? 0),
@@ -117,11 +109,7 @@ export default async function DashboardPage({
           title={d.title}
           category="dashboard"
           icon={<Icon icon={cilSpeedometer} size="xl" />}
-          description={
-            status.guildName
-              ? fillTemplate(d.managingGuild, { name: status.guildName })
-              : d.descriptionFallback
-          }
+          description={<ManagingGuildLabel />}
           actions={
             <Button asChild variant="primary">
               <Link href={`/${lang}/campaigns/new`}>
@@ -150,7 +138,7 @@ export default async function DashboardPage({
                 accent={status.botConnected ? "success" : "danger"}
                 helper={
                   status.botConnected
-                    ? status.guildName ?? d.botHelperOnline
+                    ? d.botHelperOnline
                     : d.botHelperOffline
                 }
                 icon={<Icon icon={cilMediaPlay} size="lg" />}

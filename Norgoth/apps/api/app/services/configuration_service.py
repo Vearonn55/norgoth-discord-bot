@@ -118,6 +118,7 @@ class ConfigurationService:
             vpn_or_proxy_action=settings.vpn_or_proxy_action,
             shared_ip_action=settings.shared_ip_action,
             enabled=enabled,
+            panel_message_id=settings.panel_message_id,
             created_at=settings.created_at,
             updated_at=settings.updated_at,
         )
@@ -191,7 +192,12 @@ class ConfigurationService:
         await self._sync_channel_binding(
             guild_id, GuildChannelPurpose.VERIFICATION, verification_channel_id
         )
-        await self._sync_channel_binding(guild_id, GuildChannelPurpose.LOG, log_channel_id)
+        # Preserve legacy log binding when the client omits/clears the field so
+        # Discord Logs dual-read and rolling deploys do not lose the channel.
+        if str(log_channel_id or "").strip():
+            await self._sync_channel_binding(
+                guild_id, GuildChannelPurpose.LOG, log_channel_id
+            )
 
         await self._configuration_repository.flush()
         await self._configuration_repository.refresh(settings)

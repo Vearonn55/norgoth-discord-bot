@@ -12,6 +12,8 @@ import {
 
   cilBan,
 
+  cilCheckCircle,
+
   cilCommentBubble,
 
   cilEnvelopeClosed,
@@ -45,6 +47,8 @@ import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 
 import { PageHeader } from "@/components/layout/page-header";
+
+import { ManagingGuildLabel } from "@/components/layout/managing-guild-label";
 
 import { Icon } from "@/components/ui/icon";
 
@@ -105,6 +109,8 @@ const CATEGORY_ICONS: Record<string, string[]> = {
   tickets: cilEnvelopeClosed,
 
   invites: cilLink,
+
+  verification: cilCheckCircle,
 
 };
 
@@ -264,7 +270,7 @@ export function DiscordLogsPage() {
 
         category="logging"
 
-        description={info?.description}
+        description={<ManagingGuildLabel />}
 
         infoKey="discordLogs"
 

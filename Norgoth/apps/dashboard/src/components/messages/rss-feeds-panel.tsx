@@ -16,17 +16,20 @@ import { RoleSelect } from "@/components/ui/role-select";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { PageHeader } from "@/components/layout/page-header";
+import { ManagingGuildLabel } from "@/components/layout/managing-guild-label";
 import { useFirstGuild } from "@/stores/guild-store";
 import {
   useRssFeedsStore,
   type RssFeed,
   type RssProbeResult,
 } from "@/stores/rss-feeds-store";
+import { useModulesStore } from "@/stores/modules-store";
 import { Icon } from "@/components/ui/icon";
 import { cilNotes } from "@coreui/icons";
 import { useFeatureInfo } from "@/lib/feature-info";
 import { formatDateTime } from "@/lib/datetime";
 import { useLocaleDict } from "@/lib/locale-dict";
+import { MutedSection } from "@/components/ui/feature-muting";
 
 type Draft = {
   feed_url: string;
@@ -64,6 +67,14 @@ export function RssFeedsPanel() {
   const remove = useRssFeedsStore((s) => s.remove);
   const probe = useRssFeedsStore((s) => s.probe);
   const info = useFeatureInfo("rssFeeds");
+  const modules = useModulesStore((s) => s.modules);
+  const modulesLoading = useModulesStore((s) => s.loading);
+  const pendingKey = useModulesStore((s) => s.pendingKey);
+  const loadModules = useModulesStore((s) => s.load);
+  const toggleModule = useModulesStore((s) => s.toggleModule);
+
+  const rssModuleEnabled =
+    modules.find((module) => module.key === "rss_feeds")?.enabled ?? true;
 
   const intervalOptions = useMemo(
     () => [
@@ -85,7 +96,8 @@ export function RssFeedsPanel() {
   useEffect(() => {
     if (!guildId) return;
     void load(guildId);
-  }, [guildId, load]);
+    void loadModules(guildId);
+  }, [guildId, load, loadModules]);
 
   function openCreate() {
     setEditingId(null);
@@ -183,17 +195,19 @@ export function RssFeedsPanel() {
         title={info?.title ?? "RSS Feeds"}
         category="messages"
         icon={<Icon icon={cilNotes} size="xl" />}
-        description={info?.description}
+        description={<ManagingGuildLabel />}
         infoKey="rssFeeds"
-        actions={
-          <Button
-            variant="primary"
-            disabled={feeds.length >= maxFeeds}
-            onClick={openCreate}
-          >
-            {d.addFeed}
-          </Button>
-        }
+        masterToggle={{
+          enabled: rssModuleEnabled,
+          loading:
+            modulesLoading || pendingKey === "rss_feeds" || !guildId,
+          label: info?.title ?? "RSS Feeds",
+          showLabel: false,
+          onChange: (checked) => {
+            if (!guildId) return;
+            void toggleModule(guildId, "rss_feeds", checked);
+          },
+        }}
       />
 
       <CAlert color="info" className="mb-0">
@@ -210,6 +224,7 @@ export function RssFeedsPanel() {
         {maxFeeds} {d.feedsCount}
       </p>
 
+      <MutedSection enabled={rssModuleEnabled} className="d-flex flex-column gap-4">
       {showForm ? (
         <SectionCard
           level="primary"
@@ -412,7 +427,17 @@ export function RssFeedsPanel() {
             </table>
           </div>
         )}
+        <div className="d-flex justify-content-end mt-3">
+          <Button
+            variant="primary"
+            disabled={feeds.length >= maxFeeds || showForm}
+            onClick={openCreate}
+          >
+            {d.addFeed}
+          </Button>
+        </div>
       </SectionCard>
+      </MutedSection>
     </div>
   );
 }

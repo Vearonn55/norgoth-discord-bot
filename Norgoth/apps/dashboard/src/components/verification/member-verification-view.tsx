@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { cilPeople } from "@coreui/icons";
 import { CAlert } from "@coreui/react";
 import { PageHeader } from "@/components/layout/page-header";
+import { ManagingGuildLabel } from "@/components/layout/managing-guild-label";
 import { Icon } from "@/components/ui/icon";
 import { MutedSection } from "@/components/ui/feature-muting";
 import { VerificationDetectorsPanel } from "@/components/verification/verification-detectors-panel";
@@ -44,10 +45,7 @@ export function MemberVerificationView() {
         title={info?.title ?? "Member Verification"}
         icon={<Icon icon={cilPeople} size="xl" />}
         category="community"
-        description={
-          info?.description ??
-          "Screens members joining your server and applies your verification policy before granting access."
-        }
+        description={<ManagingGuildLabel />}
         infoKey="memberVerification"
         masterToggle={{
           enabled: config.enabled,

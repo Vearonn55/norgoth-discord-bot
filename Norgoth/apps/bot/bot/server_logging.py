@@ -34,10 +34,11 @@ CATEGORY_COLORS = {
     "security": discord.Color.dark_red(),
     "tickets": discord.Color.blurple(),
     "invites": discord.Color.green(),
+    "verification": discord.Color.green(),
 }
 
 # Categories that should warn loudly when unrouted / undeliverable.
-_ROUTE_WARN_CATEGORIES = frozenset({"tickets", "invites"})
+_ROUTE_WARN_CATEGORIES = frozenset({"tickets", "invites", "verification"})
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "enabled": True,

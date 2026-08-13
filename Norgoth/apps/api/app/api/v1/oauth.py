@@ -30,6 +30,10 @@ from app.integrations.discord.snowflake import (
     InvalidDiscordSnowflakeError,
     get_discord_account_age_days,
 )
+from app.services.verification_log_routing import (
+    classification_to_event_type,
+    resolve_verification_log_channel,
+)
 from app.integrations.proxycheck import (
     InvalidProxycheckIPAddressError,
     ProxycheckError,
@@ -450,7 +454,8 @@ async def discord_callback(
 
         await _send_verification_log_embed(
             bot_client=bot_client,
-            log_channel_id=configuration.log_channel_id,
+            discord_guild_id=verified_state.discord_guild_id,
+            legacy_log_channel_id=configuration.log_channel_id,
             user_id=user.id,
             username=username,
             allowed=verification_result.allowed,
@@ -551,7 +556,8 @@ async def _apply_verification_roles(
 async def _send_verification_log_embed(
     *,
     bot_client: DiscordBotClient,
-    log_channel_id: str,
+    discord_guild_id: str,
+    legacy_log_channel_id: str,
     user_id: str,
     username: str,
     allowed: bool,
@@ -563,6 +569,16 @@ async def _send_verification_log_embed(
     shared_ip_detected: bool,
     high_risk_guild_detected: bool,
 ) -> None:
+    event_type = classification_to_event_type(
+        allowed=allowed,
+        manual_review=manual_review,
+        role_grant_failed=role_grant_failed,
+    )
+    log_channel_id, source = await resolve_verification_log_channel(
+        discord_guild_id=discord_guild_id,
+        event_type=event_type,
+        legacy_log_channel_id=legacy_log_channel_id,
+    )
     if not log_channel_id:
         return
 
@@ -627,7 +643,11 @@ async def _send_verification_log_embed(
         await bot_client.send_channel_message(log_channel_id, payload)
     except DiscordBotAPIError:
         logger.exception(
-            "Verification log embed failed for user %s in channel %s",
+            "verification_log_embed_failed user_id=%s guild_id=%s "
+            "channel_id=%s source=%s event_type=%s",
             user_id,
+            discord_guild_id,
             log_channel_id,
+            source,
+            event_type,
         )

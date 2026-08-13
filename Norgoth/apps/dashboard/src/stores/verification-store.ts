@@ -83,7 +83,6 @@ export function deriveVerificationState(
 export function hasRequiredBindings(config: VerificationConfig): boolean {
   return Boolean(
     config.verification_channel_id &&
-      config.log_channel_id &&
       config.unverified_role_id &&
       config.member_role_id
   );
@@ -136,7 +135,6 @@ export const DEFAULT_VERIFICATION_CONFIG: VerificationConfig = {
   setup_state: "not_configured",
   missing_bindings: [
     "verification_channel_id",
-    "log_channel_id",
     "unverified_role_id",
     "member_role_id",
   ],
@@ -184,7 +182,7 @@ type VerificationState = {
   setError: (error: string | null) => void;
   setDateRange: (range: DateRangeValue) => void;
   loadConfig: (guildId: string) => Promise<void>;
-  save: (guildId: string) => Promise<void>;
+  save: (guildId: string) => Promise<{ ok: boolean; error?: string }>;
   validateDiscord: (guildId: string) => Promise<{ ok: boolean; error?: string }>;
   patchDetectors: (
     guildId: string,
@@ -194,7 +192,10 @@ type VerificationState = {
     guildId: string,
     patch: VerificationStatePatch
   ) => Promise<{ ok: boolean; error?: string }>;
-  publishPanel: (guildId: string) => Promise<void>;
+  publishPanel: (guildId: string) => Promise<{ ok: boolean; error?: string }>;
+  saveAndPublish: (
+    guildId: string
+  ) => Promise<{ ok: boolean; error?: string }>;
   copyVerifyLink: (url: string) => Promise<void>;
   loadLogs: (guildId: string) => Promise<void>;
 };
@@ -282,15 +283,15 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
     const { config } = get();
     const requiredFields: [keyof VerificationConfig, string][] = [
       ["verification_channel_id", "Verification channel"],
-      ["log_channel_id", "Log channel"],
       ["unverified_role_id", "Unverified role"],
       ["member_role_id", "Base member role"],
     ];
 
     for (const [field, label] of requiredFields) {
       if (!config[field]) {
-        set({ error: `${label} is required.` });
-        return;
+        const message = `${label} is required.`;
+        set({ error: message });
+        return { ok: false, error: message };
       }
     }
 
@@ -305,7 +306,10 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
           credentials: "include",
           body: JSON.stringify({
             verification_channel_id: config.verification_channel_id,
-            log_channel_id: config.log_channel_id,
+            // Omit empty log_channel_id so the API preserves any legacy binding.
+            ...(config.log_channel_id
+              ? { log_channel_id: config.log_channel_id }
+              : {}),
             unverified_role_id: config.unverified_role_id,
             member_role_id: config.member_role_id,
             manual_review_role_id: config.manual_review_role_id,
@@ -322,13 +326,12 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
 
       if (!response.ok) {
         const apiError = await readApiError(response);
-        set({
-          error:
-            response.status === 404
-              ? "Guild is not registered yet. Make sure the bot is online (it registers the server automatically), then retry."
-              : `Save failed: ${apiError.message}`,
-        });
-        return;
+        const message =
+          response.status === 404
+            ? "Guild is not registered yet. Make sure the bot is online (it registers the server automatically), then retry."
+            : `Save failed: ${apiError.message}`;
+        set({ error: message });
+        return { ok: false, error: message };
       }
 
       const stored = (await response.json()) as VerificationConfig;
@@ -341,8 +344,11 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
           mapped.setup_state === "degraded",
         savedAt: new Date().toLocaleTimeString(),
       });
+      return { ok: true };
     } catch {
-      set({ error: "Save failed: could not reach the API." });
+      const message = "Save failed: could not reach the API.";
+      set({ error: message });
+      return { ok: false, error: message };
     } finally {
       set({ saving: false });
     }
@@ -470,14 +476,13 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
     const { config } = get();
 
     if (!canPublishOrCopy(config)) {
-      set({
-        publishFeedback:
-          "Save verification channels and roles before publishing the Discord panel.",
-      });
-      return;
+      const message =
+        "Save verification channels and roles before publishing the Discord panel.";
+      set({ publishFeedback: message, error: message });
+      return { ok: false, error: message };
     }
 
-    set({ publishing: true, publishFeedback: null });
+    set({ publishing: true, publishFeedback: null, error: null });
 
     try {
       const response = await fetch(
@@ -494,23 +499,31 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
 
       if (!response.ok) {
         const apiError = await readApiError(response);
-        set({ publishFeedback: apiError.message });
-        return;
+        set({ publishFeedback: apiError.message, error: apiError.message });
+        return { ok: false, error: apiError.message };
       }
 
-      await response.json().catch(() => null);
+      const body = (await response.json().catch(() => null)) as {
+        updated?: boolean;
+      } | null;
 
-      set({
-        publishFeedback:
-          "Verification panel published to the verification channel.",
-      });
+      const message = body?.updated
+        ? "Verification panel updated in the verification channel."
+        : "Verification panel published to the verification channel.";
+      set({ publishFeedback: message });
+      return { ok: true };
     } catch {
-      set({
-        publishFeedback: "Could not reach the API to publish the panel.",
-      });
+      const message = "Could not reach the API to publish the panel.";
+      set({ publishFeedback: message, error: message });
+      return { ok: false, error: message };
     } finally {
       set({ publishing: false });
     }
+  },
+  saveAndPublish: async (guildId) => {
+    const saved = await get().save(guildId);
+    if (!saved.ok) return saved;
+    return get().publishPanel(guildId);
   },
   copyVerifyLink: async (url) => {
     if (!canPublishOrCopy(get().config)) {

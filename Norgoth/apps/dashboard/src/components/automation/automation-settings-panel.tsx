@@ -425,32 +425,11 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
           <CCol xl={8} lg={10}>
             <Card>
               <div className="d-flex flex-column gap-3">
-                <div className="d-flex flex-wrap align-items-start justify-content-between gap-3">
-                  <div className="min-w-0">
-                    <h2 className="h5 mb-1">{d.autoRoleTitle}</h2>
-                    <p className="mb-0 small text-body-secondary">
-                      {d.autoRoleDesc}
-                    </p>
-                  </div>
-                  <div className="d-flex align-items-center gap-2">
-                    <Badge
-                      variant={
-                        config.auto_role_enabled ? "success" : "neutral"
-                      }
-                    >
-                      {config.auto_role_enabled ? d.enabled : d.disabled}
-                    </Badge>
-                    <Switch
-                      checked={config.auto_role_enabled}
-                      onChange={(checked) =>
-                        updateConfig((current) => ({
-                          ...current,
-                          auto_role_enabled: checked,
-                        }))
-                      }
-                      aria-label={d.autoRoleAria}
-                    />
-                  </div>
+                <div className="min-w-0">
+                  <h2 className="h5 mb-1">{d.autoRoleTitle}</h2>
+                  <p className="mb-0 small text-body-secondary">
+                    {d.autoRoleDesc}
+                  </p>
                 </div>
 
                 <RoleMultiPicker

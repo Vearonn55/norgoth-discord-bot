@@ -8,7 +8,6 @@ from app.services.views import ConfigurationView
 
 REQUIRED_BINDING_FIELDS: tuple[str, ...] = (
     "verification_channel_id",
-    "log_channel_id",
     "unverified_role_id",
     "member_role_id",
 )

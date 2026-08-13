@@ -48,7 +48,7 @@ export const CATEGORY_TOKENS: Record<NorgothCategory, CategoryTokens> = {
   },
   campaigns: {
     id: "campaigns",
-    label: "Campaigns",
+    label: "Mass Messaging",
     cssVar: "--norgoth-cat-campaigns",
     color: "#b794f6",
   },

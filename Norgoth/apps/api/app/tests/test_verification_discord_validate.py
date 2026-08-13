@@ -32,6 +32,7 @@ def _config() -> ConfigurationView:
         vpn_or_proxy_action=RiskAction.DENY,
         shared_ip_action=RiskAction.DENY,
         enabled=True,
+        panel_message_id=None,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )

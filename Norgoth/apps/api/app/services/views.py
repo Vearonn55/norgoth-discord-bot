@@ -46,6 +46,7 @@ class ConfigurationView:
     vpn_or_proxy_action: RiskAction
     shared_ip_action: RiskAction
     enabled: bool
+    panel_message_id: str | None
     created_at: datetime
     updated_at: datetime
 

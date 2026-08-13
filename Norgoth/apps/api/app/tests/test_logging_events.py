@@ -64,6 +64,17 @@ def test_invites_group_is_registered() -> None:
     assert "invite_member_left" in labels
 
 
+def test_verification_group_is_registered() -> None:
+    assert "verification" in EVENT_GROUPS
+    assert "verification" in GROUP_DEFAULT_COLORS
+    assert group_for_event("verification_succeeded") == "verification"
+    assert group_for_event("verification_denied") == "verification"
+    assert group_for_event("verification_manual_decision") == "verification"
+    labels = dict(EVENT_GROUPS["verification"]["events"])
+    assert "verification_succeeded_role_pending" in labels
+    assert "verification_manual_review_required" in labels
+
+
 def test_catalog_payload_shape_matches_wizard_contract() -> None:
     payload = catalog_payload()
     assert set(payload) == {"groups"}

@@ -218,6 +218,7 @@ async def create_or_update_configuration(
             vpn_or_proxy_action=payload.vpn_or_proxy_action,
             shared_ip_action=payload.shared_ip_action,
             enabled=payload.enabled,
+            panel_message_id=None,
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc),
         )

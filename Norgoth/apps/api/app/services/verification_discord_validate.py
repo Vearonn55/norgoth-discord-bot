@@ -241,7 +241,11 @@ async def validate_verification_discord_resources(
 
     for field_name, channel_id in (
         ("verification_channel_id", configuration.verification_channel_id),
-        ("log_channel_id", configuration.log_channel_id),
+        *(
+            (("log_channel_id", configuration.log_channel_id),)
+            if str(configuration.log_channel_id or "").strip()
+            else ()
+        ),
     ):
         try:
             channel = await bot_client.get_channel(str(channel_id))

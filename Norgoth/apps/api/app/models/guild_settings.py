@@ -12,6 +12,7 @@ from app.db.base import Base
 from app.models.base import TimestampMixin, UUIDPrimaryKeyMixin
 from app.models.enum_column import str_enum
 from app.models.enums import RiskAction
+from app.models.types import DiscordSnowflake
 
 if TYPE_CHECKING:
     from app.models.guild import Guild
@@ -88,6 +89,13 @@ class GuildSettings(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
         default=True,
         server_default="true",
+    )
+
+    # Discord message ID of the published verification panel (nullable until
+    # first successful publish). Used to edit-or-recreate on Save.
+    panel_message_id: Mapped[str | None] = mapped_column(
+        DiscordSnowflake(),
+        nullable=True,
     )
 
     guild: Mapped[Guild] = relationship("Guild", back_populates="settings")

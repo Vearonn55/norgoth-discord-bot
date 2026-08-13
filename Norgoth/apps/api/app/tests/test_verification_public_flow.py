@@ -38,6 +38,7 @@ def _config(**overrides: object) -> ConfigurationView:
         vpn_or_proxy_action=RiskAction.DENY,
         shared_ip_action=RiskAction.DENY,
         enabled=True,
+        panel_message_id=None,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
@@ -49,6 +50,9 @@ def test_setup_state_matrix() -> None:
     assert derive_verification_setup_state(None).state == "not_configured"
     incomplete = _config(verification_channel_id="", enabled=True)
     assert derive_verification_setup_state(incomplete).state == "incomplete"
+    # Log channel is owned by Discord Logs; missing legacy log is not incomplete.
+    without_log = _config(log_channel_id="", enabled=True)
+    assert derive_verification_setup_state(without_log).state == "active"
     disabled = _config(enabled=False)
     assert derive_verification_setup_state(disabled).state == "disabled"
     active = _config(enabled=True)

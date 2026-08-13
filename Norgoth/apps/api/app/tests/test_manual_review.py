@@ -217,16 +217,26 @@ async def test_deny_keeps_member_unverified() -> None:
 
 
 @pytest.mark.anyio
-async def test_decision_log_embed_is_well_formed_with_transcript() -> None:
+async def test_decision_log_embed_is_well_formed_with_transcript(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The decision embed posts once, disables mentions, and links the record."""
+
+    async def _fake_resolve(**_kwargs):
+        return "log-channel", "legacy_binding"
+
+    monkeypatch.setattr(
+        "app.api.v1.verification_logs.resolve_verification_log_channel",
+        _fake_resolve,
+    )
 
     bot = _RecordingBotClient()
     attempt_id = uuid4()
 
     await _send_manual_review_decision(
         bot_client=bot,
-        log_channel_id="log-channel",
         discord_guild_id="111111111111111111",
+        legacy_log_channel_id="log-channel",
         attempt_id=attempt_id,
         discord_user_id="123456789012345678",
         reviewer_discord_id="42",

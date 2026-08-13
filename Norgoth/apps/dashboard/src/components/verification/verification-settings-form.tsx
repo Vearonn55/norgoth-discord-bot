@@ -41,18 +41,12 @@ export function VerificationSettingsForm() {
   const config = useVerificationStore((s) => s.config);
   const configured = useVerificationStore((s) => s.configured);
   const loading = useVerificationStore((s) => s.loading);
-  const saving = useVerificationStore((s) => s.saving);
   const validating = useVerificationStore((s) => s.validating);
-  const error = useVerificationStore((s) => s.error);
   const savedAt = useVerificationStore((s) => s.savedAt);
-  const publishing = useVerificationStore((s) => s.publishing);
-  const publishFeedback = useVerificationStore((s) => s.publishFeedback);
   const copied = useVerificationStore((s) => s.copied);
   const setConfig = useVerificationStore((s) => s.setConfig);
   const loadConfig = useVerificationStore((s) => s.loadConfig);
-  const save = useVerificationStore((s) => s.save);
   const validateDiscord = useVerificationStore((s) => s.validateDiscord);
-  const publishPanel = useVerificationStore((s) => s.publishPanel);
   const copyVerifyLink = useVerificationStore((s) => s.copyVerifyLink);
 
   useEffect(() => {
@@ -151,20 +145,6 @@ export function VerificationSettingsForm() {
                 }))}
                 onChange={(value) =>
                   setConfig((c) => ({ ...c, verification_channel_id: value }))
-                }
-              />
-            </CCol>
-            <CCol md={6}>
-              <Select
-                label={d.logChannel}
-                selectPlaceholder={d.selectPlaceholder}
-                value={config.log_channel_id}
-                options={channels.map((c) => ({
-                  value: c.id,
-                  label: `#${c.name}`,
-                }))}
-                onChange={(value) =>
-                  setConfig((c) => ({ ...c, log_channel_id: value }))
                 }
               />
             </CCol>
@@ -279,30 +259,11 @@ export function VerificationSettingsForm() {
                 {d.openInBrowser}
               </Button>
             )}
-            <Button
-              variant="primary"
-              onClick={() => void publishPanel(guildId)}
-              disabled={publishing || !linkReady}
-            >
-              {publishing ? d.publishing : d.publishPanel}
-            </Button>
           </div>
-          {publishFeedback && (
-            <CAlert color="secondary" className="mb-0 py-2">
-              {publishFeedback}
-            </CAlert>
-          )}
         </div>
       </Card>
 
       <div className="d-flex flex-wrap align-items-center gap-3">
-        <Button
-          variant="primary"
-          onClick={() => void save(guildId)}
-          disabled={saving}
-        >
-          {saving ? d.saving : d.saveSettings}
-        </Button>
         <Button
           variant="secondary"
           onClick={() => void validateDiscord(guildId)}
@@ -316,12 +277,6 @@ export function VerificationSettingsForm() {
             {formatDict(d.savedAt, { time: savedAt })}
           </span>
         )}
-
-        {error && (
-          <CAlert color="danger" className="mb-0 py-2">
-            {error}
-          </CAlert>
-        )}
       </div>
     </div>
   );
@@ -329,13 +284,11 @@ export function VerificationSettingsForm() {
 
 function hasLocalRequired(config: {
   verification_channel_id: string;
-  log_channel_id: string;
   unverified_role_id: string;
   member_role_id: string;
 }): boolean {
   return Boolean(
     config.verification_channel_id &&
-      config.log_channel_id &&
       config.unverified_role_id &&
       config.member_role_id
   );

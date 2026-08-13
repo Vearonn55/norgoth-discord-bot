@@ -116,6 +116,11 @@ type AutomationSettingsState = {
    * last saved baseline, so unsaved edits in the other section are preserved.
    */
   saveSection: (guildId: string, section: AutomationSection) => Promise<void>;
+  /** Immediately persist Auto Role master enable/disable. */
+  setAutoRoleEnabled: (
+    guildId: string,
+    enabled: boolean
+  ) => Promise<{ ok: boolean; error?: string }>;
   sendTestWelcome: (guildId: string) => Promise<void>;
   sendTestLeave: (guildId: string) => Promise<void>;
 };
@@ -305,6 +310,51 @@ export const useAutomationStore = create<AutomationSettingsState>(
         );
       } finally {
         set({ saving: false, savingSection: null });
+      }
+    },
+    setAutoRoleEnabled: async (guildId, enabled) => {
+      const previous = get().config;
+      set({
+        saving: true,
+        error: null,
+        config: { ...previous, auto_role_enabled: enabled },
+      });
+
+      try {
+        const response = await fetch(apiUrl(`/guilds/${guildId}/automation`), {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ auto_role_enabled: enabled }),
+        });
+
+        if (!response.ok) {
+          const errPayload = await response.json().catch(() => null);
+          const message = `Save failed: ${apiErrorMessage(errPayload, await response.text())}`;
+          set({ config: previous, error: message });
+          return { ok: false, error: message };
+        }
+
+        set((state) => ({
+          savedConfig: {
+            ...state.savedConfig,
+            auto_role_enabled: enabled,
+          },
+          dirty:
+            JSON.stringify({ ...state.config, auto_role_enabled: enabled }) !==
+            JSON.stringify({
+              ...state.savedConfig,
+              auto_role_enabled: enabled,
+            }),
+        }));
+        return { ok: true };
+      } catch {
+        set({
+          config: previous,
+          error: "Save failed: could not reach the API.",
+        });
+        return { ok: false, error: "Save failed: could not reach the API." };
+      } finally {
+        set({ saving: false });
       }
     },
     sendTestWelcome: async (guildId) => {

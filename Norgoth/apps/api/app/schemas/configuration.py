@@ -30,7 +30,9 @@ class ConfigurationUpsertRequest(BaseModel):
     """Payload used to create or update guild verification settings."""
 
     verification_channel_id: DiscordSnowflakeValue
-    log_channel_id: DiscordSnowflakeValue
+    # Optional during ownership transfer to Discord Logs. Empty values must not
+    # clear an existing legacy purpose=log binding (dual-read still uses it).
+    log_channel_id: OptionalDiscordSnowflakeValue = ""
     unverified_role_id: DiscordSnowflakeValue
     member_role_id: DiscordSnowflakeValue
     manual_review_role_id: OptionalDiscordSnowflakeValue = ""
@@ -106,6 +108,7 @@ class ConfigurationResponse(BaseModel):
     vpn_or_proxy_action: RiskAction
     shared_ip_action: RiskAction
     enabled: bool
+    panel_message_id: OptionalDiscordSnowflakeValue | None = None
     created_at: datetime
     updated_at: datetime
     setup_state: str = "incomplete"

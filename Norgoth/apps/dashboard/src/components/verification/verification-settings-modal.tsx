@@ -3,12 +3,12 @@
 import { useMemo, useState } from "react";
 import { CNav, CNavItem, CNavLink } from "@coreui/react";
 import { FeatureConfigurationModal } from "@/components/ui/feature-modal";
-import { Button } from "@/components/ui/button";
 import { VerificationSettingsForm } from "@/components/verification/verification-settings-form";
 import { HighRiskServersSection } from "@/components/verification/high-risk-servers-section";
 import { WhitelistedUsersSection } from "@/components/verification/whitelisted-users-section";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import { useLocaleDict } from "@/lib/locale-dict";
+import { useVerificationStore } from "@/stores/verification-store";
 
 type VerificationSettingsModalProps = {
   visible: boolean;
@@ -18,10 +18,8 @@ type VerificationSettingsModalProps = {
 type Section = "general" | "high-risk" | "whitelist";
 
 /**
- * Verification Settings popout. Replaces the previously hidden standalone
- * Guild Configuration page: opens on the Member Verification page and reuses
- * the same settings form. Save is owned by the General form; the footer only
- * closes. High-risk and whitelist sections own their own persistence.
+ * Verification Settings popout. Save persists configuration and publishes (or
+ * updates) the Discord verification panel, then closes on success.
  */
 export function VerificationSettingsModal({
   visible,
@@ -31,6 +29,12 @@ export function VerificationSettingsModal({
   const d = dict.verificationPage;
   const { guildId } = useFirstGuild();
   const [section, setSection] = useState<Section>("general");
+  const saving = useVerificationStore((s) => s.saving);
+  const publishing = useVerificationStore((s) => s.publishing);
+  const error = useVerificationStore((s) => s.error);
+  const setError = useVerificationStore((s) => s.setError);
+  const saveAndPublish = useVerificationStore((s) => s.saveAndPublish);
+  const loadConfig = useVerificationStore((s) => s.loadConfig);
 
   const sections = useMemo(
     () =>
@@ -42,18 +46,34 @@ export function VerificationSettingsModal({
     [d.tabGeneral, d.tabHighRisk, d.tabWhitelist],
   );
 
+  const busy = saving || publishing;
+
   return (
     <FeatureConfigurationModal
       visible={visible}
-      onClose={onClose}
+      onClose={() => {
+        if (busy) return;
+        setError(null);
+        onClose();
+      }}
       title={d.settingsModalTitle}
       description={d.settingsModalDesc}
       category="community"
       size="xl"
-      footer={
-        <Button variant="secondary" onClick={onClose}>
-          {d.close}
-        </Button>
+      cancelLabel={d.close}
+      saveLabel={d.saveSettings}
+      saving={busy}
+      error={section === "general" ? error : null}
+      onSave={
+        section === "general"
+          ? async () => {
+              if (!guildId || busy) return;
+              const result = await saveAndPublish(guildId);
+              if (!result.ok) return;
+              await loadConfig(guildId);
+              onClose();
+            }
+          : undefined
       }
     >
       <CNav variant="tabs" className="mb-4">

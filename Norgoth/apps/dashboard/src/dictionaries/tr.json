@@ -101,7 +101,7 @@
     "moderation": "Moderasyon",
     "commands": "Komutlar",
     "actionLogs": "İşlem Kayıtları",
-    "campaigns": "Kampanyalar",
+    "campaigns": "Toplu Mesaj",
     "campaignMessaging": "Kampanya Mesajlaşması",
     "blacklistOptOut": "Kara Liste / Vazgeçenler",
     "reports": "Raporlar",
@@ -378,7 +378,7 @@
     "completed": "Tamamlandı"
   },
   "campaignsPage": {
-    "title": "Kampanya Mesajlaşması",
+    "title": "Toplu Mesaj",
     "description": "Discord kampanyalarını oluşturun ve izleyin: kanal yayınları ve üye DM gönderimleri, kuyruk çalışması ve teslimat sonuçları.",
     "newCampaign": "Yeni Kampanya",
     "export": "Dışa Aktar",
@@ -492,7 +492,7 @@
     "backendError": "Arka uç verisi alınamadı. API’nin çalıştığını kontrol edin.",
     "deleteTitle": "Kampanya silinsin mi?",
     "deleteMessage": "Bu kampanya kalıcı olarak silinecek. Bu işlem geri alınamaz.",
-    "campaigns": "Kampanyalar",
+    "campaigns": "Toplu Mesaj",
     "permanentFailuresAlert": "Kampanya tamamlandı ancak {count} teslimat kalıcı olarak başarısız oldu.",
     "liveExecution": "Canlı yürütme aktif. Metrikler her 5 saniyede yenilenir.",
     "dmResultsTitle": "DM teslimat sonuçları",
@@ -768,7 +768,7 @@
       "alertInactive": "Bağlantı Önizlemeleri duraklatıldı. Dış alan adı bildirimini inceledikten sonra başlıktan etkinleştirin."
     },
     "campaigns": {
-      "title": "Kampanya Mesajlaşması",
+      "title": "Toplu Mesaj",
       "description": "Hedeflenen üyelere yönelik DM kampanyalarını tam teslim takibiyle oluşturun ve yönetin.",
       "usage": "Bir hedef kitle ve mesaj oluşturun, kampanyayı doğrulayın, ardından başlatın ve teslimatı izleyin."
     },
@@ -851,7 +851,7 @@
     "featureModeration": "Moderasyon ve Güvenlik",
     "featureModerationItems": "Kural Tabanlı Otomatik Moderasyon|Raid Koruması|Honeypot Tuzak Kanalları|Denetim ve Moderasyon Günlükleri|Sunucu Olay Günlüğü",
     "featureCommunication": "İletişim",
-    "featureCommunicationItems": "Kampanyalar|Duyurular|Mesaj Oluşturucu|Teslimat Analitiği",
+    "featureCommunicationItems": "Toplu Mesaj|Duyurular|Mesaj Oluşturucu|Teslimat Analitiği",
     "featureSupport": "Destek",
     "featureSupportItems": "Ticket’lar|Destek Ekipleri|Ticket Dökümleri",
     "featureAutomation": "Otomasyon",
@@ -1353,7 +1353,7 @@
     "dateRangeHelp": "Kampanya toplamlarını süzer. Etkileşim en yakın 7 / 30 / 90 günlük kovayı yükler.",
     "deliverySuccess": "Teslimat başarısı",
     "sentFailedHelper": "{sent} gönderildi · {failed} başarısız",
-    "campaigns": "Kampanyalar",
+    "campaigns": "Toplu Mesaj",
     "activeHelper": "{count} aktif",
     "retries": "Yeniden denemeler",
     "permanentFailsHelper": "{count} kalıcı hata",
@@ -1533,7 +1533,9 @@
     "back": "Geri",
     "next": "İleri",
     "creating": "Oluşturuluyor…",
-    "createLogging": "Günlüklemeyi oluştur"
+    "createLogging": "Günlüklemeyi oluştur",
+    "verificationCategory": "Doğrulama Günlükleri",
+    "verificationCategoryDesc": "Üye doğrulama sonuçları ve manuel inceleme kararları."
   },
   "auditLogsPage": {
     "loading": "Denetim günlükleri yükleniyor…",

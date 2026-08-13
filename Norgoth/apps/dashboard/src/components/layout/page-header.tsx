@@ -15,7 +15,7 @@ export type PageHeaderMasterToggle = {
 
 type PageHeaderProps = {
   title: string;
-  description?: string;
+  description?: ReactNode;
   actions?: ReactNode;
   icon?: ReactNode;
   category?: NorgothCategory;
@@ -71,9 +71,9 @@ export function PageHeader({
           ) : null}
         </div>
         {description ? (
-          <p className="text-body-secondary mt-2 mb-0" style={{ maxWidth: 42 * 16 }}>
+          <div className="text-body-secondary mt-2 mb-0" style={{ maxWidth: 42 * 16 }}>
             {description}
-          </p>
+          </div>
         ) : null}
       </div>
 

@@ -31,6 +31,7 @@ from app.schemas.verification_log import (
 )
 from app.services.audit import record_audit
 from app.services.campaign_store import get_redis
+from app.services.verification_log_routing import resolve_verification_log_channel
 from app.services.views import VerificationAttemptView
 
 logger = logging.getLogger(__name__)
@@ -342,21 +343,20 @@ async def review_verification_attempt(
             member_role_id=configuration.member_role_id,
         )
 
-        if configuration.log_channel_id:
-            await _send_manual_review_decision(
-                bot_client=bot_client,
-                log_channel_id=configuration.log_channel_id,
+        await _send_manual_review_decision(
+            bot_client=bot_client,
+            discord_guild_id=discord_guild_id,
+            legacy_log_channel_id=configuration.log_channel_id,
+            attempt_id=attempt_id,
+            discord_user_id=attempt.discord_user_id,
+            reviewer_discord_id=operator.user_id,
+            approved=payload.approved,
+            transcript_url=_build_transcript_url(
+                dashboard_public_url=settings.dashboard_public_url,
                 discord_guild_id=discord_guild_id,
                 attempt_id=attempt_id,
-                discord_user_id=attempt.discord_user_id,
-                reviewer_discord_id=operator.user_id,
-                approved=payload.approved,
-                transcript_url=_build_transcript_url(
-                    dashboard_public_url=settings.dashboard_public_url,
-                    discord_guild_id=discord_guild_id,
-                    attempt_id=attempt_id,
-                ),
-            )
+            ),
+        )
 
     await record_audit(
         session,
@@ -454,8 +454,8 @@ async def _apply_review_roles(
 async def _send_manual_review_decision(
     *,
     bot_client: DiscordBotClient,
-    log_channel_id: str,
     discord_guild_id: str,
+    legacy_log_channel_id: str,
     attempt_id: UUID,
     discord_user_id: str,
     reviewer_discord_id: str,
@@ -467,6 +467,14 @@ async def _send_manual_review_decision(
     Exposes only moderation-relevant fields (never OAuth tokens or IPs) and
     disables all mentions so the notice cannot ping members.
     """
+
+    log_channel_id, source = await resolve_verification_log_channel(
+        discord_guild_id=discord_guild_id,
+        event_type="verification_manual_decision",
+        legacy_log_channel_id=legacy_log_channel_id,
+    )
+    if not log_channel_id:
+        return
 
     decision = "Approved" if approved else "Denied"
     color = 0x34D399 if approved else 0xF87171
@@ -504,7 +512,10 @@ async def _send_manual_review_decision(
         await bot_client.send_channel_message(log_channel_id, payload)
     except DiscordBotAPIError:
         logger.exception(
-            "Manual-review decision log failed for attempt %s in channel %s",
+            "manual_review_decision_log_failed attempt_id=%s guild_id=%s "
+            "channel_id=%s source=%s",
             attempt_id,
+            discord_guild_id,
             log_channel_id,
+            source,
         )

@@ -1,7 +1,8 @@
-"""Publish a Discord verification panel with a browser link button."""
+"""Publish or update a Discord verification panel with a browser link button."""
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any
 
@@ -17,7 +18,12 @@ from app.models.guild import Guild
 from app.repositories.configuration_repository import ConfigurationRepository
 from app.services.campaign_store import now_iso
 from app.services.configuration_service import ConfigurationService
-from app.services.verification_setup import derive_verification_setup_state, has_required_bindings
+from app.services.verification_setup import (
+    derive_verification_setup_state,
+    has_required_bindings,
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     tags=["Verification Panel"],
@@ -68,6 +74,8 @@ async def publish_verification_panel(
             ),
         )
 
+    existing_message_id: str | None = None
+
     try:
         factory = get_session_factory()
         async with factory() as session:
@@ -94,6 +102,21 @@ async def publish_verification_panel(
                         "setup_state": setup.state,
                     },
                 )
+            if (
+                configuration.verification_channel_id
+                and configuration.verification_channel_id != payload.channel_id
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "code": "verification_channel_mismatch",
+                        "message": (
+                            "Publish channel must match the saved verification "
+                            "channel."
+                        ),
+                    },
+                )
+            existing_message_id = configuration.panel_message_id
     except HTTPException:
         raise
     except Exception as error:
@@ -102,7 +125,6 @@ async def publish_verification_panel(
             detail=f"Could not load verification configuration: {error}",
         ) from error
 
-    # Prefer public API base; fall back to local API so the link always works in dev.
     api_base = (
         os.getenv("NORGOTH_PUBLIC_API_URL", "").strip()
         or os.getenv("NORGOTH_API_URL", "").strip()
@@ -134,31 +156,137 @@ async def publish_verification_panel(
         ],
     }
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        try:
-            response = await client.post(
-                f"{DISCORD_API_BASE_URL}/channels/{payload.channel_id}/messages",
-                headers={"Authorization": f"Bot {bot_token}"},
-                json=message_payload,
-            )
-        except httpx.HTTPError as error:
-            raise HTTPException(
-                status_code=502,
-                detail=f"Could not reach Discord: {error}",
-            ) from error
+    headers = {"Authorization": f"Bot {bot_token}"}
+    updated = False
+    message_id: str | None = None
 
-    if response.status_code != 200:
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        if existing_message_id:
+            try:
+                edit_response = await client.patch(
+                    (
+                        f"{DISCORD_API_BASE_URL}/channels/{payload.channel_id}"
+                        f"/messages/{existing_message_id}"
+                    ),
+                    headers=headers,
+                    json=message_payload,
+                )
+            except httpx.HTTPError as error:
+                raise HTTPException(
+                    status_code=502,
+                    detail={
+                        "code": "verification_panel_publish_failed",
+                        "message": f"Could not reach Discord: {error}",
+                    },
+                ) from error
+
+            if edit_response.status_code == 200:
+                updated = True
+                message_id = str(
+                    (edit_response.json() or {}).get("id") or existing_message_id
+                )
+            elif edit_response.status_code != 404:
+                raise HTTPException(
+                    status_code=502,
+                    detail={
+                        "code": "verification_panel_publish_failed",
+                        "message": (
+                            "Discord rejected the verification panel update "
+                            f"(HTTP {edit_response.status_code}): "
+                            f"{edit_response.text[:200]}"
+                        ),
+                    },
+                )
+            # 404 → recreate below
+
+        if message_id is None:
+            try:
+                response = await client.post(
+                    f"{DISCORD_API_BASE_URL}/channels/{payload.channel_id}/messages",
+                    headers=headers,
+                    json=message_payload,
+                )
+            except httpx.HTTPError as error:
+                raise HTTPException(
+                    status_code=502,
+                    detail={
+                        "code": "verification_panel_publish_failed",
+                        "message": f"Could not reach Discord: {error}",
+                    },
+                ) from error
+
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=502,
+                    detail={
+                        "code": "verification_panel_publish_failed",
+                        "message": (
+                            "Discord rejected the verification panel "
+                            f"(HTTP {response.status_code}): {response.text[:200]}"
+                        ),
+                    },
+                )
+            body = response.json() or {}
+            message_id = str(body.get("id") or "").strip() or None
+
+    if not message_id:
         raise HTTPException(
             status_code=502,
-            detail=(
-                f"Discord rejected the verification panel "
-                f"(HTTP {response.status_code}): {response.text[:200]}"
-            ),
+            detail={
+                "code": "verification_panel_publish_failed",
+                "message": "Discord did not return a panel message id.",
+            },
+        )
+
+    try:
+        factory = get_session_factory()
+        async with factory() as session:
+            guild = (
+                await session.execute(
+                    select(Guild).where(Guild.discord_guild_id == str(guild_id))
+                )
+            ).scalar_one_or_none()
+            if guild is None:
+                raise HTTPException(status_code=404, detail="Discord guild not found.")
+            settings_row = await ConfigurationRepository(session).get_settings(
+                guild.id
+            )
+            if settings_row is None:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "verification_setup_incomplete",
+                        "message": "Verification settings are missing.",
+                    },
+                )
+            settings_row.panel_message_id = message_id
+            await session.commit()
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception(
+            "verification_panel_message_id_persist_failed guild_id=%s "
+            "channel_id=%s message_id=%s",
+            guild_id,
+            payload.channel_id,
+            message_id,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "verification_panel_publish_failed",
+                "message": (
+                    "Panel was published in Discord but the message id could "
+                    "not be saved. Retry Save to reconcile."
+                ),
+            },
         )
 
     return {
         "ok": True,
         "channel_id": payload.channel_id,
+        "message_id": message_id,
+        "updated": updated,
         "verify_url": verify_url,
         "published_at": now_iso(),
     }

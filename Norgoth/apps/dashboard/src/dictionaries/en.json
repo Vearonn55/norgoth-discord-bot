@@ -106,7 +106,7 @@
     "moderation": "Moderation",
     "commands": "Commands",
     "actionLogs": "Action Logs",
-    "campaigns": "Campaigns",
+    "campaigns": "Mass Messaging",
     "createCampaign": "Create Campaign",
     "campaignHistory": "Campaign History",
     "campaignMessaging": "Campaign Messaging",
@@ -378,7 +378,7 @@
     "completed": "Completed"
   },
   "campaignsPage": {
-    "title": "Campaign Messaging",
+    "title": "Mass Messaging",
     "description": "Create and monitor Discord campaigns: channel broadcasts and member DM sends, queue execution, and delivery results.",
     "newCampaign": "New Campaign",
     "export": "Export",
@@ -492,7 +492,7 @@
     "backendError": "Backend data could not be loaded. Check if the API is running.",
     "deleteTitle": "Delete campaign?",
     "deleteMessage": "This campaign will be permanently removed. This cannot be undone.",
-    "campaigns": "Campaigns",
+    "campaigns": "Mass Messaging",
     "permanentFailuresAlert": "Campaign completed, but {count} deliveries permanently failed.",
     "liveExecution": "Live execution active. Metrics refresh every 5 seconds.",
     "dmResultsTitle": "DM Delivery Results",
@@ -768,7 +768,7 @@
       "alertInactive": "Link Embeds is paused. Enable it from the header after reviewing the external-domain disclosure."
     },
     "campaigns": {
-      "title": "Campaign Messaging",
+      "title": "Mass Messaging",
       "description": "Create and control DM outreach campaigns to targeted members with full delivery tracking.",
       "usage": "Build an audience and message, validate the campaign, then launch and monitor delivery."
     },
@@ -851,7 +851,7 @@
     "featureModeration": "Moderation & Security",
     "featureModerationItems": "Rule-Based Auto-Moderation|Raid Protection|Honeypot Trap Channels|Audit & Moderation Logs|Server Event Logging",
     "featureCommunication": "Communication",
-    "featureCommunicationItems": "Campaigns|Announcements|Message Composer|Delivery Analytics",
+    "featureCommunicationItems": "Mass Messaging|Announcements|Message Composer|Delivery Analytics",
     "featureSupport": "Support",
     "featureSupportItems": "Tickets|Support Teams|Ticket Transcripts",
     "featureAutomation": "Automation",
@@ -1353,7 +1353,7 @@
     "dateRangeHelp": "Filters campaign aggregates. Engagement loads the nearest 7 / 30 / 90 day bucket.",
     "deliverySuccess": "Delivery success",
     "sentFailedHelper": "{sent} sent · {failed} failed",
-    "campaigns": "Campaigns",
+    "campaigns": "Mass Messaging",
     "activeHelper": "{count} active",
     "retries": "Retries",
     "permanentFailsHelper": "{count} permanent fails",
@@ -1533,7 +1533,9 @@
     "back": "Back",
     "next": "Next",
     "creating": "Creating…",
-    "createLogging": "Create logging"
+    "createLogging": "Create logging",
+    "verificationCategory": "Verification Logs",
+    "verificationCategoryDesc": "Member verification outcomes and manual review decisions."
   },
   "auditLogsPage": {
     "loading": "Loading audit logs…",

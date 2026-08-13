@@ -22,6 +22,7 @@ GROUP_DEFAULT_COLORS: dict[str, int] = {
     "security": 0xC0392B,
     "tickets": 0x5865F2,
     "invites": 0x57F287,
+    "verification": 0x34D399,
 }
 
 # group key -> (label, [(event_type, label), ...])
@@ -135,6 +136,22 @@ EVENT_GROUPS: dict[str, dict[str, Any]] = {
             ("invite_deleted", "Invite deleted"),
         ],
     },
+    "verification": {
+        "label": "Verification Logs",
+        "events": [
+            ("verification_succeeded", "Verification succeeded"),
+            (
+                "verification_succeeded_role_pending",
+                "Verification succeeded — role pending",
+            ),
+            (
+                "verification_manual_review_required",
+                "Manual review required",
+            ),
+            ("verification_denied", "Verification denied"),
+            ("verification_manual_decision", "Manual review decision"),
+        ],
+    },
 }
 
 # Event types added after initial catalog rollouts. Existing guilds get these
@@ -157,6 +174,14 @@ NEW_EVENT_TYPES_DEFAULT_OFF: frozenset[str] = frozenset(
         "discord_automod_execution",
         "invite_created",
         "invite_deleted",
+        # Verification events: guilds without a legacy log binding get these
+        # off by default so behaviour does not suddenly expand. Guilds with a
+        # purpose=log binding are enabled via the backfill script.
+        "verification_succeeded",
+        "verification_succeeded_role_pending",
+        "verification_manual_review_required",
+        "verification_denied",
+        "verification_manual_decision",
     }
 )
 
