@@ -19,6 +19,8 @@ import { Icon } from "@/components/ui/icon";
 import { MetricWidget } from "@/components/ui/metric-widget";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { apiUrl } from "@/lib/api";
+import en from "@/dictionaries/en.json";
+import tr from "@/dictionaries/tr.json";
 
 type CampaignStatus =
   | "draft"
@@ -43,6 +45,13 @@ type Campaign = {
   updated_at?: string;
 };
 
+const COPY = {
+  en: en.campaignCommandCenter,
+  tr: tr.campaignCommandCenter,
+} as const;
+
+type CommandCenterCopy = (typeof COPY)["en"];
+
 function parseCampaigns(data: unknown): Campaign[] {
   if (Array.isArray(data)) return data as Campaign[];
   if (data && typeof data === "object") {
@@ -53,9 +62,24 @@ function parseCampaigns(data: unknown): Campaign[] {
   return [];
 }
 
+function statusLabel(copy: CommandCenterCopy, status: CampaignStatus): string {
+  return copy.statuses[status] ?? status;
+}
+
+function formatHelper(
+  template: string,
+  values: Record<string, string | number>,
+): string {
+  return Object.entries(values).reduce(
+    (text, [key, value]) => text.replaceAll(`{${key}}`, String(value)),
+    template,
+  );
+}
+
 export function CampaignCommandCenter() {
   const params = useParams();
   const lang = String(params?.lang || "en");
+  const copy = COPY[lang === "tr" ? "tr" : "en"];
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -63,30 +87,33 @@ export function CampaignCommandCenter() {
   const [pendingDelete, setPendingDelete] = useState<Campaign | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const loadCampaigns = useCallback(async (isInitial = false) => {
-    try {
-      const response = await fetch(apiUrl(`/campaigns`), {
-        cache: "no-store",
-      });
+  const loadCampaigns = useCallback(
+    async (isInitial = false) => {
+      try {
+        const response = await fetch(apiUrl(`/campaigns`), {
+          cache: "no-store",
+        });
 
-      if (!response.ok) {
-        if (isInitial) {
-          setLoadError("Could not load campaigns from the API.");
+        if (!response.ok) {
+          if (isInitial) {
+            setLoadError(copy.loadErrorApi);
+          }
+          return;
         }
-        return;
-      }
 
-      const data = await response.json();
-      setCampaigns(parseCampaigns(data));
-      setLoadError(null);
-    } catch {
-      if (isInitial) {
-        setLoadError("Could not reach the NorBot API.");
+        const data = await response.json();
+        setCampaigns(parseCampaigns(data));
+        setLoadError(null);
+      } catch {
+        if (isInitial) {
+          setLoadError(copy.loadErrorReach);
+        }
+      } finally {
+        if (isInitial) setInitialLoading(false);
       }
-    } finally {
-      if (isInitial) setInitialLoading(false);
-    }
-  }, []);
+    },
+    [copy.loadErrorApi, copy.loadErrorReach],
+  );
 
   useEffect(() => {
     void loadCampaigns(true);
@@ -174,7 +201,7 @@ export function CampaignCommandCenter() {
           aria-live="polite"
         >
           <CSpinner />
-          <div className="small">Loading Command Center…</div>
+          <div className="small">{copy.loading}</div>
         </div>
       </Card>
     );
@@ -194,7 +221,7 @@ export function CampaignCommandCenter() {
               void loadCampaigns(true);
             }}
           >
-            Retry
+            {copy.retry}
           </Button>
         </div>
       </Card>
@@ -206,7 +233,7 @@ export function CampaignCommandCenter() {
       <section className="row g-3">
         <div className="col-12 col-md-6 col-xl-3">
           <MetricWidget
-            label="Total Campaigns"
+            label={copy.totalCampaigns}
             value={summary.total}
             accent="info"
             icon={<Icon icon={cilSend} size="lg" />}
@@ -214,7 +241,7 @@ export function CampaignCommandCenter() {
         </div>
         <div className="col-12 col-md-6 col-xl-3">
           <MetricWidget
-            label="Active"
+            label={copy.active}
             value={summary.active}
             accent="success"
             icon={<Icon icon={cilMediaPlay} size="lg" />}
@@ -222,7 +249,7 @@ export function CampaignCommandCenter() {
         </div>
         <div className="col-12 col-md-6 col-xl-3">
           <MetricWidget
-            label="Scheduled"
+            label={copy.scheduled}
             value={summary.scheduled}
             accent="warning"
             icon={<Icon icon={cilCalendar} size="lg" />}
@@ -230,9 +257,12 @@ export function CampaignCommandCenter() {
         </div>
         <div className="col-12 col-md-6 col-xl-3">
           <MetricWidget
-            label="Success Rate"
+            label={copy.successRate}
             value={`${summary.successRate}%`}
-            helper={`${summary.sent} sent · ${summary.failed} failed`}
+            helper={formatHelper(copy.sentFailedHelper, {
+              sent: summary.sent,
+              failed: summary.failed,
+            })}
             accent={summary.successRate >= 90 ? "success" : "warning"}
             icon={<Icon icon={cilCheckCircle} size="lg" />}
           />
@@ -250,22 +280,22 @@ export function CampaignCommandCenter() {
                   className="text-body-secondary mt-1"
                 />
                 <div>
-                  <h2 className="h5 mb-0 fw-semibold">Active Campaign Flow</h2>
+                  <h2 className="h5 mb-0 fw-semibold">{copy.activeFlowTitle}</h2>
                   <p className="mt-1 mb-0 small text-body-secondary">
-                    Campaigns currently queued or running through the worker.
+                    {copy.activeFlowDescription}
                   </p>
                 </div>
               </div>
 
               <Button asChild variant="secondary" size="sm">
                 <Link href={`/${lang}/observability/worker-health`}>
-                  Worker Health
+                  {copy.workerHealth}
                 </Link>
               </Button>
             </div>
 
             {activeCampaigns.length === 0 ? (
-              <EmptyBox text="No active campaign execution right now." />
+              <EmptyBox text={copy.noActive} />
             ) : (
               <div className="d-flex flex-column gap-3">
                 {activeCampaigns.map((campaign) => (
@@ -273,6 +303,7 @@ export function CampaignCommandCenter() {
                     key={campaign.id}
                     campaign={campaign}
                     lang={lang}
+                    copy={copy}
                   />
                 ))}
               </div>
@@ -289,9 +320,9 @@ export function CampaignCommandCenter() {
                 className="text-body-secondary mt-1"
               />
               <div>
-                <h2 className="h5 mb-0 fw-semibold">Quick Actions</h2>
+                <h2 className="h5 mb-0 fw-semibold">{copy.quickActions}</h2>
                 <p className="mt-1 mb-0 small text-body-secondary">
-                  Common campaign operations.
+                  {copy.quickActionsDescription}
                 </p>
               </div>
             </div>
@@ -299,15 +330,15 @@ export function CampaignCommandCenter() {
             <div className="mt-4 d-flex flex-column gap-2">
               <ActionLink
                 href={`/${lang}/campaigns/new`}
-                label="Create Campaign"
+                label={copy.createCampaign}
               />
               <ActionLink
                 href={`/${lang}/campaigns/history`}
-                label="Campaign History"
+                label={copy.campaignHistory}
               />
               <ActionLink
                 href={`/${lang}/observability/worker-health`}
-                label="Worker Health"
+                label={copy.workerHealth}
               />
             </div>
           </Card>
@@ -317,11 +348,12 @@ export function CampaignCommandCenter() {
       <section className="row g-4">
         <div className="col-12">
           <CampaignListPanel
-            title="Draft Campaigns"
-            description="Unsent drafts. Continue editing or delete permanently."
+            title={copy.draftsTitle}
+            description={copy.draftsDescription}
             campaigns={draftCampaigns}
             lang={lang}
-            emptyText="No campaign drafts."
+            copy={copy}
+            emptyText={copy.noDrafts}
             icon={<Icon icon={cilPencil} size="lg" />}
             onDelete={(campaign) => setPendingDelete(campaign)}
           />
@@ -329,22 +361,24 @@ export function CampaignCommandCenter() {
 
         <div className="col-12 col-xl-6">
           <CampaignListPanel
-            title="Scheduled Campaigns"
-            description="Campaigns waiting for launch time."
+            title={copy.scheduledTitle}
+            description={copy.scheduledDescription}
             campaigns={scheduledCampaigns}
             lang={lang}
-            emptyText="No scheduled campaigns."
+            copy={copy}
+            emptyText={copy.noScheduled}
             icon={<Icon icon={cilCalendar} size="lg" />}
           />
         </div>
 
         <div className="col-12 col-xl-6">
           <CampaignListPanel
-            title="Latest Campaign Records"
-            description="Most recent campaign records in the system."
+            title={copy.latestTitle}
+            description={copy.latestDescription}
             campaigns={latestCampaigns}
             lang={lang}
-            emptyText="No campaign records yet."
+            copy={copy}
+            emptyText={copy.noRecords}
             icon={<Icon icon={cilSend} size="lg" />}
           />
         </div>
@@ -352,15 +386,16 @@ export function CampaignCommandCenter() {
 
       <ConfirmDialog
         visible={pendingDelete !== null}
-        title="Delete Draft?"
+        title={copy.deleteDraftTitle}
         message={
           <p className="mb-0 text-body-secondary">
-            The draft{" "}
-            <strong>{pendingDelete?.title || "Untitled Campaign"}</strong> will
-            be permanently removed. This cannot be undone.
+            {copy.deleteDraftMessageBefore}{" "}
+            <strong>{pendingDelete?.title || copy.untitled}</strong>{" "}
+            {copy.deleteDraftMessageAfter}
           </p>
         }
-        confirmLabel="Delete Draft"
+        confirmLabel={copy.deleteDraftConfirm}
+        cancelLabel={copy.cancel}
         destructive
         busy={deleting}
         onConfirm={handleConfirmDelete}
@@ -373,9 +408,11 @@ export function CampaignCommandCenter() {
 function CampaignFlowCard({
   campaign,
   lang,
+  copy,
 }: {
   campaign: Campaign;
   lang: string;
+  copy: CommandCenterCopy;
 }) {
   const sent = Number(campaign.sent_count || 0);
   const failed = Number(campaign.failed_count || 0);
@@ -391,14 +428,14 @@ function CampaignFlowCard({
       <div className="mb-3 d-flex flex-wrap align-items-start justify-content-between gap-3">
         <div className="overflow-hidden">
           <Badge variant={isRunning ? "success" : "warning"}>
-            {campaign.status}
+            {statusLabel(copy, campaign.status)}
           </Badge>
 
           <Link
             href={`/${lang}/campaigns/${campaign.id}`}
             className="mt-2 d-block text-truncate small fw-semibold text-decoration-none"
           >
-            {campaign.title || "Untitled Campaign"}
+            {campaign.title || copy.untitled}
           </Link>
 
           <p className="mt-1 mb-0 small text-body-secondary text-truncate">
@@ -407,7 +444,7 @@ function CampaignFlowCard({
         </div>
 
         <div className="text-end small text-body-secondary">
-          Progress
+          {copy.progress}
           <div className="mt-1 fs-5 fw-semibold text-body">{progress}%</div>
         </div>
       </div>
@@ -421,13 +458,13 @@ function CampaignFlowCard({
 
       <div className="row g-2 mt-3">
         <div className="col-4">
-          <MiniMetric label="Sent" value={sent} tone="success" />
+          <MiniMetric label={copy.sent} value={sent} tone="success" />
         </div>
         <div className="col-4">
-          <MiniMetric label="Failed" value={failed} tone="danger" />
+          <MiniMetric label={copy.failed} value={failed} tone="danger" />
         </div>
         <div className="col-4">
-          <MiniMetric label="Audience" value={audience} />
+          <MiniMetric label={copy.audience} value={audience} />
         </div>
       </div>
     </article>
@@ -439,6 +476,7 @@ function CampaignListPanel({
   description,
   campaigns,
   lang,
+  copy,
   emptyText,
   icon,
   onDelete,
@@ -447,6 +485,7 @@ function CampaignListPanel({
   description: string;
   campaigns: Campaign[];
   lang: string;
+  copy: CommandCenterCopy;
   emptyText: string;
   icon?: ReactNode;
   onDelete?: (campaign: Campaign) => void;
@@ -479,17 +518,19 @@ function CampaignListPanel({
                     href={`/${lang}/campaigns/${campaign.id}`}
                     className="text-truncate small fw-semibold text-decoration-none"
                   >
-                    {campaign.title || "Untitled Campaign"}
+                    {campaign.title || copy.untitled}
                   </Link>
 
                   <div className="d-flex align-items-center gap-2 flex-shrink-0">
-                    <Badge variant="neutral">{campaign.status}</Badge>
+                    <Badge variant="neutral">
+                      {statusLabel(copy, campaign.status)}
+                    </Badge>
                     {onDelete ? (
                       <Button
                         variant="danger"
                         size="sm"
                         onClick={() => onDelete(campaign)}
-                        aria-label="Delete draft"
+                        aria-label={copy.deleteDraftAria}
                       >
                         <Icon icon={cilTrash} />
                       </Button>

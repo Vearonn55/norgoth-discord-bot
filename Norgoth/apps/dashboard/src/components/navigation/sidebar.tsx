@@ -39,14 +39,17 @@ import {
 } from "@coreui/icons";
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useUiStore } from "@/stores/ui-store";
 import { useGuildStore } from "@/stores/guild-store";
 import { GuildIcon } from "@/components/ui/guild-icon";
+import en from "@/dictionaries/en.json";
+import tr from "@/dictionaries/tr.json";
+import type { Dictionary } from "@/app/[lang]/dictionaries";
 
 type SidebarProps = {
   lang?: string;
-  dict?: unknown;
+  dict?: Dictionary | unknown;
 };
 
 export type SidebarItem = {
@@ -60,171 +63,194 @@ export type SidebarGroup = {
   items: SidebarItem[];
 };
 
-export const SIDEBAR_GROUPS: SidebarGroup[] = [
+type SidebarLabelKey = keyof typeof en.sidebar;
+
+type SidebarItemDef = {
+  labelKey: SidebarLabelKey;
+  href: string;
+  icon: string[];
+};
+
+type SidebarGroupDef = {
+  titleKey: SidebarLabelKey;
+  items: SidebarItemDef[];
+};
+
+const SIDEBAR_DEFS: SidebarGroupDef[] = [
   {
-    title: "HOME",
+    titleKey: "groupHome",
     items: [
-      { label: "Dashboard", href: "/dashboard", icon: cilSpeedometer },
-      { label: "Analytics", href: "/analytics", icon: cilChartLine },
+      { labelKey: "dashboard", href: "/dashboard", icon: cilSpeedometer },
+      { labelKey: "analytics", href: "/analytics", icon: cilChartLine },
     ],
   },
   {
-    title: "COMMUNITY",
+    titleKey: "groupCommunity",
     items: [
       {
-        label: "Member Verification",
+        labelKey: "onboarding",
         href: "/community/onboarding",
         icon: cilPeople,
       },
       {
-        label: "Manual Verification",
+        labelKey: "manualVerification",
         href: "/community/manual-verification",
         icon: cilTask,
       },
       {
-        label: "Support Tickets",
+        labelKey: "supportTickets",
         href: "/community/tickets",
         icon: cilEnvelopeClosed,
       },
-      { label: "Levels & Activity", href: "/community/leveling", icon: cilStar },
       {
-        label: "Top Trending",
+        labelKey: "levelsActivity",
+        href: "/community/leveling",
+        icon: cilStar,
+      },
+      {
+        labelKey: "feedChannels",
         href: "/community/feed-channels",
         icon: cilRss,
       },
       {
-        label: "Leaderboards",
+        labelKey: "leaderboard",
         href: "/community/leaderboard",
         icon: cilBarChart,
       },
-      { label: "Invite Tracking", href: "/community/invites", icon: cilLink },
+      {
+        labelKey: "inviteTracking",
+        href: "/community/invites",
+        icon: cilLink,
+      },
     ],
   },
   {
-    title: "MESSAGES",
+    titleKey: "groupMessages",
     items: [
-      { label: "Campaigns", href: "/campaigns", icon: cilSend },
-      { label: "Create Campaign", href: "/campaigns/new", icon: cilPlus },
-      { label: "Campaign History", href: "/campaigns/history", icon: cilHistory },
+      { labelKey: "campaigns", href: "/campaigns", icon: cilSend },
+      { labelKey: "createCampaign", href: "/campaigns/new", icon: cilPlus },
       {
-        label: "Embed Library",
+        labelKey: "campaignHistory",
+        href: "/campaigns/history",
+        icon: cilHistory,
+      },
+      {
+        labelKey: "embedLibrary",
         href: "/messages/embed-messages",
         icon: cilImage,
       },
       {
-        label: "Content Notifications",
+        labelKey: "contentNotifications",
         href: "/messages/content-notifications",
         icon: cilBell,
       },
       {
-        label: "RSS Feeds",
+        labelKey: "rssFeeds",
         href: "/messages/rss-feeds",
         icon: cilNotes,
       },
     ],
   },
   {
-    title: "AUDIT",
+    titleKey: "groupAudit",
     items: [
-      { label: "Audit Logs", href: "/audit/logs", icon: cilNotes },
+      { labelKey: "auditLogs", href: "/audit/logs", icon: cilNotes },
       {
-        label: "Discord Logs",
+        labelKey: "discordLogs",
         href: "/audit/discord-logs",
         icon: cilHistory,
       },
     ],
   },
   {
-    title: "SECURITY",
+    titleKey: "groupSecurity",
     items: [
       {
-        label: "Auto-Moderation",
+        labelKey: "autoModeration",
         href: "/security/auto-moderation",
         icon: cilBan,
       },
       {
-        label: "Raid Protection",
+        labelKey: "raidProtection",
         href: "/security/raid-protection",
         icon: cilShieldAlt,
       },
       {
-        label: "Honeypot",
+        labelKey: "honeypot",
         href: "/security/honeypot",
         icon: cilBug,
       },
     ],
   },
   {
-    title: "AUTOMATION",
+    titleKey: "groupAutomation",
     items: [
-      { label: "Auto Role", href: "/automation/auto-role", icon: cilUserFollow },
+      { labelKey: "autoRole", href: "/automation/auto-role", icon: cilUserFollow },
       {
-        label: "Welcome & Leave",
+        labelKey: "welcomeGoodbyeInvite",
         href: "/automation/welcome-goodbye-invite",
         icon: cilCommentBubble,
       },
       {
-        label: "Auto-Responses",
+        labelKey: "autoResponses",
         href: "/automation/auto-responses",
         icon: cilList,
       },
       {
-        label: "Self-Assignable Roles",
+        labelKey: "selfAssignableRoles",
         href: "/automation/role-menus",
         icon: cilTags,
       },
       {
-        label: "Link Embeds",
+        labelKey: "richLinkEmbeds",
         href: "/automation/rich-link-embeds",
         icon: cilLink,
       },
     ],
   },
   {
-    title: "SYSTEM",
+    titleKey: "groupSystem",
     items: [
       {
-        label: "Worker Health",
+        labelKey: "workerHealth",
         href: "/observability/worker-health",
         icon: cilHeart,
       },
-      { label: "Settings", href: "/settings", icon: cilCog },
+      { labelKey: "settings", href: "/settings", icon: cilCog },
     ],
   },
 ];
 
-function localizedSidebarLabel(lang: string, item: SidebarItem): string {
-  if (item.href === "/audit/logs") {
-    return lang === "tr" ? "Denetim Kayıtları" : "Audit Logs";
-  }
-  if (item.href === "/audit/discord-logs") {
-    return lang === "tr" ? "Discord Kayıtları" : "Discord Logs";
-  }
-  if (item.href === "/automation/rich-link-embeds") {
-    return lang === "tr" ? "Bağlantı Önizlemeleri" : "Link Embeds";
-  }
-  if (item.href === "/messages/rss-feeds") {
-    return lang === "tr" ? "RSS Akışları" : "RSS Feeds";
-  }
-  if (item.href === "/messages/content-notifications") {
-    return lang === "tr" ? "İçerik Bildirimleri" : "Content Notifications";
-  }
-  if (item.href === "/settings") {
-    return lang === "tr" ? "Ayarlar" : "Settings";
-  }
-  return item.label;
+function sidebarDict(lang: string) {
+  return (lang === "tr" ? tr : en).sidebar;
 }
+
+export function getSidebarGroups(lang: string): SidebarGroup[] {
+  const labels = sidebarDict(lang);
+  return SIDEBAR_DEFS.map((group) => ({
+    title: labels[group.titleKey],
+    items: group.items.map((item) => ({
+      label: labels[item.labelKey],
+      href: item.href,
+      icon: item.icon,
+    })),
+  }));
+}
+
+/** English snapshot for callers that still import a static constant. */
+export const SIDEBAR_GROUPS: SidebarGroup[] = getSidebarGroups("en");
+
 export function getSidebarNavItems(lang: string) {
-  return SIDEBAR_GROUPS.flatMap((group) =>
+  return getSidebarGroups(lang).flatMap((group) =>
     group.items.map((item) => ({
       ...item,
       href: `/${lang}${item.href}`,
       group: group.title,
-    }))
+    })),
   );
 }
 
-export default function Sidebar({ lang: propLang }: SidebarProps) {
+export default function Sidebar({ lang: propLang, dict }: SidebarProps) {
   const params = useParams();
   const pathname = usePathname();
   const navRef = useRef<HTMLUListElement | null>(null);
@@ -233,6 +259,21 @@ export default function Sidebar({ lang: propLang }: SidebarProps) {
   const hydrateNavScroll = useUiStore((s) => s.hydrateNavScroll);
 
   const lang = propLang || String(params?.lang || "en");
+  const labels =
+    dict && typeof dict === "object" && "sidebar" in dict
+      ? (dict as Dictionary).sidebar
+      : sidebarDict(lang);
+
+  const groups = useMemo(() => {
+    return SIDEBAR_DEFS.map((group) => ({
+      title: labels[group.titleKey],
+      items: group.items.map((item) => ({
+        label: labels[item.labelKey],
+        href: item.href,
+        icon: item.icon,
+      })),
+    }));
+  }, [labels]);
 
   useEffect(() => {
     hydrateNavScroll();
@@ -263,13 +304,13 @@ export default function Sidebar({ lang: propLang }: SidebarProps) {
         <CSidebarBrand as={Link} href={`/${lang}`} scroll={false}>
           <span className="fw-semibold fs-5">NorBot</span>
           <span className="d-block small text-body-secondary text-uppercase">
-            Community Command Center
+            {labels.brandSubtitle}
           </span>
         </CSidebarBrand>
       </CSidebarHeader>
 
       <CSidebarNav ref={navRef} className="norgoth-sidebar-scroll norgoth-scrollbar">
-        {SIDEBAR_GROUPS.map((group) => (
+        {groups.map((group) => (
           <div key={group.title}>
             <CNavTitle>{group.title}</CNavTitle>
             {group.items.map((item) => {
@@ -283,7 +324,7 @@ export default function Sidebar({ lang: propLang }: SidebarProps) {
                 <CNavItem key={`${group.title}-${item.href}`}>
                   <CNavLink as={Link} href={href} active={active} scroll={false}>
                     <CIcon icon={item.icon} className="nav-icon me-2" />
-                    {localizedSidebarLabel(lang, item)}
+                    {item.label}
                   </CNavLink>
                 </CNavItem>
               );
@@ -293,15 +334,21 @@ export default function Sidebar({ lang: propLang }: SidebarProps) {
       </CSidebarNav>
 
       <CSidebarFooter className="border-top p-0">
-        <SidebarGuildFooter lang={lang} />
+        <SidebarGuildFooter lang={lang} labels={labels} />
       </CSidebarFooter>
     </CSidebar>
   );
 }
 
-function SidebarGuildFooter({ lang }: { lang: string }) {
+function SidebarGuildFooter({
+  lang,
+  labels,
+}: {
+  lang: string;
+  labels: typeof en.sidebar;
+}) {
   const selectedGuild = useGuildStore((s) => s.selectedGuild);
-  const name = selectedGuild?.name ?? "No server selected";
+  const name = selectedGuild?.name ?? labels.noServerSelected;
   const iconUrl = selectedGuild?.icon_url ?? null;
 
   return (
@@ -309,7 +356,7 @@ function SidebarGuildFooter({ lang }: { lang: string }) {
       href={`/${lang}/servers`}
       scroll={false}
       className="norgoth-sidebar-guild d-flex align-items-center gap-3 px-3 py-2 text-decoration-none text-reset"
-      aria-label={`Change selected server: ${name}`}
+      aria-label={`${labels.serverSelection}: ${name}`}
     >
       <GuildIcon url={iconUrl} name={name} size={40} />
       <div className="min-w-0">
@@ -320,11 +367,9 @@ function SidebarGuildFooter({ lang }: { lang: string }) {
           className="text-truncate text-body-secondary"
           style={{ fontSize: 12 }}
         >
-          Server Selection
+          {labels.serverSelection}
         </div>
       </div>
     </Link>
   );
 }
-
-

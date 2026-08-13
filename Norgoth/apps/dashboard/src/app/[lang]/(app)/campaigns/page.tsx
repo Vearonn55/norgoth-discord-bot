@@ -15,7 +15,7 @@ export default async function CampaignsPage({
 
   if (!hasLocale(lang)) notFound();
 
-  await getDictionary(lang);
+  const dict = await getDictionary(lang);
 
   return (
     <>
@@ -23,20 +23,22 @@ export default async function CampaignsPage({
 
       <div className="d-flex flex-column gap-4">
         <PageHeader
-          title="Campaign Messaging"
+          title={dict.campaignsPage.title}
           icon={<Icon icon={cilSend} size="xl" />}
-          description="Create and monitor Discord campaigns: channel broadcasts and member DM sends, queue execution, and delivery results."
+          description={dict.campaignsPage.description}
           infoKey="campaigns"
           actions={
             <>
               <Button variant="secondary" asChild>
-                <Link href={`/${lang}/campaigns/history`}>Campaign History</Link>
+                <Link href={`/${lang}/campaigns/history`}>
+                  {dict.campaignsPage.history}
+                </Link>
               </Button>
               <Button variant="primary" asChild>
                 <Link href={`/${lang}/campaigns/new`}>
                   <span className="d-inline-flex align-items-center gap-2">
                     <Icon icon={cilPlus} />
-                    Create Campaign
+                    {dict.campaignsPage.createCampaign}
                   </span>
                 </Link>
               </Button>

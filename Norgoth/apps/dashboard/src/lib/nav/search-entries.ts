@@ -1,7 +1,9 @@
 import {
-  SIDEBAR_GROUPS,
+  getSidebarGroups,
   type SidebarItem,
 } from "@/components/navigation/sidebar";
+import en from "@/dictionaries/en.json";
+import tr from "@/dictionaries/tr.json";
 
 export type SearchEntryKind = "page" | "subfeature";
 
@@ -48,7 +50,9 @@ function pageId(item: SidebarItem): string {
  * Build the global command-palette index: sidebar pages + curated sub-features.
  */
 export function getSearchEntries(lang: string): SearchEntry[] {
-  const pages: SearchEntry[] = SIDEBAR_GROUPS.flatMap((group) =>
+  const groups = getSidebarGroups(lang);
+  const sidebar = (lang === "tr" ? tr : en).sidebar;
+  const pages: SearchEntry[] = groups.flatMap((group) =>
     group.items.map((item) => ({
       id: `page:${pageId(item)}`,
       label: item.label,
@@ -84,9 +88,9 @@ export function getSearchEntries(lang: string): SearchEntry[] {
       label: "Text XP",
       keywords: ["text xp", "text leaderboard", "message xp"],
       href: `/${lang}/community/leaderboard?metric=text`,
-      group: "COMMUNITY",
+      group: sidebar.groupCommunity,
       parentId: leaderboard?.id,
-      parentLabel: leaderboard?.label ?? "Leaderboards",
+      parentLabel: leaderboard?.label ?? sidebar.leaderboard,
       kind: "subfeature",
     },
     {
@@ -94,9 +98,9 @@ export function getSearchEntries(lang: string): SearchEntry[] {
       label: "Voice XP",
       keywords: ["voice xp", "voice leaderboard"],
       href: `/${lang}/community/leaderboard?metric=voice`,
-      group: "COMMUNITY",
+      group: sidebar.groupCommunity,
       parentId: leaderboard?.id,
-      parentLabel: leaderboard?.label ?? "Leaderboards",
+      parentLabel: leaderboard?.label ?? sidebar.leaderboard,
       kind: "subfeature",
     },
     {
@@ -111,9 +115,9 @@ export function getSearchEntries(lang: string): SearchEntry[] {
         "all-time upvotes",
       ],
       href: `/${lang}/community/leaderboard?metric=net_upvotes`,
-      group: "COMMUNITY",
+      group: sidebar.groupCommunity,
       parentId: leaderboard?.id,
-      parentLabel: leaderboard?.label ?? "Leaderboards",
+      parentLabel: leaderboard?.label ?? sidebar.leaderboard,
       kind: "subfeature",
     },
     {
@@ -121,9 +125,9 @@ export function getSearchEntries(lang: string): SearchEntry[] {
       label: "Daily Feed",
       keywords: ["daily feed", "feed channels", "top trending", "net upvote"],
       href: `/${lang}/community/feed-channels`,
-      group: "COMMUNITY",
+      group: sidebar.groupCommunity,
       parentId: feedChannels?.id,
-      parentLabel: feedChannels?.label ?? "Top Trending",
+      parentLabel: feedChannels?.label ?? sidebar.feedChannels,
       kind: "subfeature",
     },
     {
@@ -131,9 +135,9 @@ export function getSearchEntries(lang: string): SearchEntry[] {
       label: "Weekly Feed",
       keywords: ["weekly feed", "feed channels", "top trending"],
       href: `/${lang}/community/feed-channels`,
-      group: "COMMUNITY",
+      group: sidebar.groupCommunity,
       parentId: feedChannels?.id,
-      parentLabel: feedChannels?.label ?? "Top Trending",
+      parentLabel: feedChannels?.label ?? sidebar.feedChannels,
       kind: "subfeature",
     },
     {
@@ -141,9 +145,9 @@ export function getSearchEntries(lang: string): SearchEntry[] {
       label: "Monthly Feed",
       keywords: ["monthly feed", "feed channels", "top trending"],
       href: `/${lang}/community/feed-channels`,
-      group: "COMMUNITY",
+      group: sidebar.groupCommunity,
       parentId: feedChannels?.id,
-      parentLabel: feedChannels?.label ?? "Top Trending",
+      parentLabel: feedChannels?.label ?? sidebar.feedChannels,
       kind: "subfeature",
     },
     {
@@ -151,9 +155,9 @@ export function getSearchEntries(lang: string): SearchEntry[] {
       label: "All-Time Feed",
       keywords: ["all-time feed", "all time feed", "feed channels", "top trending"],
       href: `/${lang}/community/feed-channels`,
-      group: "COMMUNITY",
+      group: sidebar.groupCommunity,
       parentId: feedChannels?.id,
-      parentLabel: feedChannels?.label ?? "Top Trending",
+      parentLabel: feedChannels?.label ?? sidebar.feedChannels,
       kind: "subfeature",
     },
     ...LOGGING_CATEGORY_SEARCH.map((cat) => ({
@@ -161,9 +165,9 @@ export function getSearchEntries(lang: string): SearchEntry[] {
       label: cat.label,
       keywords: [...cat.keywords, "discord logs", "logging", cat.key],
       href: `/${lang}/audit/discord-logs?channel=${cat.key}`,
-      group: "AUDIT",
+      group: sidebar.groupAudit,
       parentId: discordLogs?.id,
-      parentLabel: discordLogs?.label ?? "Discord Logs",
+      parentLabel: discordLogs?.label ?? sidebar.discordLogs,
       kind: "subfeature" as const,
     })),
     {
@@ -171,9 +175,9 @@ export function getSearchEntries(lang: string): SearchEntry[] {
       label: "Templates",
       keywords: ["notification templates"],
       href: `/${lang}/messages/content-notifications/templates`,
-      group: "MESSAGES",
+      group: sidebar.groupMessages,
       parentId: contentNotifications?.id,
-      parentLabel: contentNotifications?.label ?? "Content Notifications",
+      parentLabel: contentNotifications?.label ?? sidebar.contentNotifications,
       kind: "subfeature",
     },
     {
@@ -181,9 +185,9 @@ export function getSearchEntries(lang: string): SearchEntry[] {
       label: "Sender Styles",
       keywords: ["sender styles", "webhooks"],
       href: `/${lang}/messages/content-notifications/sender-styles`,
-      group: "MESSAGES",
+      group: sidebar.groupMessages,
       parentId: contentNotifications?.id,
-      parentLabel: contentNotifications?.label ?? "Content Notifications",
+      parentLabel: contentNotifications?.label ?? sidebar.contentNotifications,
       kind: "subfeature",
     },
     {
@@ -191,9 +195,9 @@ export function getSearchEntries(lang: string): SearchEntry[] {
       label: "History",
       keywords: ["notification history"],
       href: `/${lang}/messages/content-notifications/history`,
-      group: "MESSAGES",
+      group: sidebar.groupMessages,
       parentId: contentNotifications?.id,
-      parentLabel: contentNotifications?.label ?? "Content Notifications",
+      parentLabel: contentNotifications?.label ?? sidebar.contentNotifications,
       kind: "subfeature",
     },
     {
@@ -201,9 +205,9 @@ export function getSearchEntries(lang: string): SearchEntry[] {
       label: "Analytics",
       keywords: ["notification analytics"],
       href: `/${lang}/messages/content-notifications/analytics`,
-      group: "MESSAGES",
+      group: sidebar.groupMessages,
       parentId: contentNotifications?.id,
-      parentLabel: contentNotifications?.label ?? "Content Notifications",
+      parentLabel: contentNotifications?.label ?? sidebar.contentNotifications,
       kind: "subfeature",
     },
     {
@@ -211,9 +215,9 @@ export function getSearchEntries(lang: string): SearchEntry[] {
       label: "Add RSS feed",
       keywords: ["atom", "rss", "feed url", "syndication"],
       href: `/${lang}/messages/rss-feeds`,
-      group: "MESSAGES",
+      group: sidebar.groupMessages,
       parentId: rssFeeds?.id,
-      parentLabel: rssFeeds?.label ?? "RSS Feeds",
+      parentLabel: rssFeeds?.label ?? sidebar.rssFeeds,
       kind: "subfeature",
     },
     {
@@ -221,9 +225,9 @@ export function getSearchEntries(lang: string): SearchEntry[] {
       label: "Ticket Panels",
       keywords: ["ticket panels", "support panels", "panels"],
       href: `/${lang}/community/tickets`,
-      group: "COMMUNITY",
+      group: sidebar.groupCommunity,
       parentId: tickets?.id,
-      parentLabel: tickets?.label ?? "Support Tickets",
+      parentLabel: tickets?.label ?? sidebar.supportTickets,
       kind: "subfeature",
     },
     {
@@ -231,9 +235,9 @@ export function getSearchEntries(lang: string): SearchEntry[] {
       label: "Voice XP Settings",
       keywords: ["voice xp", "leveling voice", "activity voice"],
       href: `/${lang}/community/leveling`,
-      group: "COMMUNITY",
+      group: sidebar.groupCommunity,
       parentId: leveling?.id,
-      parentLabel: leveling?.label ?? "Levels & Activity",
+      parentLabel: leveling?.label ?? sidebar.levelsActivity,
       kind: "subfeature",
     },
     {
@@ -241,9 +245,9 @@ export function getSearchEntries(lang: string): SearchEntry[] {
       label: "Text XP Settings",
       keywords: ["text xp", "leveling text", "message xp"],
       href: `/${lang}/community/leveling`,
-      group: "COMMUNITY",
+      group: sidebar.groupCommunity,
       parentId: leveling?.id,
-      parentLabel: leveling?.label ?? "Levels & Activity",
+      parentLabel: leveling?.label ?? sidebar.levelsActivity,
       kind: "subfeature",
     },
     {
@@ -251,9 +255,9 @@ export function getSearchEntries(lang: string): SearchEntry[] {
       label: "Auto Role",
       keywords: ["autorole", "join role", "auto roles"],
       href: `/${lang}/automation/auto-role`,
-      group: "AUTOMATION",
+      group: sidebar.groupAutomation,
       parentId: autoRole?.id,
-      parentLabel: autoRole?.label ?? "Auto Role",
+      parentLabel: autoRole?.label ?? sidebar.autoRole,
       kind: "subfeature",
     },
     {
@@ -261,9 +265,9 @@ export function getSearchEntries(lang: string): SearchEntry[] {
       label: "Welcome & Leave",
       keywords: ["welcome", "goodbye", "leave message"],
       href: `/${lang}/automation/welcome-goodbye-invite`,
-      group: "AUTOMATION",
+      group: sidebar.groupAutomation,
       parentId: welcome?.id,
-      parentLabel: welcome?.label ?? "Welcome & Leave",
+      parentLabel: welcome?.label ?? sidebar.welcomeGoodbyeInvite,
       kind: "subfeature",
     },
   ];
@@ -280,8 +284,6 @@ export function getSearchEntries(lang: string): SearchEntry[] {
       page.keywords.push("autorole", "join role");
     }
     if (page.href.endsWith("/automation/rich-link-embeds")) {
-      page.label =
-        lang === "tr" ? "Bağlantı Önizlemeleri" : "Link Embeds";
       page.keywords.push(
         "link embeds",
         "rich link embeds",
@@ -294,8 +296,6 @@ export function getSearchEntries(lang: string): SearchEntry[] {
       );
     }
     if (page.href.endsWith("/messages/content-notifications")) {
-      page.label =
-        lang === "tr" ? "İçerik Bildirimleri" : "Content Notifications";
       page.keywords.push(
         "content notifications",
         "içerik bildirimleri",

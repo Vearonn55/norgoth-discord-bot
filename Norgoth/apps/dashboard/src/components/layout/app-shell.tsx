@@ -49,7 +49,7 @@ export function AppShell({ lang, dict, children }: AppShellProps) {
 
       <div className="norgoth-main">
         <Topbar lang={lang} dict={dict} />
-        <CommandPalette lang={lang} />
+        <CommandPalette lang={lang} dict={dict} />
 
         <div className="norgoth-main-body norgoth-scrollbar">
           <CContainer fluid className="px-4 py-4" style={{ maxWidth: 1600 }}>

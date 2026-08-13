@@ -12,12 +12,14 @@ import {
 } from "@/lib/nav/search-entries";
 import { useUiStore } from "@/stores/ui-store";
 import type { Locale } from "@/i18n/config";
+import type { Dictionary } from "@/app/[lang]/dictionaries";
 
 type CommandPaletteProps = {
   lang: Locale;
+  dict: Dictionary;
 };
 
-export function CommandPalette({ lang }: CommandPaletteProps) {
+export function CommandPalette({ lang, dict }: CommandPaletteProps) {
   const router = useRouter();
   const open = useUiStore((s) => s.commandPaletteOpen);
   const query = useUiStore((s) => s.commandPaletteQuery);
@@ -77,14 +79,14 @@ export function CommandPalette({ lang }: CommandPaletteProps) {
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label="Command palette"
+        aria-label={dict.commandPalette.ariaLabel}
       >
         <div className="p-3 border-bottom d-flex align-items-center gap-2">
           <CIcon icon={cilSearch} />
           <CFormInput
             autoFocus
             value={query}
-            placeholder="Search features and settings…"
+            placeholder={dict.commandPalette.placeholder}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "ArrowDown") {
@@ -101,7 +103,7 @@ export function CommandPalette({ lang }: CommandPaletteProps) {
                 if (target) navigateTo(target.href);
               }
             }}
-            aria-label="Command search"
+            aria-label={dict.commandPalette.searchAria}
             aria-activedescendant={
               filtered[activeIndex]
                 ? `command-item-${filtered[activeIndex].id}`
@@ -113,7 +115,7 @@ export function CommandPalette({ lang }: CommandPaletteProps) {
         <CListGroup flush className="overflow-auto flex-grow-1">
           {filtered.length === 0 ? (
             <CListGroupItem className="text-body-secondary">
-              No matches
+              {dict.commandPalette.noMatches}
             </CListGroupItem>
           ) : (
             filtered.map((item, index) => (

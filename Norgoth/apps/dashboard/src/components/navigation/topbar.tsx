@@ -101,7 +101,7 @@ export function Topbar({ lang, dict }: TopbarProps) {
   // read via the shared guild store), keeping a single source of truth and
   // avoiding extra Discord API calls.
   const memberCount = resources?.member_count ?? null;
-  const memberCountLabel = lang === "tr" ? "Üye Sayısı" : "Member Count";
+  const memberCountLabel = dict.topbar.memberCount;
   const searchPlaceholder =
     dict.common.searchPlaceholder ||
     (lang === "tr" ? "Özellik ara…" : "Search features…");
@@ -118,7 +118,7 @@ export function Topbar({ lang, dict }: TopbarProps) {
             shape="rounded-pill"
             className="px-3 py-2"
           >
-            {connected ? "Online" : "Offline"}
+            {connected ? dict.topbar.online : dict.topbar.offline}
           </CBadge>
           {selectedGuild && memberCount !== null ? (
             <CHeaderText className="d-none d-md-flex align-items-center gap-2 mb-0 text-white">
@@ -138,7 +138,7 @@ export function Topbar({ lang, dict }: TopbarProps) {
             type="button"
             className="norgoth-topbar-search"
             onClick={() => setCommandPaletteOpen(true)}
-            aria-label={searchPlaceholder}
+            aria-label={dict.topbar.searchAria}
           >
             <CIcon icon={cilSearch} className="text-body-secondary flex-shrink-0" />
             <span className="norgoth-topbar-search-label text-body-secondary text-truncate">
@@ -154,7 +154,7 @@ export function Topbar({ lang, dict }: TopbarProps) {
             size="sm"
             className="norgoth-topbar-search-compact d-flex d-md-none align-items-center"
             onClick={() => setCommandPaletteOpen(true)}
-            aria-label={searchPlaceholder}
+            aria-label={dict.topbar.searchAria}
           >
             <CIcon icon={cilSearch} />
           </CButton>
@@ -175,7 +175,7 @@ export function Topbar({ lang, dict }: TopbarProps) {
                 void logout().then(() => router.push(`/${lang}`));
               }}
             >
-              Log out
+              {dict.topbar.logOut}
             </CButton>
           ) : null}
           <CFormSelect
