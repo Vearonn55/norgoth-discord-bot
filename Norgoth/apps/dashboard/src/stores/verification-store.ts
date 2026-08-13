@@ -6,7 +6,12 @@ import {
   type DateRangeValue,
 } from "@/components/ui/date-range-filter";
 import { apiUrl } from "@/lib/api";
+import { readApiError } from "@/lib/api-error";
 
+const FETCH_OPTS: RequestInit = {
+  cache: "no-store",
+  credentials: "include",
+};
 export type RiskAction = "deny" | "manual_review";
 
 export type VerificationSetupState =
@@ -220,12 +225,11 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
 
     try {
       const [configResponse, setupResponse] = await Promise.all([
-        fetch(apiUrl(`/api/v1/guilds/${guildId}/configuration`), {
-          cache: "no-store",
-        }),
-        fetch(apiUrl(`/api/v1/guilds/${guildId}/configuration/setup`), {
-          cache: "no-store",
-        }),
+        fetch(apiUrl(`/api/v1/guilds/${guildId}/configuration`), FETCH_OPTS),
+        fetch(
+          apiUrl(`/api/v1/guilds/${guildId}/configuration/setup`),
+          FETCH_OPTS,
+        ),
       ]);
 
       let setupState: VerificationSetupState = "not_configured";
@@ -298,6 +302,7 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({
             verification_channel_id: config.verification_channel_id,
             log_channel_id: config.log_channel_id,
@@ -316,19 +321,12 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
       );
 
       if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        const detail = body?.detail;
-        const message =
-          typeof detail === "object" && detail?.message
-            ? String(detail.message)
-            : typeof detail === "string"
-              ? detail
-              : await response.text().catch(() => "");
+        const apiError = await readApiError(response);
         set({
           error:
             response.status === 404
               ? "Guild is not registered yet. Make sure the bot is online (it registers the server automatically), then retry."
-              : `Save failed: ${message || `HTTP ${response.status}`}`,
+              : `Save failed: ${apiError.message}`,
         });
         return;
       }
@@ -354,17 +352,18 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
     try {
       const response = await fetch(
         apiUrl(`/api/v1/guilds/${guildId}/configuration/validate`),
-        { method: "POST" }
+        { method: "POST", credentials: "include" }
       );
-      const body = await response.json().catch(() => null);
       if (!response.ok) {
-        const message =
-          body?.detail?.message ||
-          body?.detail ||
-          `Validate failed (HTTP ${response.status})`;
-        set({ error: String(message) });
-        return { ok: false, error: String(message) };
+        const apiError = await readApiError(response);
+        set({ error: apiError.message });
+        return { ok: false, error: apiError.message };
       }
+      const body = (await response.json()) as {
+        ok?: boolean;
+        issues?: Array<{ message?: string }>;
+        setup_state?: VerificationSetupState;
+      };
       if (!body?.ok) {
         const issue = Array.isArray(body?.issues) ? body.issues[0] : null;
         const message = issue?.message || "Discord validation failed.";
@@ -403,20 +402,19 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify(patch),
         }
       );
 
       if (!response.ok) {
         set({ config: previous });
-        const body = await response.json().catch(() => null);
+        const apiError = await readApiError(response);
         const message =
           response.status === 404
             ? "Guild configuration not found. Configure verification first."
-            : body?.error?.message ||
-              body?.detail ||
-              `Update failed (HTTP ${response.status})`;
-        return { ok: false, error: String(message) };
+            : apiError.message;
+        return { ok: false, error: message };
       }
 
       const stored = (await response.json()) as VerificationConfig;
@@ -443,18 +441,19 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify(patch),
         }
       );
 
       if (!response.ok) {
         set({ config: previous });
-        const body = await response.json().catch(() => null);
+        const apiError = await readApiError(response);
         const message =
-          body?.error?.message ||
-          body?.detail ||
-          `Update failed (HTTP ${response.status})`;
-        return { ok: false, error: String(message) };
+          apiError.requestId != null
+            ? `${apiError.message} (Support reference: ${apiError.requestId})`
+            : apiError.message;
+        return { ok: false, error: message };
       }
 
       const stored = (await response.json()) as VerificationConfig;
@@ -486,23 +485,20 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({
             channel_id: config.verification_channel_id,
           }),
         }
       );
 
-      const body = await response.json().catch(() => null);
-
       if (!response.ok) {
-        const message =
-          body?.error?.message ||
-          body?.detail?.message ||
-          body?.detail ||
-          `Publish failed (HTTP ${response.status})`;
-        set({ publishFeedback: String(message) });
+        const apiError = await readApiError(response);
+        set({ publishFeedback: apiError.message });
         return;
       }
+
+      await response.json().catch(() => null);
 
       set({
         publishFeedback:
@@ -538,7 +534,7 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
     try {
       const response = await fetch(
         apiUrl(`/api/v1/guilds/${guildId}/verification-logs?limit=50`),
-        { cache: "no-store" }
+        FETCH_OPTS,
       );
 
       if (!response.ok) {

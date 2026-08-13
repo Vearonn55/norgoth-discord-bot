@@ -52,6 +52,7 @@ export function MemberVerificationView() {
           enabled: config.enabled,
           loading: loading || !guildId,
           label: "Verification",
+          showLabel: false,
           onChange: async (checked) => {
             if (!guildId) return;
             const result = await applyVerificationState(guildId, {

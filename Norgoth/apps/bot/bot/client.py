@@ -159,6 +159,7 @@ class NorgothBot(commands.Bot):
         from bot.moderation import ModerationCog
         from bot.notifications import NotificationsCog
         from bot.raid import RaidCog
+        from bot.rich_link_embeds import RichLinkEmbedsCog
         from bot.roles import RolesCog
         from bot.server_logging import ServerLoggingCog
         from bot.tickets import TicketCloseView, TicketPanelView, TicketsCog
@@ -174,6 +175,7 @@ class NorgothBot(commands.Bot):
         await self.add_cog(InvitesCog(self))
         await self.add_cog(RaidCog(self))
         await self.add_cog(HoneypotCog(self))
+        await self.add_cog(RichLinkEmbedsCog(self))
         await self.add_cog(NotificationsCog(self))
         await self.add_cog(CampaignsCog(self))
         await self.add_cog(EmbedSyncCog(self))

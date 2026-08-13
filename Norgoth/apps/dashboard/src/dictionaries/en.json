@@ -30,6 +30,7 @@
     "selfAssignableRoles": "Self-Assignable Roles",
     "autoResponse": "Auto Response",
     "autoResponses": "Auto-Responses",
+    "richLinkEmbeds": "Rich Link Embeds",
     "community": "Community",
     "onboarding": "Member Verification",
     "leveling": "Leveling",
@@ -302,6 +303,20 @@
       "title": "Content Notifications",
       "description": "Announces new content from YouTube, Twitch, Kick, X, and TikTok creators directly into Discord.",
       "usage": "Add creators to monitor and configure the channels that post the alerts."
+    },
+    "rssFeeds": {
+      "title": "RSS Feeds",
+      "description": "Posts new items from RSS 2.0 and Atom feeds into a Discord channel as embeds.",
+      "usage": "Add a feed URL, choose a channel and optional mention role, then enable. Existing items are not posted.",
+      "alertActive": "RSS polling is active for enabled feeds.",
+      "alertInactive": "No enabled RSS feeds are polling for this server."
+    },
+    "richLinkEmbeds": {
+      "title": "Rich Link Embeds",
+      "description": "Replies with embed-friendly social links for X, Bluesky, TikTok, and Reddit without editing the original message.",
+      "usage": "Enable the feature, pick platforms, optionally limit channels, acknowledge third-party fixer domains, then save.",
+      "alertActive": "Rich Link Embeds is active. Matching links are rewritten in a bot reply using third-party embed hosts.",
+      "alertInactive": "Rich Link Embeds is off. Enable it from the header after reviewing the external-domain disclosure."
     },
     "campaigns": {
       "title": "Campaign Messaging",

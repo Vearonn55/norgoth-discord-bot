@@ -64,3 +64,8 @@ class ConfigurationRepository:
         """Flush pending changes to the database."""
 
         await self._session.flush()
+
+    async def refresh(self, instance: object) -> None:
+        """Reload ORM attributes (including server defaults) from the database."""
+
+        await self._session.refresh(instance)

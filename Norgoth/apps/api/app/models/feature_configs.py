@@ -102,3 +102,9 @@ class FeedConfig(_GuildConfigMixin, Base):
     """Feed Channels settings snapshot (``:feed:config``)."""
 
     __tablename__ = "feed_configs"
+
+
+class RichLinkEmbedsConfig(_GuildConfigMixin, Base):
+    """Rich Link Embeds settings snapshot (``:rich_link_embeds``)."""
+
+    __tablename__ = "rich_link_embeds_configs"

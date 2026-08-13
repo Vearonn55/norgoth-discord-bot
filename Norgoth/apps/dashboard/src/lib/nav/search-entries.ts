@@ -72,6 +72,7 @@ export function getSearchEntries(lang: string): SearchEntry[] {
   const feedChannels = parent("/community/feed-channels");
   const discordLogs = parent("/audit/discord-logs");
   const contentNotifications = parent("/messages/content-notifications");
+  const rssFeeds = parent("/messages/rss-feeds");
   const tickets = parent("/community/tickets");
   const leveling = parent("/community/leveling");
   const autoRole = parent("/automation/auto-role");
@@ -203,6 +204,16 @@ export function getSearchEntries(lang: string): SearchEntry[] {
       group: "MESSAGES",
       parentId: contentNotifications?.id,
       parentLabel: contentNotifications?.label ?? "Content Notifications",
+      kind: "subfeature",
+    },
+    {
+      id: "sub:rss-feeds.add",
+      label: "Add RSS feed",
+      keywords: ["atom", "rss", "feed url", "syndication"],
+      href: `/${lang}/messages/rss-feeds`,
+      group: "MESSAGES",
+      parentId: rssFeeds?.id,
+      parentLabel: rssFeeds?.label ?? "RSS Feeds",
       kind: "subfeature",
     },
     {

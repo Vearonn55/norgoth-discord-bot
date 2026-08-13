@@ -1,0 +1,457 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+import {
+  CAlert,
+  CFormCheck,
+  CFormInput,
+  CFormLabel,
+  CFormSelect,
+  CSpinner,
+} from "@coreui/react";
+import { SectionCard } from "@/components/ui/section-card";
+import { ChannelSelect } from "@/components/ui/channel-select";
+import { RoleSelect } from "@/components/ui/role-select";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { PageHeader } from "@/components/layout/page-header";
+import { useFirstGuild } from "@/stores/guild-store";
+import {
+  useRssFeedsStore,
+  type RssFeed,
+  type RssProbeResult,
+} from "@/stores/rss-feeds-store";
+import { Icon } from "@/components/ui/icon";
+import { cilNotes } from "@coreui/icons";
+import { useFeatureInfo } from "@/lib/feature-info";
+import { formatDateTime } from "@/lib/datetime";
+
+const INTERVAL_OPTIONS = [
+  { value: 300, label: "5 minutes" },
+  { value: 600, label: "10 minutes" },
+  { value: 900, label: "15 minutes" },
+  { value: 1800, label: "30 minutes" },
+  { value: 3600, label: "1 hour" },
+];
+
+type Draft = {
+  feed_url: string;
+  channel_id: string;
+  mention_role_id: string;
+  display_name: string;
+  poll_interval_seconds: number;
+  enabled: boolean;
+};
+
+const emptyDraft = (): Draft => ({
+  feed_url: "",
+  channel_id: "",
+  mention_role_id: "",
+  display_name: "",
+  poll_interval_seconds: 300,
+  enabled: true,
+});
+
+export function RssFeedsPanel() {
+  const params = useParams();
+  const lang = String(params?.lang || "en");
+  const isTr = lang === "tr";
+  const { guildId, resources, loading: guildLoading } = useFirstGuild();
+  const feeds = useRssFeedsStore((s) => s.feeds);
+  const maxFeeds = useRssFeedsStore((s) => s.maxFeeds);
+  const workerOnline = useRssFeedsStore((s) => s.workerOnline);
+  const loading = useRssFeedsStore((s) => s.loading);
+  const saving = useRssFeedsStore((s) => s.saving);
+  const error = useRssFeedsStore((s) => s.error);
+  const load = useRssFeedsStore((s) => s.load);
+  const create = useRssFeedsStore((s) => s.create);
+  const update = useRssFeedsStore((s) => s.update);
+  const remove = useRssFeedsStore((s) => s.remove);
+  const probe = useRssFeedsStore((s) => s.probe);
+  const info = useFeatureInfo("rssFeeds");
+
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<Draft>(emptyDraft);
+  const [probeResult, setProbeResult] = useState<RssProbeResult | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!guildId) return;
+    void load(guildId);
+  }, [guildId, load]);
+
+  function openCreate() {
+    setEditingId(null);
+    setDraft(emptyDraft());
+    setProbeResult(null);
+    setLocalError(null);
+    setShowForm(true);
+  }
+
+  function openEdit(feed: RssFeed) {
+    setEditingId(feed.id);
+    setDraft({
+      feed_url: feed.feed_url,
+      channel_id: feed.channel_id,
+      mention_role_id: feed.mention_role_id ?? "",
+      display_name: feed.display_name ?? "",
+      poll_interval_seconds: feed.poll_interval_seconds,
+      enabled: feed.enabled,
+    });
+    setProbeResult(null);
+    setLocalError(null);
+    setShowForm(true);
+  }
+
+  async function runProbe() {
+    if (!guildId || !draft.feed_url.trim()) return;
+    setLocalError(null);
+    try {
+      const result = await probe(guildId, draft.feed_url.trim());
+      setProbeResult(result);
+      if (result.ok && result.feed_title && !draft.display_name) {
+        setDraft((d) => ({ ...d, display_name: result.feed_title || "" }));
+      }
+    } catch (e) {
+      setLocalError(e instanceof Error ? e.message : "Probe failed.");
+    }
+  }
+
+  async function save() {
+    if (!guildId) return;
+    setLocalError(null);
+    if (!draft.feed_url.trim() || !draft.channel_id) {
+      setLocalError(
+        isTr
+          ? "Feed URL ve kanal gerekli."
+          : "Feed URL and channel are required.",
+      );
+      return;
+    }
+    try {
+      if (editingId) {
+        await update(guildId, editingId, {
+          feed_url: draft.feed_url.trim(),
+          channel_id: draft.channel_id,
+          mention_role_id: draft.mention_role_id || null,
+          clear_mention_role: !draft.mention_role_id,
+          display_name: draft.display_name.trim() || null,
+          poll_interval_seconds: draft.poll_interval_seconds,
+          enabled: draft.enabled,
+        });
+      } else {
+        await create(guildId, {
+          feed_url: draft.feed_url.trim(),
+          channel_id: draft.channel_id,
+          mention_role_id: draft.mention_role_id || null,
+          display_name: draft.display_name.trim() || null,
+          poll_interval_seconds: draft.poll_interval_seconds,
+          enabled: draft.enabled,
+        });
+      }
+      setShowForm(false);
+      setEditingId(null);
+    } catch (e) {
+      setLocalError(e instanceof Error ? e.message : "Save failed.");
+    }
+  }
+
+  if (guildLoading || loading) {
+    return (
+      <div className="d-flex align-items-center gap-2">
+        <CSpinner size="sm" />{" "}
+        {isTr ? "RSS akışları yükleniyor…" : "Loading RSS feeds…"}
+      </div>
+    );
+  }
+
+  if (!guildId) {
+    return (
+      <p className="text-body-secondary">
+        {isTr ? "Önce bir sunucu seçin." : "Select a server first."}
+      </p>
+    );
+  }
+
+  const channelName = (id: string) =>
+    resources?.channels?.find((c) => c.id === id)?.name ?? id;
+
+  return (
+    <div className="d-flex flex-column gap-4">
+      <PageHeader
+        title={info?.title ?? "RSS Feeds"}
+        category="messages"
+        icon={<Icon icon={cilNotes} size="xl" />}
+        description={
+          info?.description ??
+          "Post new items from RSS 2.0 / Atom feeds into a Discord channel."
+        }
+        infoKey="rssFeeds"
+        actions={
+          <Button
+            variant="primary"
+            disabled={feeds.length >= maxFeeds}
+            onClick={openCreate}
+          >
+            {isTr ? "Akış ekle" : "Add feed"}
+          </Button>
+        }
+      />
+
+      <CAlert color="info" className="mb-0">
+        {isTr
+          ? "Mevcut öğeler yayınlanmaz — yalnızca eklenen yeni öğeler Discord’a gider. Sunucu başına en fazla 5 akış; en kısa yoklama 5 dakikadır."
+          : "Existing items won’t be posted — only items that appear after you add the feed. Max 5 feeds per server; minimum poll interval is 5 minutes."}
+      </CAlert>
+
+      {(error || localError) && (
+        <p className="text-danger mb-0">{localError || error}</p>
+      )}
+
+      <p className="small text-body-secondary mb-0">
+        {isTr ? "Worker:" : "Worker:"}{" "}
+        {workerOnline
+          ? isTr
+            ? "çevrimiçi"
+            : "online"
+          : isTr
+            ? "çevrimdışı / bilinmiyor"
+            : "offline / unknown"}{" "}
+        · {feeds.length}/{maxFeeds} {isTr ? "akış" : "feeds"}
+      </p>
+
+      {showForm ? (
+        <SectionCard
+          level="primary"
+          category="messages"
+          header={
+            editingId
+              ? isTr
+                ? "Akışı düzenle"
+                : "Edit feed"
+              : isTr
+                ? "Yeni akış"
+                : "New feed"
+          }
+        >
+          <div className="d-flex flex-column gap-3 p-1">
+            <div>
+              <CFormLabel>Feed URL</CFormLabel>
+              <div className="d-flex gap-2 flex-wrap">
+                <CFormInput
+                  value={draft.feed_url}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, feed_url: e.target.value }))
+                  }
+                  placeholder="https://example.com/feed.xml"
+                  className="flex-grow-1"
+                />
+                <Button variant="secondary" onClick={() => void runProbe()}>
+                  {isTr ? "Sına" : "Probe"}
+                </Button>
+              </div>
+              {probeResult ? (
+                <p
+                  className={`small mt-2 mb-0 ${
+                    probeResult.ok ? "text-success" : "text-danger"
+                  }`}
+                >
+                  {probeResult.ok
+                    ? `${probeResult.format_hint} · ${probeResult.feed_title ?? "—"} · ${probeResult.item_count} items`
+                    : probeResult.error}
+                </p>
+              ) : null}
+            </div>
+            <div>
+              <CFormLabel>{isTr ? "Görünen ad" : "Display name"}</CFormLabel>
+              <CFormInput
+                value={draft.display_name}
+                onChange={(e) =>
+                  setDraft((d) => ({ ...d, display_name: e.target.value }))
+                }
+                placeholder={isTr ? "İsteğe bağlı" : "Optional"}
+              />
+            </div>
+            <div>
+              <CFormLabel>{isTr ? "Hedef kanal" : "Destination channel"}</CFormLabel>
+              <ChannelSelect
+                channels={resources?.channels ?? []}
+                value={draft.channel_id}
+                onChange={(id) => setDraft((d) => ({ ...d, channel_id: id }))}
+              />
+            </div>
+            <div>
+              <CFormLabel>
+                {isTr ? "Bahsetme rolü (isteğe bağlı)" : "Mention role (optional)"}
+              </CFormLabel>
+              <RoleSelect
+                roles={resources?.roles ?? []}
+                value={draft.mention_role_id}
+                onChange={(id) =>
+                  setDraft((d) => ({ ...d, mention_role_id: id }))
+                }
+                emptyLabel={isTr ? "Rol yok" : "No role"}
+              />
+            </div>
+            <div style={{ maxWidth: 280 }}>
+              <CFormLabel>{isTr ? "Yoklama aralığı" : "Poll interval"}</CFormLabel>
+              <CFormSelect
+                value={String(draft.poll_interval_seconds)}
+                onChange={(e) =>
+                  setDraft((d) => ({
+                    ...d,
+                    poll_interval_seconds: Number(e.target.value),
+                  }))
+                }
+              >
+                {INTERVAL_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </CFormSelect>
+            </div>
+            <CFormCheck
+              id="rss-enabled"
+              label={isTr ? "Etkin" : "Enabled"}
+              checked={draft.enabled}
+              onChange={(e) =>
+                setDraft((d) => ({ ...d, enabled: e.target.checked }))
+              }
+            />
+            <div className="d-flex gap-2">
+              <Button
+                variant="primary"
+                disabled={saving}
+                onClick={() => void save()}
+              >
+                {saving
+                  ? isTr
+                    ? "Kaydediliyor…"
+                    : "Saving…"
+                  : isTr
+                    ? "Kaydet"
+                    : "Save"}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setShowForm(false);
+                  setEditingId(null);
+                }}
+              >
+                {isTr ? "İptal" : "Cancel"}
+              </Button>
+            </div>
+          </div>
+        </SectionCard>
+      ) : null}
+
+      <SectionCard
+        level="secondary"
+        category="messages"
+        header={isTr ? "Akışlar" : "Feeds"}
+      >
+        {feeds.length === 0 ? (
+          <p className="text-body-secondary mb-0 p-1">
+            {isTr
+              ? "Henüz RSS akışı yok."
+              : "No RSS feeds configured yet."}
+          </p>
+        ) : (
+          <div className="table-responsive">
+            <table className="table table-dark table-sm align-middle mb-0">
+              <thead>
+                <tr>
+                  <th>{isTr ? "Ad / URL" : "Name / URL"}</th>
+                  <th>{isTr ? "Kanal" : "Channel"}</th>
+                  <th>{isTr ? "Durum" : "Status"}</th>
+                  <th>{isTr ? "Son başarı" : "Last success"}</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {feeds.map((feed) => (
+                  <tr key={feed.id}>
+                    <td>
+                      <div className="fw-semibold">
+                        {feed.display_name || feed.format_hint || "Feed"}
+                      </div>
+                      <div
+                        className="small text-body-secondary text-truncate"
+                        style={{ maxWidth: 280 }}
+                      >
+                        {feed.feed_url}
+                      </div>
+                      {feed.last_error ? (
+                        <div className="small text-danger">{feed.last_error}</div>
+                      ) : null}
+                    </td>
+                    <td>#{channelName(feed.channel_id)}</td>
+                    <td>
+                      <div className="d-flex align-items-center gap-2">
+                        <Switch
+                          checked={feed.enabled}
+                          disabled={saving}
+                          onChange={(checked) =>
+                            void update(guildId, feed.id, { enabled: checked })
+                          }
+                          aria-label={`Toggle ${feed.display_name || feed.feed_url}`}
+                        />
+                        <span className="small">
+                          {feed.enabled
+                            ? isTr
+                              ? "Açık"
+                              : "On"
+                            : isTr
+                              ? "Kapalı"
+                              : "Off"}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="small">
+                      {feed.last_success_at
+                        ? formatDateTime(feed.last_success_at, lang)
+                        : "—"}
+                    </td>
+                    <td className="text-end">
+                      <div className="d-flex gap-2 justify-content-end">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => openEdit(feed)}
+                        >
+                          {isTr ? "Düzenle" : "Edit"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="danger"
+                          disabled={saving}
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                isTr
+                                  ? "Bu akışı silmek istiyor musunuz?"
+                                  : "Delete this feed?",
+                              )
+                            ) {
+                              void remove(guildId, feed.id);
+                            }
+                          }}
+                        >
+                          {isTr ? "Sil" : "Delete"}
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </SectionCard>
+    </div>
+  );
+}

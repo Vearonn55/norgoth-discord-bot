@@ -118,6 +118,27 @@ services:
       - internal
     logging: *default-logging
 
+  rss-worker:
+    image: ${NORBOT_API_IMAGE:-norbot-api}:${NORBOT_IMAGE_TAG:-local}
+    <<: *default-restart
+    command: ["python", "-m", "app.workers.rss_feed_worker"]
+    healthcheck:
+      disable: true
+    env_file:
+      - ${NORBOT_ENV_FILE:-./env/production.env.example}
+    environment:
+      NORGOTH_DATABASE_URL: ${NORGOTH_DATABASE_URL:-postgresql+psycopg://norbot:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-norbot_prod}}
+      NORGOTH_REDIS_URL: ${NORGOTH_REDIS_URL:-redis://redis:6379/0}
+      NORGOTH_RELEASE_SHA: ${NORBOT_IMAGE_TAG:-local}
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+    logging: *default-logging
+
   bot:
     image: ${NORBOT_BOT_IMAGE:-norbot-bot}:${NORBOT_IMAGE_TAG:-local}
     <<: *default-restart

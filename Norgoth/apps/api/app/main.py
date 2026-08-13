@@ -25,6 +25,8 @@ from app.routes.campaigns import router as campaigns_router  # noqa: E402
 from app.routes.campaigns import public_router as campaigns_public_router  # noqa: E402
 from app.routes.campaigns import internal_router as campaigns_internal_router  # noqa: E402
 from app.routes.honeypot import router as honeypot_router  # noqa: E402
+from app.routes.rich_link_embeds import router as rich_link_embeds_router  # noqa: E402
+from app.routes.rss_feeds import router as rss_feeds_router  # noqa: E402
 from app.routes.ingest import router as ingest_router  # noqa: E402
 from app.routes.internal_config import router as internal_config_router  # noqa: E402
 from app.routes.moderation import router as moderation_router  # noqa: E402
@@ -171,6 +173,8 @@ def create_application(settings: Settings | None = None) -> FastAPI:
     application.include_router(logging_config_router)
     application.include_router(raid_router)
     application.include_router(honeypot_router)
+    application.include_router(rich_link_embeds_router)
+    application.include_router(rss_feeds_router)
     application.include_router(ingest_router)
     application.include_router(internal_config_router)
     application.include_router(activity_router)

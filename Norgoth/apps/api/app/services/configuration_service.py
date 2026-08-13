@@ -194,6 +194,7 @@ class ConfigurationService:
         await self._sync_channel_binding(guild_id, GuildChannelPurpose.LOG, log_channel_id)
 
         await self._configuration_repository.flush()
+        await self._configuration_repository.refresh(settings)
 
         return await self._assemble(settings)
 
@@ -303,6 +304,9 @@ class ConfigurationService:
         settings.deny_shared_ip = next_shared
 
         await self._configuration_repository.flush()
+        # Server-default timestamps (created_at/updated_at) are NULL in-Python
+        # until refresh; ConfigurationResponse requires non-null datetimes.
+        await self._configuration_repository.refresh(settings)
 
         return await self._assemble(settings)
 

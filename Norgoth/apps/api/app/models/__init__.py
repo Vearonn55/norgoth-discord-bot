@@ -33,6 +33,7 @@ from app.models.feature_configs import (
     LevelingConfig,
     ModuleConfig,
     RaidConfig,
+    RichLinkEmbedsConfig,
     RoleMenuConfig,
     TicketConfig,
     TicketPanelsConfig,
@@ -67,6 +68,7 @@ from app.models.runtime_events import (
 )
 from app.models.system_audit_log import SystemAuditLog
 from app.models.verification_attempt import VerificationAttempt
+from app.models.rss_feeds import RssFeedConfig, RssFeedItem
 
 __all__ = [
     "AnalyticsDaily",
@@ -98,7 +100,10 @@ __all__ = [
     "ModuleConfig",
     "RaidConfig",
     "RaidIncident",
+    "RichLinkEmbedsConfig",
     "RoleMenuConfig",
+    "RssFeedConfig",
+    "RssFeedItem",
     "ServerEventLogEntry",
     "Ticket",
     "TicketConfig",

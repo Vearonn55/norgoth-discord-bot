@@ -87,6 +87,16 @@ MODULE_DEFINITIONS: list[dict[str, str]] = [
         "description": "Trap channels that punish members who post in them.",
     },
     {
+        "key": "rich_link_embeds",
+        "name": "Rich Link Embeds",
+        "description": "Reply with embed-friendly social media link rewrites.",
+    },
+    {
+        "key": "rss_feeds",
+        "name": "RSS Feeds",
+        "description": "Post new items from RSS 2.0 / Atom feeds into a channel.",
+    },
+    {
         "key": "feed_channels",
         "name": "Top Trending",
         "description": "Ranked Daily/Weekly/Monthly/All-Time feeds by Net Upvotes.",

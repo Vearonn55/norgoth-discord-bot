@@ -3,6 +3,7 @@ uvicorn[standard]
 pydantic
 redis
 httpx
+defusedxml>=0.7
 sqlalchemy>=2.0.51
 psycopg[binary]>=3.3
 alembic>=1.18

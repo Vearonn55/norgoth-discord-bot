@@ -23,6 +23,7 @@ from app.models.feature_configs import (
     LevelingConfig,
     ModuleConfig,
     RaidConfig,
+    RichLinkEmbedsConfig,
     RoleMenuConfig,
     TicketConfig,
     TicketPanelsConfig,
@@ -43,6 +44,7 @@ FEATURE_REGISTRY: dict[str, tuple[type, str]] = {
     "tickets": (TicketConfig, "tickets:config"),
     "ticket_panels": (TicketPanelsConfig, "tickets:panels"),
     "feed_channels": (FeedConfig, "feed:config"),
+    "rich_link_embeds": (RichLinkEmbedsConfig, "rich_link_embeds"),
 }
 
 
