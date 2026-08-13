@@ -80,8 +80,20 @@ class KickAdapter(ContentPlatformAdapter):
                     "grant_type": "client_credentials",
                     "client_id": self._client_id(),
                     "client_secret": self._client_secret(),
+                    # App tokens inherit portal scopes; request explicitly when allowed.
+                    "scope": "events:subscribe channel:read",
                 },
             )
+            if response.status_code != 200:
+                # Some Kick apps reject explicit scope on client_credentials — retry bare.
+                response = await client.post(
+                    KICK_TOKEN_URL,
+                    data={
+                        "grant_type": "client_credentials",
+                        "client_id": self._client_id(),
+                        "client_secret": self._client_secret(),
+                    },
+                )
             if response.status_code != 200:
                 self._invalidate_token()
                 raise PlatformAdapterError(

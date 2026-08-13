@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
@@ -21,9 +22,21 @@ from app.models.content_notifications import (
     NormalizedContentEventRow,
     NotificationJob,
 )
-from app.services.content_notifications.queue import enqueue_job
 
 logger = logging.getLogger("norgoth.content.fanout")
+
+
+@dataclass(slots=True)
+class FanoutResult:
+    """Result of persisting an event and creating delivery jobs.
+
+    Callers must ``commit`` the session, then enqueue ``job_ids``. Enqueuing
+    before commit races the worker (job row not visible yet → silent drop).
+    """
+
+    event: NormalizedContentEventRow | None
+    job_ids: list[UUID] = field(default_factory=list)
+    deduplicated: bool = False
 
 
 async def persist_and_fanout(
@@ -31,8 +44,11 @@ async def persist_and_fanout(
     event: NormalizedContentEvent,
     *,
     source: ContentCreatorSource | None = None,
-) -> NormalizedContentEventRow | None:
-    """Idempotently store an event and enqueue one job per matching guild subscription."""
+) -> FanoutResult:
+    """Idempotently store an event and create one job per matching guild subscription.
+
+    Does **not** push to Redis — callers must enqueue ``job_ids`` after commit.
+    """
 
     if source is None:
         source = await session.scalar(
@@ -47,7 +63,7 @@ async def persist_and_fanout(
             event.platform,
             event.creator_platform_id,
         )
-        return None
+        return FanoutResult(event=None)
 
     stmt = (
         insert(NormalizedContentEventRow)
@@ -89,7 +105,7 @@ async def persist_and_fanout(
                 NormalizedContentEventRow.event_type == event.event_type.value,
             )
         )
-        return existing
+        return FanoutResult(event=existing, deduplicated=True)
 
     row = await session.get(NormalizedContentEventRow, event_id)
     source.last_event_at = datetime.now(timezone.utc)
@@ -103,6 +119,7 @@ async def persist_and_fanout(
         )
     ).all()
 
+    job_ids: list[UUID] = []
     for sub in subscriptions:
         event_types = sub.event_types or []
         if event_types and event.event_type.value not in event_types:
@@ -124,14 +141,14 @@ async def persist_and_fanout(
         job_result = await session.execute(job_stmt)
         job_id = job_result.scalar_one_or_none()
         if job_id is not None:
-            await enqueue_job(str(job_id))
+            job_ids.append(job_id)
             sub.last_event_id = event_id
             sub.last_event_at = datetime.now(timezone.utc)
             if sub.status == "waiting_first_event":
                 sub.status = "subscription_healthy"
 
     await session.flush()
-    return row
+    return FanoutResult(event=row, job_ids=job_ids)
 
 
 def event_from_row(row: NormalizedContentEventRow) -> NormalizedContentEvent:

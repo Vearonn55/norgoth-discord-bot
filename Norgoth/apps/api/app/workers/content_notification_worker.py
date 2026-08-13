@@ -42,6 +42,7 @@ from app.services.content_notifications.fanout import (  # noqa: E402
     persist_and_fanout,
 )
 from app.services.content_notifications.queue import (  # noqa: E402
+    enqueue_jobs,
     heartbeat,
     is_circuit_open,
     open_circuit,
@@ -64,13 +65,12 @@ async def process_due_retries(session_factory) -> None:
                 ).limit(20)
             )
         ).all()
+        job_ids: list[str] = []
         for job in jobs:
             job.status = "queued"
-            await session.flush()
-            from app.services.content_notifications.queue import enqueue_job
-
-            await enqueue_job(str(job.id))
+            job_ids.append(str(job.id))
         await session.commit()
+        await enqueue_jobs(job_ids)
 
 
 async def poll_due_sources(session_factory, http_client: httpx.AsyncClient) -> None:
@@ -88,6 +88,7 @@ async def poll_due_sources(session_factory, http_client: httpx.AsyncClient) -> N
                 .limit(10)
             )
         ).all()
+        job_ids: list[str] = []
         for cursor in cursors:
             source = await session.get(ContentCreatorSource, cursor.source_id)
             if source is None:
@@ -117,7 +118,8 @@ async def poll_due_sources(session_factory, http_client: httpx.AsyncClient) -> N
                         and event.external_content_id == cursor.last_seen_content_id
                     ):
                         continue
-                    await persist_and_fanout(session, event, source=source)
+                    result = await persist_and_fanout(session, event, source=source)
+                    job_ids.extend(str(job_id) for job_id in result.job_ids)
                     cursor.last_seen_content_id = event.external_content_id
                 cursor.failure_count = 0
                 from datetime import timedelta
@@ -134,6 +136,7 @@ async def poll_due_sources(session_factory, http_client: httpx.AsyncClient) -> N
 
                 cursor.next_check_at = now + timedelta(seconds=300)
         await session.commit()
+        await enqueue_jobs(job_ids)
 
 
 async def renew_websub_leases(session_factory) -> None:
@@ -198,11 +201,18 @@ async def worker_loop() -> None:
             if job_id:
                 async with session_factory() as session:
                     try:
+                        # Brief retry if the producer committed just after enqueue.
+                        job_uuid = UUID(job_id)
+                        for attempt in range(3):
+                            job = await session.get(NotificationJob, job_uuid)
+                            if job is not None:
+                                break
+                            await asyncio.sleep(0.15 * (attempt + 1))
                         await process_job(
                             session,
                             http_client,
                             bot,
-                            UUID(job_id),
+                            job_uuid,
                         )
                         await session.commit()
                     except Exception:  # noqa: BLE001

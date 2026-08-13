@@ -24,7 +24,6 @@ from app.models.content_notifications import (
 )
 from app.services.content_notifications.fanout import event_from_row
 from app.services.content_notifications.payload_builder import build_discord_payload
-from app.services.content_notifications.queue import enqueue_job
 from app.services.content_notifications.tag_registry import DEFAULT_TEMPLATES
 from app.services.content_notifications.webhook_manager import (
     WebhookManagerError,
@@ -189,5 +188,5 @@ async def _schedule_retry_or_dead(
     job.status = "failed"
     job.next_attempt_at = datetime.now(timezone.utc) + timedelta(seconds=delay)
     await session.flush()
-    # Re-queue after delay is handled by worker sweep; also soft-enqueue for responsiveness.
-    await enqueue_job(str(job.id))
+    # Do not Redis-enqueue here — the creating transaction may not be committed
+    # yet. The worker retry sweep requeues due failed jobs after commit.

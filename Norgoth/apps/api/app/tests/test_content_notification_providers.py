@@ -410,3 +410,14 @@ def test_manual_test_event_synthesizes_when_offline() -> None:
     assert event.external_content_id.startswith("manual-test:")
     assert event.raw_metadata.get("synthetic") is True
     assert event.title.startswith("[Test]")
+
+
+def test_fanout_result_defers_enqueue() -> None:
+    """Fanout must return job ids without touching Redis (commit-then-enqueue)."""
+
+    import inspect
+    from app.services.content_notifications import fanout as fanout_mod
+
+    source = inspect.getsource(fanout_mod.persist_and_fanout)
+    assert "enqueue_job" not in source
+    assert "FanoutResult" in source

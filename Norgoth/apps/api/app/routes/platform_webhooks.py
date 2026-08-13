@@ -35,7 +35,7 @@ from app.models.content_notifications import (
     PlatformSubscription,
 )
 from app.services.content_notifications.fanout import persist_and_fanout
-from app.services.content_notifications.queue import mark_replay
+from app.services.content_notifications.queue import enqueue_jobs, mark_replay
 from app.security.secret_box import get_secret_box
 
 logger = logging.getLogger("norgoth.content.webhooks")
@@ -69,6 +69,7 @@ async def youtube_websub_notify(
         return {"ok": True, "ignored": True}
 
     adapter = YouTubeAdapter()
+    job_ids: list[str] = []
     for raw in raw_events:
         source = await session.scalar(
             select(ContentCreatorSource).where(
@@ -83,8 +84,10 @@ async def youtube_websub_notify(
         if source.avatar_url:
             raw.raw["creator_avatar"] = source.avatar_url
         event = await adapter.enrich_event(raw)
-        await persist_and_fanout(session, event, source=source)
+        result = await persist_and_fanout(session, event, source=source)
+        job_ids.extend(str(job_id) for job_id in result.job_ids)
     await session.commit()
+    await enqueue_jobs(job_ids)
     return {"ok": True}
 
 
@@ -168,8 +171,9 @@ async def twitch_eventsub(
         raw=payload,
     )
     event = await adapter.enrich_event(raw)
-    await persist_and_fanout(session, event, source=source)
+    result = await persist_and_fanout(session, event, source=source)
     await session.commit()
+    await enqueue_jobs(result.job_ids)
     return {"ok": True}
 
 
@@ -238,6 +242,7 @@ async def kick_events(
         raw=payload,
     )
     event = await adapter.enrich_event(raw)
-    await persist_and_fanout(session, event, source=source)
+    result = await persist_and_fanout(session, event, source=source)
     await session.commit()
+    await enqueue_jobs(result.job_ids)
     return {"ok": True}

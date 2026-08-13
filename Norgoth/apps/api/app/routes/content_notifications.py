@@ -707,6 +707,12 @@ async def test_notification(
     if sub is None or sub.source is None:
         raise HTTPException(status_code=404, detail="Subscription not found")
 
+    if not await worker_online():
+        raise HTTPException(
+            status_code=503,
+            detail="Content notification worker is offline. Start content-worker and retry.",
+        )
+
     adapter = get_adapter(sub.source.platform)
     creator = ResolvedCreator(
         platform=PlatformType(sub.source.platform),
@@ -717,27 +723,38 @@ async def test_notification(
         avatar_url=sub.source.avatar_url,
         canonical_url=sub.source.canonical_url,
     )
-    latest = await adapter.fetch_latest(creator, limit=1)
+    # Kick/Twitch may be offline or API may fail — still deliver a synthetic test.
+    latest_event = None
+    try:
+        latest = await adapter.fetch_latest(creator, limit=1)
+        latest_event = latest[0] if latest else None
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "fetch_latest failed during test for %s/%s",
+            sub.source.platform,
+            sub.source.platform_creator_id,
+        )
+
     event = _manual_test_event(
         creator=creator,
         subscription_id=sub.id,
-        latest=latest[0] if latest else None,
+        latest=latest_event,
         event_types=sub.event_types or [],
     )
 
-    row = await persist_and_fanout(session, event, source=sub.source)
+    fanout = await persist_and_fanout(session, event, source=sub.source)
+    row = fanout.event
     if row is None:
         raise HTTPException(status_code=500, detail="Could not persist test event.")
 
-    # Fanout may already have queued a job for enabled subscriptions. Always
-    # ensure THIS subscription gets a job (even if disabled / type-filtered),
-    # without double-inserting into the unique (event, subscription) key.
-    job_id = await _ensure_job_enqueued(
+    # Ensure THIS subscription gets a job even if disabled / type-filtered.
+    job_id = await _ensure_job_row(
         session,
         event_id=row.id,
         subscription_id=sub.id,
     )
     await session.commit()
+    await enqueue_job(str(job_id))
     return {"ok": True, "job_id": str(job_id), "event_id": str(row.id)}
 
 
@@ -757,6 +774,12 @@ async def force_notification(
     )
     if sub is None or sub.source is None:
         raise HTTPException(status_code=404, detail="Subscription not found")
+
+    if not await worker_online():
+        raise HTTPException(
+            status_code=503,
+            detail="Content notification worker is offline. Start content-worker and retry.",
+        )
 
     adapter = get_adapter(sub.source.platform)
     creator = ResolvedCreator(
@@ -806,26 +829,28 @@ async def force_notification(
         raw_metadata={**(match.raw_metadata or {}), "forced": True},
     )
 
-    row = await persist_and_fanout(session, forced, source=sub.source)
+    fanout = await persist_and_fanout(session, forced, source=sub.source)
+    row = fanout.event
     if row is None:
         raise HTTPException(status_code=500, detail="Could not persist forced event.")
 
-    job_id = await _ensure_job_enqueued(
+    job_id = await _ensure_job_row(
         session,
         event_id=row.id,
         subscription_id=sub.id,
     )
     await session.commit()
+    await enqueue_job(str(job_id))
     return {"ok": True, "job_id": str(job_id), "event_id": str(row.id)}
 
 
-async def _ensure_job_enqueued(
+async def _ensure_job_row(
     session: AsyncSession,
     *,
     event_id: UUID,
     subscription_id: UUID,
 ) -> UUID:
-    """Insert-or-reuse the notification job and push it onto the Redis queue."""
+    """Insert-or-reuse the notification job row (caller enqueues after commit)."""
 
     stmt = (
         pg_insert(NotificationJob)
@@ -843,7 +868,6 @@ async def _ensure_job_enqueued(
     )
     job_id = (await session.execute(stmt)).scalar_one_or_none()
     if job_id is not None:
-        await enqueue_job(str(job_id))
         return job_id
 
     existing = await session.scalar(
@@ -857,12 +881,10 @@ async def _ensure_job_enqueued(
             status_code=500,
             detail="Could not create notification job for test delivery.",
         )
-    # Fanout may already have queued this job — only re-queue finished ones.
     if existing.status in {"succeeded", "dead", "failed"}:
         existing.status = "queued"
         existing.last_error = None
         existing.next_attempt_at = datetime.now(timezone.utc)
-        await enqueue_job(str(existing.id))
     return existing.id
 
 

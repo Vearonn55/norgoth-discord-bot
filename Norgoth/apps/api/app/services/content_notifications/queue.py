@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
-from typing import Any
+from typing import Iterable
 
 from redis.asyncio import Redis
 
@@ -29,6 +29,20 @@ async def enqueue_job(job_id: str) -> None:
     client = await get_redis()
     try:
         await client.lpush(CONTENT_NOTIFICATION_QUEUE, job_id)
+    finally:
+        await client.aclose()
+
+
+async def enqueue_jobs(job_ids: Iterable[object]) -> None:
+    """Enqueue many job ids after the creating transaction has committed."""
+
+    ids = [str(job_id) for job_id in job_ids]
+    if not ids:
+        return
+    client = await get_redis()
+    try:
+        for job_id in ids:
+            await client.lpush(CONTENT_NOTIFICATION_QUEUE, job_id)
     finally:
         await client.aclose()
 
