@@ -12,7 +12,8 @@ NorBot has no root LICENSE compatible with AGPL incorporation.
 
 ## Product name and placement
 
-- **Name:** Rich Link Embeds  
+- **Name (user-facing):** Link Embeds / Bağlantı Önizlemeleri  
+- **Name (legacy internal docs):** Rich Link Embeds  
 - **Route:** `/automation/rich-link-embeds`  
 - **Sidebar:** AUTOMATION group  
 - **Redis/PG feature key:** `rich_link_embeds`  
@@ -20,14 +21,7 @@ NorBot has no root LICENSE compatible with AGPL incorporation.
 
 ## MVP platforms
 
-| Platform | Match hosts (conceptual) | Rewrite host (default) |
-|---|---|---|
-| Twitter/X | `twitter.com`, `x.com` | `fxtwitter.com` |
-| Bluesky | `bsky.app` | `bskx.app` |
-| TikTok | `tiktok.com` | `vxtiktok.com` |
-| Reddit | `reddit.com`, `redd.it` | `vxreddit.com` |
-
-Deferred: Instagram, Pixiv, YouTube Shorts.
+See addendum (2026-08-13) for the seven-platform allowlist. Original MVP shipped four platforms (Twitter/X, Bluesky, TikTok, Reddit); Instagram, Pixiv, and YouTube Shorts were added with defaults off.
 
 ## Runtime behavior
 
@@ -35,7 +29,7 @@ Deferred: Instagram, Pixiv, YouTube Shorts.
 2. Ignore bots, webhooks, and the NorBot user.
 3. Extract http(s) URLs outside code fences / inline code.
 4. For each enabled platform adapter, rewrite matching URLs (strip tracking query when safe).
-5. Reply once with rewritten link(s); never edit/delete the user message.
+5. Reply once with rewritten link(s); never edit/delete the user message body. After a successful reply, optionally suppress original embeds when Manage Messages is available.
 6. Idempotency: Redis key `norgoth:guild:{id}:rich_link_embeds:seen:{message_id}` short TTL.
 7. Rate limit per guild/user; max links per message (e.g. 3).
 8. Optional `on_message_edit` for first-seen edits only when configured.
@@ -49,7 +43,10 @@ Deferred: Instagram, Pixiv, YouTube Shorts.
     "twitter": true,
     "bluesky": true,
     "tiktok": true,
-    "reddit": true
+    "reddit": true,
+    "instagram": false,
+    "pixiv": false,
+    "youtube_shorts": false
   },
   "channel_allowlist": [],
   "channel_denylist": [],
@@ -60,13 +57,16 @@ Deferred: Instagram, Pixiv, YouTube Shorts.
     "twitter": "fxtwitter.com",
     "bluesky": "bskx.app",
     "tiktok": "vxtiktok.com",
-    "reddit": "vxreddit.com"
+    "instagram": "ddinstagram.com",
+    "reddit": "vxreddit.com",
+    "pixiv": "phixiv.net",
+    "youtube_shorts": "youtu.be"
   },
   "disclosure_acknowledged": false
 }
 ```
 
-Empty allowlist = all channels (minus denylist).
+Empty allowlist = all channels (minus denylist). `rewrite_hosts` is server-forced from the operator allowlist (not guild-editable).
 
 ## Command Center
 
@@ -85,3 +85,35 @@ Empty allowlist = all channels (minus denylist).
 ## Tests
 
 Unit tests per adapter: canonical URL, query strip, unsupported domain, multiple links, code-block ignore.
+
+---
+
+## Addendum — Link Embeds evolution (2026-08-13)
+
+**User-facing name:** Link Embeds / Bağlantı Önizlemeleri  
+**Internal key/route unchanged:** `rich_link_embeds` / `/automation/rich-link-embeds`
+
+### Platforms (7)
+
+| Platform | Match hosts (conceptual) | Rewrite host (fixed allowlist) | Default |
+|---|---|---|---|
+| Twitter/X | `twitter.com`, `x.com` (+ mobile) | `fxtwitter.com` | prior saved / true |
+| Bluesky | `bsky.app` | `bskx.app` | prior saved / true |
+| TikTok | `tiktok.com`, `vm.tiktok.com` | `vxtiktok.com` | prior saved / true |
+| Instagram | `instagram.com` `/p|/reel|/stories/` | `ddinstagram.com` | **false** (new) |
+| Reddit | `reddit.com`, `redd.it` (skip `/s/`) | `vxreddit.com` | prior saved / true |
+| Pixiv | `pixiv.net` artworks / illust_id | `phixiv.net` | **false** (new) |
+| YouTube Shorts | `youtube.com/shorts/{id}` only | `youtu.be/{id}` | **false** (new) |
+
+### Security / behavior updates
+
+- Rewrite hosts are **operator allowlist only**; API ignores client host overrides.
+- UI shows read-only target domain per card; no host editors.
+- Host matching is exact (after stripping a single leading `www.`), not loose suffix match.
+- After a successful bot reply, attempt original-embed suppress (`Manage Messages`); degrade quietly if denied.
+- Spoiler bars on the source message wrap the reply in `||…||`.
+- Mini cards: when master is on, disabled services use a red accent + “Disabled” text.
+
+### Legal note
+
+Same clean-room boundary as above. Fixer ToS/commercial-use claims require legal review before marketing language.

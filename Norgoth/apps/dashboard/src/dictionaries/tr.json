@@ -30,7 +30,7 @@
     "selfAssignableRoles": "Atanabilir Roller",
     "autoResponse": "Otomatik Cevap",
     "autoResponses": "Otomatik Cevaplar",
-    "richLinkEmbeds": "Zengin Bağlantı Gömeleri",
+    "richLinkEmbeds": "Bağlantı Önizlemeleri",
     "community": "Topluluk",
     "onboarding": "Üye Doğrulama",
     "leveling": "Seviye Sistemi",
@@ -365,11 +365,11 @@
       "alertInactive": "Bu sunucu için yoklanan etkin RSS akışı yok."
     },
     "richLinkEmbeds": {
-      "title": "Zengin Bağlantı Gömeleri",
-      "description": "Orijinal mesajı düzenlemeden X, Bluesky, TikTok ve Reddit için gömülebilir sosyal bağlantılarla yanıt verir.",
-      "usage": "Özelliği açın, platformları seçin, isteğe bağlı kanal sınırları koyun, üçüncü taraf alan adı bildirimini onaylayın ve kaydedin.",
-      "alertActive": "Zengin Bağlantı Gömeleri aktif. Eşleşen bağlantılar üçüncü taraf gömme alan adlarıyla bot yanıtında yeniden yazılır.",
-      "alertInactive": "Zengin Bağlantı Gömeleri kapalı. Dış alan adı bildirimini inceledikten sonra başlıktan etkinleştirin."
+      "title": "Bağlantı Önizlemeleri",
+      "description": "Orijinal mesajı düzenlemeden X, Bluesky, TikTok, Instagram, Reddit, Pixiv ve YouTube Shorts için gömülebilir sosyal bağlantılarla yanıt verir.",
+      "usage": "Özelliği açın, platformları seçin, isteğe bağlı kanal sınırları koyun, sabit üçüncü taraf alan adı bildirimini onaylayın ve kaydedin. Yönet Mesajlar izni, yanıttan sonra özgün gömmeleri bastırmaya izin verir.",
+      "alertActive": "Bağlantı Önizlemeleri aktif. Eşleşen bağlantılar sabit üçüncü taraf gömme alan adlarıyla bot yanıtında yeniden yazılır.",
+      "alertInactive": "Bağlantı Önizlemeleri duraklatıldı. Dış alan adı bildirimini inceledikten sonra başlıktan etkinleştirin."
     },
     "campaigns": {
       "title": "Kampanya Mesajlaşması",

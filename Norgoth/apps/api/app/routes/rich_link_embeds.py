@@ -1,4 +1,8 @@
-"""Per-guild Rich Link Embeds configuration (clean-room NorBot feature)."""
+"""Per-guild Link Embeds configuration (clean-room NorBot feature).
+
+User-facing name: Link Embeds / Bağlantı Önizlemeleri.
+Internal key/route remains ``rich_link_embeds`` for compatibility.
+"""
 
 from __future__ import annotations
 
@@ -13,17 +17,19 @@ from app.services.campaign_store import get_redis, now_iso
 from app.services.feature_config_store import read_raw, save_config
 
 router = APIRouter(
-    tags=["Rich Link Embeds"],
+    tags=["Link Embeds"],
     dependencies=[Depends(guild_manager_dependency())],
 )
 
-SNOWFLAKE_PATTERN = r"^[0-9]{5,25}$"
-
+# Fixed operator allowlist — never accept arbitrary guild-supplied hosts.
 DEFAULT_REWRITE_HOSTS = {
     "twitter": "fxtwitter.com",
     "bluesky": "bskx.app",
     "tiktok": "vxtiktok.com",
+    "instagram": "ddinstagram.com",
     "reddit": "vxreddit.com",
+    "pixiv": "phixiv.net",
+    "youtube_shorts": "youtu.be",
 }
 
 
@@ -32,13 +38,20 @@ class PlatformToggles(BaseModel):
     bluesky: bool = True
     tiktok: bool = True
     reddit: bool = True
+    # New platforms default off so existing guilds do not suddenly rewrite.
+    instagram: bool = False
+    pixiv: bool = False
+    youtube_shorts: bool = False
 
 
 class RewriteHosts(BaseModel):
     twitter: str = "fxtwitter.com"
     bluesky: str = "bskx.app"
     tiktok: str = "vxtiktok.com"
+    instagram: str = "ddinstagram.com"
     reddit: str = "vxreddit.com"
+    pixiv: str = "phixiv.net"
+    youtube_shorts: str = "youtu.be"
 
 
 class RichLinkEmbedsConfigBody(BaseModel):
@@ -71,6 +84,12 @@ def load_stored_config(raw: str | None) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
+def _force_allowlisted_hosts(_incoming: dict[str, Any] | None = None) -> dict[str, str]:
+    """Always return the fixed operator allowlist (ignore client overrides)."""
+
+    return dict(DEFAULT_REWRITE_HOSTS)
+
+
 @router.get("/guilds/{guild_id}/rich-link-embeds")
 async def get_rich_link_embeds_config(guild_id: str) -> dict[str, Any]:
     redis_client = await get_redis()
@@ -84,7 +103,9 @@ async def get_rich_link_embeds_config(guild_id: str) -> dict[str, Any]:
         {k: v for k, v in stored.items() if k in RichLinkEmbedsConfigBody.model_fields}
         or {}
     )
-    return {"guild_id": guild_id, **config.model_dump()}
+    payload = config.model_dump()
+    payload["rewrite_hosts"] = _force_allowlisted_hosts()
+    return {"guild_id": guild_id, **payload}
 
 
 @router.put("/guilds/{guild_id}/rich-link-embeds")
@@ -97,12 +118,8 @@ async def update_rich_link_embeds_config(
         payload = body.model_dump()
         payload["channel_allowlist"] = _snowflake_list(payload["channel_allowlist"])
         payload["channel_denylist"] = _snowflake_list(payload["channel_denylist"])
-        # Never accept empty rewrite hosts — fall back to defaults.
-        hosts = payload.get("rewrite_hosts") or {}
-        for key, default in DEFAULT_REWRITE_HOSTS.items():
-            host = str(hosts.get(key) or "").strip().lower()
-            hosts[key] = host or default
-        payload["rewrite_hosts"] = hosts
+        # Guild admins cannot choose arbitrary redirect targets.
+        payload["rewrite_hosts"] = _force_allowlisted_hosts()
         payload["updated_at"] = now_iso()
         await save_config(
             guild_id,

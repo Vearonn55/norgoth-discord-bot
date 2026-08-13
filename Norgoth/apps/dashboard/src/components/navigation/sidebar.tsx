@@ -174,7 +174,7 @@ export const SIDEBAR_GROUPS: SidebarGroup[] = [
         icon: cilTags,
       },
       {
-        label: "Rich Link Embeds",
+        label: "Link Embeds",
         href: "/automation/rich-link-embeds",
         icon: cilLink,
       },
@@ -201,7 +201,7 @@ function localizedSidebarLabel(lang: string, item: SidebarItem): string {
     return lang === "tr" ? "Discord Kayıtları" : "Discord Logs";
   }
   if (item.href === "/automation/rich-link-embeds") {
-    return lang === "tr" ? "Zengin Bağlantı Gömeleri" : "Rich Link Embeds";
+    return lang === "tr" ? "Bağlantı Önizlemeleri" : "Link Embeds";
   }
   if (item.href === "/messages/rss-feeds") {
     return lang === "tr" ? "RSS Akışları" : "RSS Feeds";

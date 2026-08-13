@@ -105,6 +105,6 @@ class FeedConfig(_GuildConfigMixin, Base):
 
 
 class RichLinkEmbedsConfig(_GuildConfigMixin, Base):
-    """Rich Link Embeds settings snapshot (``:rich_link_embeds``)."""
+    """Link Embeds settings snapshot (``:rich_link_embeds``)."""
 
     __tablename__ = "rich_link_embeds_configs"

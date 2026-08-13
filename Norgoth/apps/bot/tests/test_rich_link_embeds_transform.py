@@ -1,8 +1,9 @@
-"""Unit tests for clean-room Rich Link Embeds URL transforms."""
+"""Unit tests for clean-room Link Embeds URL transforms."""
 
 from __future__ import annotations
 
 from bot.rich_link_embeds_transform import (
+    ALLOWED_REWRITE_HOSTS,
     extract_urls,
     rewrite_url,
     transform_message_urls,
@@ -13,14 +14,12 @@ ENABLED = {
     "bluesky": True,
     "tiktok": True,
     "reddit": True,
+    "instagram": True,
+    "pixiv": True,
+    "youtube_shorts": True,
 }
 
-HOSTS = {
-    "twitter": "fxtwitter.com",
-    "bluesky": "bskx.app",
-    "tiktok": "vxtiktok.com",
-    "reddit": "vxreddit.com",
-}
+HOSTS = dict(ALLOWED_REWRITE_HOSTS)
 
 
 def test_twitter_status_strips_query() -> None:
@@ -50,6 +49,26 @@ def test_tiktok_video() -> None:
     assert out == "https://vxtiktok.com/@creator/video/9876543210"
 
 
+def test_instagram_reel() -> None:
+    out = rewrite_url(
+        "https://www.instagram.com/reel/AbCdEf123/",
+        enabled_platforms=ENABLED,
+        rewrite_hosts=HOSTS,
+    )
+    assert out == "https://ddinstagram.com/reel/AbCdEf123/"
+
+
+def test_instagram_profile_skipped() -> None:
+    assert (
+        rewrite_url(
+            "https://www.instagram.com/someuser/",
+            enabled_platforms=ENABLED,
+            rewrite_hosts=HOSTS,
+        )
+        is None
+    )
+
+
 def test_reddit_and_short() -> None:
     assert (
         rewrite_url(
@@ -66,6 +85,72 @@ def test_reddit_and_short() -> None:
             rewrite_hosts=HOSTS,
         )
         == "https://vxreddit.com/abc123"
+    )
+
+
+def test_reddit_share_shortcut_skipped() -> None:
+    assert (
+        rewrite_url(
+            "https://www.reddit.com/r/python/s/AbCdEf",
+            enabled_platforms=ENABLED,
+            rewrite_hosts=HOSTS,
+        )
+        is None
+    )
+
+
+def test_pixiv_artwork() -> None:
+    out = rewrite_url(
+        "https://www.pixiv.net/artworks/12345678",
+        enabled_platforms=ENABLED,
+        rewrite_hosts=HOSTS,
+    )
+    assert out == "https://phixiv.net/artworks/12345678"
+
+
+def test_pixiv_legacy_illust() -> None:
+    out = rewrite_url(
+        "https://www.pixiv.net/member_illust.php?illust_id=12345678&mode=medium",
+        enabled_platforms=ENABLED,
+        rewrite_hosts=HOSTS,
+    )
+    assert out == "https://phixiv.net/artworks/12345678"
+
+
+def test_youtube_shorts_to_youtu_be() -> None:
+    out = rewrite_url(
+        "https://www.youtube.com/shorts/dQw4w9WgXcQ",
+        enabled_platforms=ENABLED,
+        rewrite_hosts=HOSTS,
+    )
+    assert out == "https://youtu.be/dQw4w9WgXcQ"
+
+
+def test_youtube_watch_unchanged() -> None:
+    assert (
+        rewrite_url(
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            enabled_platforms=ENABLED,
+            rewrite_hosts=HOSTS,
+        )
+        is None
+    )
+
+
+def test_new_platforms_default_off_when_missing() -> None:
+    platforms = {
+        "twitter": True,
+        "bluesky": True,
+        "tiktok": True,
+        "reddit": True,
+    }
+    assert (
+        rewrite_url(
+            "https://www.instagram.com/p/AbCd/",
+            enabled_platforms=platforms,
+            rewrite_hosts=HOSTS,
+        )
+        is None
     )
 
 
@@ -92,6 +177,45 @@ def test_unsupported_domain() -> None:
     )
 
 
+def test_lookalike_host_rejected() -> None:
+    assert (
+        rewrite_url(
+            "https://twitter.com.evil.example/user/status/1",
+            enabled_platforms=ENABLED,
+            rewrite_hosts=HOSTS,
+        )
+        is None
+    )
+    assert (
+        rewrite_url(
+            "https://nottwitter.com/user/status/1",
+            enabled_platforms=ENABLED,
+            rewrite_hosts=HOSTS,
+        )
+        is None
+    )
+
+
+def test_credentials_in_url_rejected() -> None:
+    assert (
+        rewrite_url(
+            "https://user:pass@x.com/user/status/1",
+            enabled_platforms=ENABLED,
+            rewrite_hosts=HOSTS,
+        )
+        is None
+    )
+
+
+def test_unapproved_rewrite_host_ignored() -> None:
+    out = rewrite_url(
+        "https://x.com/user/status/1",
+        enabled_platforms=ENABLED,
+        rewrite_hosts={**HOSTS, "twitter": "evil.example"},
+    )
+    assert out == "https://fxtwitter.com/user/status/1"
+
+
 def test_code_blocks_ignored() -> None:
     content = (
         "see https://x.com/u/status/1 and "
@@ -100,6 +224,11 @@ def test_code_blocks_ignored() -> None:
     )
     urls = extract_urls(content)
     assert urls == ["https://x.com/u/status/1"]
+
+
+def test_angle_bracket_url() -> None:
+    urls = extract_urls("check <https://x.com/u/status/9>")
+    assert urls == ["https://x.com/u/status/9"]
 
 
 def test_multiple_links_capped() -> None:

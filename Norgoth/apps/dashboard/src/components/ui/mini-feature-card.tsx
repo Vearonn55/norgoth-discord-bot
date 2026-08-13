@@ -41,8 +41,9 @@ type MiniFeatureCardProps = {
   /**
    * When provided, an inline enable toggle is rendered on the card. Enabled
    * cards use a green accent (or ``enabledAccent`` when set); disabled cards
-   * are neutral. The toggle text label (Enabled/Disabled) is always shown so
-   * color is not the only signal.
+   * use ``disabledAccent`` when set (e.g. danger red), otherwise neutral.
+   * The toggle text label (Enabled/Disabled) is always shown so color is not
+   * the only signal.
    */
   enabled?: boolean;
   onToggle?: (checked: boolean) => void;
@@ -52,6 +53,11 @@ type MiniFeatureCardProps = {
    * of the default success green (e.g. Discord Logs category colours).
    */
   enabledAccent?: string;
+  /**
+   * Accent used while the toggle is off. Prefer danger red when a parent
+   * master switch is on so disabled services read as intentionally off.
+   */
+  disabledAccent?: string;
 };
 
 /**
@@ -73,20 +79,23 @@ export function MiniFeatureCard({
   onToggle,
   toggleDisabled = false,
   enabledAccent,
+  disabledAccent,
 }: MiniFeatureCardProps) {
   const hasToggle = typeof onToggle === "function";
   const categoryColor = category ? categoryAccent(category) : undefined;
   const onAccent = enabledAccent || "var(--cui-success)";
+  const offAccent = disabledAccent || "rgba(241, 244, 250, 0.28)";
+  const offText = disabledAccent || "var(--cui-secondary)";
   const accent = hasToggle
     ? enabled
       ? onAccent
-      : "rgba(241, 244, 250, 0.28)"
+      : offAccent
     : categoryColor;
 
   const iconColor = hasToggle
     ? enabled
       ? onAccent
-      : "var(--cui-secondary)"
+      : offText
     : categoryColor;
 
   const label = statusLabel ?? STATUS_LABELS[status];
@@ -156,7 +165,7 @@ export function MiniFeatureCard({
         <span
           className="small flex-shrink-0"
           style={{
-            color: enabled ? onAccent : "var(--cui-secondary)",
+            color: enabled ? onAccent : offText,
           }}
         >
           {statusLabel ?? (enabled ? "Enabled" : "Disabled")}

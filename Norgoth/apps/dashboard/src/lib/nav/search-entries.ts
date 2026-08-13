@@ -279,6 +279,20 @@ export function getSearchEntries(lang: string): SearchEntry[] {
     if (page.href.endsWith("/automation/auto-role")) {
       page.keywords.push("autorole", "join role");
     }
+    if (page.href.endsWith("/automation/rich-link-embeds")) {
+      page.label =
+        lang === "tr" ? "Bağlantı Önizlemeleri" : "Link Embeds";
+      page.keywords.push(
+        "link embeds",
+        "rich link embeds",
+        "bağlantı önizlemeleri",
+        "fxtwitter",
+        "embed fixer",
+        "instagram",
+        "pixiv",
+        "youtube shorts",
+      );
+    }
   }
 
   return [...pages, ...subfeatures];

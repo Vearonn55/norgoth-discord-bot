@@ -9,6 +9,9 @@ export type RichLinkPlatforms = {
   bluesky: boolean;
   tiktok: boolean;
   reddit: boolean;
+  instagram: boolean;
+  pixiv: boolean;
+  youtube_shorts: boolean;
 };
 
 export type RichLinkRewriteHosts = {
@@ -16,6 +19,9 @@ export type RichLinkRewriteHosts = {
   bluesky: string;
   tiktok: string;
   reddit: string;
+  instagram: string;
+  pixiv: string;
+  youtube_shorts: string;
 };
 
 export type RichLinkEmbedsConfig = {
@@ -39,6 +45,17 @@ type RichLinkEmbedsState = {
   save: (guildId: string, config: RichLinkEmbedsConfig) => Promise<void>;
 };
 
+/** Fixed operator allowlist — mirrors API; not guild-editable. */
+export const FIXED_REWRITE_HOSTS: RichLinkRewriteHosts = {
+  twitter: "fxtwitter.com",
+  bluesky: "bskx.app",
+  tiktok: "vxtiktok.com",
+  instagram: "ddinstagram.com",
+  reddit: "vxreddit.com",
+  pixiv: "phixiv.net",
+  youtube_shorts: "youtu.be",
+};
+
 export const defaults: RichLinkEmbedsConfig = {
   enabled: false,
   platforms: {
@@ -46,18 +63,16 @@ export const defaults: RichLinkEmbedsConfig = {
     bluesky: true,
     tiktok: true,
     reddit: true,
+    instagram: false,
+    pixiv: false,
+    youtube_shorts: false,
   },
   channel_allowlist: [],
   channel_denylist: [],
   ignore_bots: true,
   process_edits: false,
   max_links_per_message: 3,
-  rewrite_hosts: {
-    twitter: "fxtwitter.com",
-    bluesky: "bskx.app",
-    tiktok: "vxtiktok.com",
-    reddit: "vxreddit.com",
-  },
+  rewrite_hosts: { ...FIXED_REWRITE_HOSTS },
   disclosure_acknowledged: false,
 };
 
@@ -83,15 +98,12 @@ function normalize(data: Record<string, unknown>): RichLinkEmbedsConfig {
     ...defaults.platforms,
     ...((data.platforms as Partial<RichLinkPlatforms> | undefined) ?? {}),
   };
-  const rewrite_hosts = {
-    ...defaults.rewrite_hosts,
-    ...((data.rewrite_hosts as Partial<RichLinkRewriteHosts> | undefined) ?? {}),
-  };
   return {
     ...defaults,
     ...data,
     platforms,
-    rewrite_hosts,
+    // Always force allowlisted hosts client-side too.
+    rewrite_hosts: { ...FIXED_REWRITE_HOSTS },
     channel_allowlist: Array.isArray(data.channel_allowlist)
       ? (data.channel_allowlist as string[])
       : [],
@@ -128,7 +140,7 @@ export const useRichLinkEmbedsStore = create<RichLinkEmbedsState>((set) => ({
         error:
           e instanceof Error
             ? e.message
-            : "Failed to load Rich Link Embeds configuration.",
+            : "Failed to load Link Embeds configuration.",
       });
     } finally {
       if (requestId === latestLoadRequestId) {
@@ -139,6 +151,10 @@ export const useRichLinkEmbedsStore = create<RichLinkEmbedsState>((set) => ({
   save: async (guildId, config) => {
     set({ saving: true, error: null });
     try {
+      const payload = {
+        ...config,
+        rewrite_hosts: { ...FIXED_REWRITE_HOSTS },
+      };
       const response = await fetchWithTimeout(
         apiUrl(`/guilds/${guildId}/rich-link-embeds`),
         {
@@ -146,7 +162,7 @@ export const useRichLinkEmbedsStore = create<RichLinkEmbedsState>((set) => ({
           headers: { "Content-Type": "application/json" },
           credentials: "include",
           cache: "no-store",
-          body: JSON.stringify(config),
+          body: JSON.stringify(payload),
         },
         TIMEOUT_MS,
       );
@@ -161,7 +177,7 @@ export const useRichLinkEmbedsStore = create<RichLinkEmbedsState>((set) => ({
         error:
           e instanceof Error
             ? e.message
-            : "Failed to save Rich Link Embeds configuration.",
+            : "Failed to save Link Embeds configuration.",
       });
       throw e;
     } finally {

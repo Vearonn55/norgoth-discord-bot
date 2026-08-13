@@ -1,4 +1,7 @@
-"""Rich Link Embeds: reply with embed-friendly social URL rewrites."""
+"""Link Embeds: reply with embed-friendly social URL rewrites.
+
+User-facing name: Link Embeds. Internal module key remains rich_link_embeds.
+"""
 
 from __future__ import annotations
 
@@ -8,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 import discord
 from discord.ext import commands
 
-from bot.rich_link_embeds_transform import transform_message_urls
+from bot.rich_link_embeds_transform import ALLOWED_REWRITE_HOSTS, transform_message_urls
 
 if TYPE_CHECKING:
     from bot.client import NorgothBot
@@ -22,18 +25,16 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "bluesky": True,
         "tiktok": True,
         "reddit": True,
+        "instagram": False,
+        "pixiv": False,
+        "youtube_shorts": False,
     },
     "channel_allowlist": [],
     "channel_denylist": [],
     "ignore_bots": True,
     "process_edits": False,
     "max_links_per_message": 3,
-    "rewrite_hosts": {
-        "twitter": "fxtwitter.com",
-        "bluesky": "bskx.app",
-        "tiktok": "vxtiktok.com",
-        "reddit": "vxreddit.com",
-    },
+    "rewrite_hosts": dict(ALLOWED_REWRITE_HOSTS),
     "disclosure_acknowledged": False,
 }
 
@@ -68,12 +69,9 @@ class RichLinkEmbedsCog(commands.Cog):
             **DEFAULT_CONFIG["platforms"],
             **(stored.get("platforms") or {}),
         }
-        hosts = {
-            **DEFAULT_CONFIG["rewrite_hosts"],
-            **(stored.get("rewrite_hosts") or {}),
-        }
+        # Always enforce operator allowlist hosts.
         merged["platforms"] = platforms
-        merged["rewrite_hosts"] = hosts
+        merged["rewrite_hosts"] = dict(ALLOWED_REWRITE_HOSTS)
         return merged
 
     def channel_allowed(self, channel_id: str, config: dict[str, Any]) -> bool:
@@ -93,7 +91,7 @@ class RichLinkEmbedsCog(commands.Cog):
         try:
             claimed = await redis.set(key, "1", nx=True, ex=SEEN_TTL_SECONDS)
             return bool(claimed)
-        except Exception:  # noqa: BLE001 — degrade to process once without Redis
+        except Exception:  # noqa: BLE001
             logger.debug("rich_link_embeds seen-set unavailable", exc_info=True)
             return True
 
@@ -126,7 +124,7 @@ class RichLinkEmbedsCog(commands.Cog):
         rewritten = transform_message_urls(
             message.content,
             enabled_platforms=dict(config.get("platforms") or {}),
-            rewrite_hosts=dict(config.get("rewrite_hosts") or {}),
+            rewrite_hosts=dict(ALLOWED_REWRITE_HOSTS),
             max_links=max_links,
         )
         if not rewritten:
@@ -135,17 +133,39 @@ class RichLinkEmbedsCog(commands.Cog):
         if not await self._mark_seen(message.guild.id, message.id):
             return
 
+        body = "\n".join(rewritten)
+        # Preserve spoilers when the source message used spoiler bars.
+        if "||" in message.content:
+            body = f"||{body}||"
+
         try:
             await message.reply(
-                "\n".join(rewritten),
+                body,
                 mention_author=False,
                 allowed_mentions=discord.AllowedMentions.none(),
             )
         except discord.HTTPException:
             logger.info(
-                "rich_link_embeds reply failed guild=%s channel=%s",
+                "link_embeds reply_failed guild=%s channel=%s",
                 message.guild.id,
                 message.channel.id,
+            )
+            return
+
+        # Suppress original embeds only after a successful reply.
+        try:
+            await message.edit(suppress=True)
+        except discord.Forbidden:
+            logger.debug(
+                "link_embeds suppress_denied guild=%s channel=%s",
+                message.guild.id,
+                message.channel.id,
+            )
+        except discord.HTTPException as error:
+            logger.debug(
+                "link_embeds suppress_failed guild=%s err=%s",
+                message.guild.id,
+                type(error).__name__,
             )
 
     @commands.Cog.listener()

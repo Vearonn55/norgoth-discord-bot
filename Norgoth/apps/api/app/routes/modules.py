@@ -88,7 +88,7 @@ MODULE_DEFINITIONS: list[dict[str, str]] = [
     },
     {
         "key": "rich_link_embeds",
-        "name": "Rich Link Embeds",
+        "name": "Link Embeds",
         "description": "Reply with embed-friendly social media link rewrites.",
     },
     {

@@ -30,7 +30,7 @@
     "selfAssignableRoles": "Self-Assignable Roles",
     "autoResponse": "Auto Response",
     "autoResponses": "Auto-Responses",
-    "richLinkEmbeds": "Rich Link Embeds",
+    "richLinkEmbeds": "Link Embeds",
     "community": "Community",
     "onboarding": "Member Verification",
     "leveling": "Leveling",
@@ -365,11 +365,11 @@
       "alertInactive": "No enabled RSS feeds are polling for this server."
     },
     "richLinkEmbeds": {
-      "title": "Rich Link Embeds",
-      "description": "Replies with embed-friendly social links for X, Bluesky, TikTok, and Reddit without editing the original message.",
-      "usage": "Enable the feature, pick platforms, optionally limit channels, acknowledge third-party fixer domains, then save.",
-      "alertActive": "Rich Link Embeds is active. Matching links are rewritten in a bot reply using third-party embed hosts.",
-      "alertInactive": "Rich Link Embeds is off. Enable it from the header after reviewing the external-domain disclosure."
+      "title": "Link Embeds",
+      "description": "Replies with embed-friendly social links for X, Bluesky, TikTok, Instagram, Reddit, Pixiv, and YouTube Shorts without editing the original message.",
+      "usage": "Enable the feature, pick platforms, optionally limit channels, acknowledge fixed third-party fixer domains, then save. Manage Messages lets the bot suppress the original embeds after a reply.",
+      "alertActive": "Link Embeds is active. Matching links are rewritten in a bot reply using fixed third-party embed hosts.",
+      "alertInactive": "Link Embeds is paused. Enable it from the header after reviewing the external-domain disclosure."
     },
     "campaigns": {
       "title": "Campaign Messaging",
