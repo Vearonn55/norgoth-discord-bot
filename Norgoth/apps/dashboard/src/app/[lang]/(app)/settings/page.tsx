@@ -10,13 +10,13 @@ export default async function SettingsPage({
 
   if (!hasLocale(lang)) notFound();
 
-  await getDictionary(lang);
+  const dict = await getDictionary(lang);
 
   return (
     <div className="d-flex flex-column gap-4">
       <PageHeader
-        title="Settings"
-        description="Configuration for the bot, verification, automation, and the dashboard."
+        title={dict.settingsPage.title}
+        description={dict.settingsPage.description}
       />
 
       <ModuleTogglesPanel />

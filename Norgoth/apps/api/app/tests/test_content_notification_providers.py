@@ -19,6 +19,7 @@ from app.integrations.content_platforms.types import (
     PlatformBlockedError,
     PlatformRawEvent,
     PlatformType,
+    ResolvedCreator,
 )
 from app.integrations.content_platforms.youtube.adapter import (
     YouTubeAdapter,
@@ -264,3 +265,148 @@ async def test_mark_replay_dedupe() -> None:
 
         assert await mark_replay("twitch:abc") is True
         assert await mark_replay("twitch:abc") is False
+
+
+@pytest.mark.anyio
+async def test_kick_fetch_latest_from_channel_stream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("KICK_CLIENT_ID", "id")
+    monkeypatch.setenv("KICK_CLIENT_SECRET", "secret")
+    from app.integrations.content_platforms.kick.adapter import KickAdapter
+
+    adapter = KickAdapter(http_client=AsyncMock())
+    adapter._token = "tok"
+    adapter._token_expires_at = 9_999_999_999
+
+    channel_response = MagicMock()
+    channel_response.status_code = 200
+    channel_response.json.return_value = {
+        "data": [
+            {
+                "broadcaster_user_id": 42,
+                "slug": "demo",
+                "stream_title": "Friday Night",
+                "category": {"id": 1, "name": "Just Chatting"},
+                "stream": {
+                    "is_live": True,
+                    "start_time": "2026-08-13T10:00:00Z",
+                    "thumbnail": "https://example.com/thumb.jpg",
+                    "url": "https://kick.com/demo",
+                    "viewer_count": 12,
+                },
+            }
+        ]
+    }
+    adapter._http.request = AsyncMock(return_value=channel_response)
+
+    creator = ResolvedCreator(
+        platform=PlatformType.KICK,
+        platform_creator_id="42",
+        username="demo",
+        display_name="Demo",
+        profile_url="https://kick.com/demo",
+    )
+    events = await adapter.fetch_latest(creator, limit=1)
+    assert len(events) == 1
+    assert events[0].event_type == ContentEventType.STREAM_STARTED
+    assert events[0].title == "Friday Night"
+    assert events[0].external_content_id == "42:2026-08-13T10:00:00Z"
+    assert events[0].is_live is True
+
+
+@pytest.mark.anyio
+async def test_kick_fetch_latest_offline_channel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("KICK_CLIENT_ID", "id")
+    monkeypatch.setenv("KICK_CLIENT_SECRET", "secret")
+    from app.integrations.content_platforms.kick.adapter import KickAdapter
+
+    adapter = KickAdapter(http_client=AsyncMock())
+    adapter._token = "tok"
+    adapter._token_expires_at = 9_999_999_999
+
+    channel_response = MagicMock()
+    channel_response.status_code = 200
+    channel_response.json.return_value = {
+        "data": [
+            {
+                "broadcaster_user_id": 42,
+                "slug": "demo",
+                "stream_title": "",
+                "stream": {"is_live": False},
+            }
+        ]
+    }
+    users_response = MagicMock()
+    users_response.status_code = 200
+    users_response.json.return_value = {"data": []}
+    legacy_response = MagicMock()
+    legacy_response.status_code = 200
+    legacy_response.json.return_value = {"data": []}
+
+    adapter._http.request = AsyncMock(
+        side_effect=[channel_response, users_response, legacy_response]
+    )
+
+    creator = ResolvedCreator(
+        platform=PlatformType.KICK,
+        platform_creator_id="42",
+        username="demo",
+        display_name="Demo",
+        profile_url="https://kick.com/demo",
+    )
+    assert await adapter.fetch_latest(creator) == []
+
+
+@pytest.mark.anyio
+async def test_kick_enrich_offline_event() -> None:
+    from app.integrations.content_platforms.kick.adapter import KickAdapter
+
+    adapter = KickAdapter(http_client=AsyncMock())
+    raw = PlatformRawEvent(
+        platform=PlatformType.KICK,
+        event_type=ContentEventType.STREAM_ENDED,
+        external_content_id="42:ended",
+        platform_creator_id="42",
+        raw={
+            "broadcaster": {
+                "user_id": 42,
+                "username": "demo",
+                "channel_slug": "demo",
+                "profile_picture": "https://example.com/a.png",
+            },
+            "is_live": False,
+            "title": "Was live",
+            "started_at": "2026-08-13T10:00:00Z",
+            "ended_at": "2026-08-13T12:00:00Z",
+        },
+    )
+    event = await adapter.enrich_event(raw)
+    assert event.event_type == ContentEventType.STREAM_ENDED
+    assert event.is_live is False
+    assert event.content_url == "https://kick.com/demo"
+
+
+def test_manual_test_event_synthesizes_when_offline() -> None:
+    from app.routes.content_notifications import _manual_test_event
+    from uuid import uuid4
+
+    creator = ResolvedCreator(
+        platform=PlatformType.KICK,
+        platform_creator_id="42",
+        username="demo",
+        display_name="Demo",
+        profile_url="https://kick.com/demo",
+    )
+    event = _manual_test_event(
+        creator=creator,
+        subscription_id=uuid4(),
+        latest=None,
+        event_types=["STREAM_STARTED"],
+    )
+    assert event.event_type == ContentEventType.STREAM_STARTED
+    assert event.external_content_id.startswith("manual-test:")
+    assert event.raw_metadata.get("synthetic") is True
+    assert event.title.startswith("[Test]")

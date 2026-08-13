@@ -6,12 +6,13 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal, Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -24,6 +25,7 @@ from app.core.config import get_settings
 from app.integrations.content_platforms.registry import get_adapter, platform_availability
 from app.integrations.content_platforms.types import (
     ContentEventType,
+    NormalizedContentEvent,
     PlatformAdapterError,
     PlatformBlockedError,
     PlatformType,
@@ -371,6 +373,15 @@ async def create_account(
                         status="active",
                     )
                 )
+        else:
+            # Account is saved, but live events will not arrive until subscribe works.
+            sub.status = "upstream_subscribe_failed"
+            logger.warning(
+                "Push subscribe failed for %s/%s guild=%s",
+                creator.platform.value,
+                creator.platform_creator_id,
+                guild_id,
+            )
     else:
         existing_cursor = await session.scalar(
             select(PlatformMonitorCursor).where(
@@ -444,14 +455,57 @@ async def delete_account(
     session: AsyncSession = Depends(get_database_session),
 ) -> dict[str, Any]:
     sub = await session.scalar(
-        select(GuildContentSubscription).where(
+        select(GuildContentSubscription)
+        .where(
             GuildContentSubscription.id == subscription_id,
             GuildContentSubscription.guild_id == guild_id,
         )
+        .options(selectinload(GuildContentSubscription.source))
     )
     if sub is None:
         raise HTTPException(status_code=404, detail="Subscription not found")
+
+    source = sub.source
+    source_id = sub.source_id
     await session.delete(sub)
+    await session.flush()
+
+    # Drop Kick/Twitch upstream subscriptions when no guild still monitors the source.
+    remaining = await session.scalar(
+        select(func.count())
+        .select_from(GuildContentSubscription)
+        .where(GuildContentSubscription.source_id == source_id)
+    )
+    if int(remaining or 0) == 0 and source is not None:
+        adapter = get_adapter(source.platform)
+        if adapter.supports_push() and adapter.is_available():
+            creator = ResolvedCreator(
+                platform=PlatformType(source.platform),
+                platform_creator_id=source.platform_creator_id,
+                username=source.username,
+                display_name=source.display_name,
+                profile_url=source.profile_url,
+                avatar_url=source.avatar_url,
+                canonical_url=source.canonical_url,
+            )
+            try:
+                await adapter.unsubscribe(creator)
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "Upstream unsubscribe failed for %s/%s",
+                    source.platform,
+                    source.platform_creator_id,
+                )
+        platform_subs = (
+            await session.scalars(
+                select(PlatformSubscription).where(
+                    PlatformSubscription.source_id == source_id
+                )
+            )
+        ).all()
+        for row in platform_subs:
+            await session.delete(row)
+
     await session.commit()
     return {"ok": True}
 
@@ -664,25 +718,27 @@ async def test_notification(
         canonical_url=sub.source.canonical_url,
     )
     latest = await adapter.fetch_latest(creator, limit=1)
-    if not latest:
-        raise HTTPException(status_code=404, detail="No recent content available to test.")
+    event = _manual_test_event(
+        creator=creator,
+        subscription_id=sub.id,
+        latest=latest[0] if latest else None,
+        event_types=sub.event_types or [],
+    )
 
-    event = latest[0]
     row = await persist_and_fanout(session, event, source=sub.source)
-    await session.commit()
     if row is None:
-        return {"ok": True, "deduplicated": True, "message": "Event already delivered."}
+        raise HTTPException(status_code=500, detail="Could not persist test event.")
 
-    # Also force an immediate delivery job for this subscription.
-    job = NotificationJob(
+    # Fanout may already have queued a job for enabled subscriptions. Always
+    # ensure THIS subscription gets a job (even if disabled / type-filtered),
+    # without double-inserting into the unique (event, subscription) key.
+    job_id = await _ensure_job_enqueued(
+        session,
         event_id=row.id,
         subscription_id=sub.id,
-        status="queued",
     )
-    session.add(job)
     await session.commit()
-    await enqueue_job(str(job.id))
-    return {"ok": True, "job_id": str(job.id), "event_id": str(row.id)}
+    return {"ok": True, "job_id": str(job_id), "event_id": str(row.id)}
 
 
 @router.post("/guilds/{guild_id}/content-notifications/force")
@@ -729,17 +785,158 @@ async def force_notification(
             detail="Content URL does not match recent posts for this creator.",
         )
 
-    row = await persist_and_fanout(session, match, source=sub.source)
-    await session.commit()
+    # Unique id so force can re-deliver the same live session.
+    forced = NormalizedContentEvent(
+        platform=match.platform,
+        event_type=match.event_type,
+        external_content_id=f"force:{sub.id}:{uuid4()}:{match.external_content_id}",
+        creator_platform_id=match.creator_platform_id,
+        creator_name=match.creator_name,
+        creator_avatar=match.creator_avatar,
+        title=match.title,
+        description=match.description,
+        content_url=match.content_url,
+        playable_url=match.playable_url,
+        thumbnail_url=match.thumbnail_url,
+        published_at=match.published_at or datetime.now(timezone.utc),
+        is_live=match.is_live,
+        game=match.game,
+        category=match.category,
+        viewer_count=match.viewer_count,
+        raw_metadata={**(match.raw_metadata or {}), "forced": True},
+    )
+
+    row = await persist_and_fanout(session, forced, source=sub.source)
     if row is None:
-        return {"ok": True, "deduplicated": True}
+        raise HTTPException(status_code=500, detail="Could not persist forced event.")
 
-    job = NotificationJob(event_id=row.id, subscription_id=sub.id, status="queued")
-    session.add(job)
+    job_id = await _ensure_job_enqueued(
+        session,
+        event_id=row.id,
+        subscription_id=sub.id,
+    )
     await session.commit()
-    await enqueue_job(str(job.id))
-    return {"ok": True, "job_id": str(job.id), "event_id": str(row.id)}
+    return {"ok": True, "job_id": str(job_id), "event_id": str(row.id)}
 
+
+async def _ensure_job_enqueued(
+    session: AsyncSession,
+    *,
+    event_id: UUID,
+    subscription_id: UUID,
+) -> UUID:
+    """Insert-or-reuse the notification job and push it onto the Redis queue."""
+
+    stmt = (
+        pg_insert(NotificationJob)
+        .values(
+            event_id=event_id,
+            subscription_id=subscription_id,
+            status="queued",
+            attempt_count=0,
+            next_attempt_at=datetime.now(timezone.utc),
+        )
+        .on_conflict_do_nothing(
+            constraint="uq_notification_jobs_event_subscription",
+        )
+        .returning(NotificationJob.id)
+    )
+    job_id = (await session.execute(stmt)).scalar_one_or_none()
+    if job_id is not None:
+        await enqueue_job(str(job_id))
+        return job_id
+
+    existing = await session.scalar(
+        select(NotificationJob).where(
+            NotificationJob.event_id == event_id,
+            NotificationJob.subscription_id == subscription_id,
+        )
+    )
+    if existing is None:
+        raise HTTPException(
+            status_code=500,
+            detail="Could not create notification job for test delivery.",
+        )
+    # Fanout may already have queued this job — only re-queue finished ones.
+    if existing.status in {"succeeded", "dead", "failed"}:
+        existing.status = "queued"
+        existing.last_error = None
+        existing.next_attempt_at = datetime.now(timezone.utc)
+        await enqueue_job(str(existing.id))
+    return existing.id
+
+
+def _manual_test_event(
+    *,
+    creator: ResolvedCreator,
+    subscription_id: UUID,
+    latest: NormalizedContentEvent | None,
+    event_types: list[str],
+) -> NormalizedContentEvent:
+    """Build a unique event for the dashboard Test button.
+
+    Always uses a fresh external id so retests are not swallowed by dedupe.
+    If the creator is offline / has no recent content, synthesize a sample
+    event so Discord delivery can still be verified.
+    """
+
+    preferred = None
+    if event_types:
+        for value in event_types:
+            try:
+                preferred = ContentEventType(value)
+                break
+            except ValueError:
+                continue
+    if preferred is None:
+        preferred = (
+            latest.event_type
+            if latest is not None
+            else ContentEventType.STREAM_STARTED
+        )
+
+    if latest is not None:
+        base = latest
+        title = base.title or f"[Test] {creator.display_name}"
+        return NormalizedContentEvent(
+            platform=base.platform,
+            event_type=preferred if preferred == base.event_type else base.event_type,
+            external_content_id=f"manual-test:{subscription_id}:{uuid4()}",
+            creator_platform_id=base.creator_platform_id,
+            creator_name=base.creator_name or creator.display_name,
+            creator_avatar=base.creator_avatar or creator.avatar_url,
+            title=title,
+            description=base.description,
+            content_url=base.content_url or creator.profile_url,
+            playable_url=base.playable_url or base.content_url or creator.profile_url,
+            thumbnail_url=base.thumbnail_url,
+            published_at=datetime.now(timezone.utc),
+            is_live=base.is_live if base.is_live is not None else True,
+            game=base.game,
+            category=base.category,
+            viewer_count=base.viewer_count,
+            raw_metadata={**(base.raw_metadata or {}), "manual_test": True},
+        )
+
+    # Offline / empty feed — still allow verifying Discord webhook delivery.
+    is_stream = preferred in {
+        ContentEventType.STREAM_STARTED,
+        ContentEventType.STREAM_ENDED,
+    }
+    return NormalizedContentEvent(
+        platform=creator.platform,
+        event_type=preferred,
+        external_content_id=f"manual-test:{subscription_id}:{uuid4()}",
+        creator_platform_id=creator.platform_creator_id,
+        creator_name=creator.display_name,
+        creator_avatar=creator.avatar_url,
+        title=f"[Test] {creator.display_name}",
+        content_url=creator.profile_url or creator.canonical_url,
+        playable_url=creator.profile_url or creator.canonical_url,
+        published_at=datetime.now(timezone.utc),
+        is_live=True if is_stream else None,
+        raw_metadata={"manual_test": True, "synthetic": True},
+    )
 
 @router.get("/guilds/{guild_id}/content-notifications/history")
 async def delivery_history(

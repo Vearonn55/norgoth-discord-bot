@@ -19,6 +19,10 @@ import { ChannelSelect } from "@/components/ui/channel-select";
 import { RoleSelect } from "@/components/ui/role-select";
 import { MessagePreview } from "@/components/discord/message-preview";
 import { apiUrl } from "@/lib/api";
+import {
+  localizeSubscriptionStatus,
+  useContentNotificationsCopy,
+} from "@/lib/content-notifications-copy";
 
 const PLATFORMS: Array<{ id: ContentPlatform; label: string }> = [
   { id: "youtube", label: "YouTube" },
@@ -29,6 +33,7 @@ const PLATFORMS: Array<{ id: ContentPlatform; label: string }> = [
 ];
 
 export function AccountsPanel() {
+  const copy = useContentNotificationsCopy();
   const { guildId } = useFirstGuild();
   const resources = useGuildStore((s) => s.resources);
   const accounts = useContentNotificationsStore((s) => s.accounts);
@@ -98,7 +103,7 @@ export function AccountsPanel() {
         setPreviewPayload(data.payload);
       }
     } catch (err) {
-      setFeedback(err instanceof Error ? err.message : "Resolve failed");
+      setFeedback(err instanceof Error ? err.message : copy.resolveFailed);
       setResolved(null);
     }
   }
@@ -118,26 +123,27 @@ export function AccountsPanel() {
       setWizardOpen(false);
       setUrl("");
       setResolved(null);
-      setFeedback("Account saved.");
+      setFeedback(copy.accountSaved);
     } catch (err) {
-      setFeedback(err instanceof Error ? err.message : "Save failed");
+      setFeedback(err instanceof Error ? err.message : copy.saveFailed);
     }
   }
 
   const platformMeta = (id: string) =>
     platforms.find((p) => p.platform === id);
 
+  const transportLabel = (transport: string) => {
+    if (transport === "poll") return copy.transportPoll;
+    if (transport === "unsupported") return copy.transportUnsupported;
+    if (transport === "webhook") return copy.transportWebhook;
+    return transport;
+  };
+
   return (
     <div className="d-flex flex-column gap-4">
       <div className="d-flex align-items-center justify-content-between gap-3 flex-wrap">
         <div>
-          <p className="mb-0 small text-body-secondary">
-            Monitor creators and deliver alerts through managed Discord webhooks.
-            Admins never paste platform API keys or webhook URLs. No creator
-            Connect account step is required for YouTube, Twitch, Kick, or X —
-            paste a public creator URL. TikTok cannot monitor arbitrary creators
-            with official APIs.
-          </p>
+          <p className="mb-0 small text-body-secondary">{copy.accountsIntro}</p>
           <div className="mt-2 d-flex gap-2 flex-wrap">
             {PLATFORMS.map((p) => {
               const meta = platformMeta(p.id);
@@ -153,8 +159,10 @@ export function AccountsPanel() {
                       ? "webhook"
                       : "poll";
               const titleParts = [
-                `${activeCount} of ${activeLimit} active`,
-                transport,
+                copy.activeCapacity
+                  .replace("{count}", String(activeCount))
+                  .replace("{limit}", String(activeLimit)),
+                transportLabel(transport),
                 meta?.reason || undefined,
               ].filter(Boolean);
               return (
@@ -165,22 +173,21 @@ export function AccountsPanel() {
                   title={titleParts.join(" · ")}
                 >
                   {p.label}
-                  {blocked ? " · blocked" : ""}
+                  {blocked ? ` · ${copy.blocked}` : ""}
                   {` · ${activeCount}/${activeLimit}`}
-                  {transport === "poll" && !blocked ? " · poll" : ""}
-                  {transport === "webhook" && !blocked ? " · webhook" : ""}
+                  {!blocked ? ` · ${transportLabel(transport)}` : ""}
                 </CBadge>
               );
             })}
             <CBadge color={workerOnline ? "success" : "warning"}>
-              Worker {workerOnline ? "online" : "offline"}
+              {workerOnline ? copy.workerOnline : copy.workerOffline}
             </CBadge>
           </div>
           {platformMeta(platform)?.available === false &&
           platformMeta(platform)?.reason ? (
             <p className="small text-warning mb-0 mt-2" role="status">
               {platform === "tiktok"
-                ? "TikTok monitoring is unavailable: official APIs only cover connected-user content, not arbitrary creators."
+                ? copy.tiktokUnsupported
                 : platformMeta(platform)?.reason}
             </p>
           ) : null}
@@ -194,11 +201,12 @@ export function AccountsPanel() {
             platforms.every(
               (p) =>
                 !p.available ||
-                (typeof p.active_remaining === "number" && p.active_remaining <= 0)
+                (typeof p.active_remaining === "number" &&
+                  p.active_remaining <= 0)
             )
           }
         >
-          {wizardOpen ? "Close" : "Add Account"}
+          {wizardOpen ? copy.close : copy.addAccount}
         </Button>
       </div>
 
@@ -207,10 +215,10 @@ export function AccountsPanel() {
 
       {wizardOpen ? (
         <div className="border rounded p-4 d-flex flex-column gap-3">
-          <h3 className="h6 mb-0">Add monitored account</h3>
+          <h3 className="h6 mb-0">{copy.addMonitoredAccount}</h3>
           <div className="row g-3">
             <div className="col-md-4">
-              <label className="form-label small">Platform</label>
+              <label className="form-label small">{copy.platform}</label>
               <CFormSelect
                 value={platform}
                 onChange={(e) => {
@@ -231,12 +239,14 @@ export function AccountsPanel() {
                     >
                       {p.label}
                       {meta?.available === false
-                        ? " (unavailable)"
+                        ? ` ${copy.unavailable}`
                         : atLimit
-                          ? " (limit reached)"
+                          ? ` ${copy.limitReachedOption}`
                           : meta?.active_count != null &&
                               meta?.active_limit != null
-                            ? ` (${meta.active_count}/${meta.active_limit} active)`
+                            ? ` ${copy.activeCountOption
+                                .replace("{count}", String(meta.active_count))
+                                .replace("{limit}", String(meta.active_limit))}`
                             : ""}
                     </option>
                   );
@@ -244,25 +254,42 @@ export function AccountsPanel() {
               </CFormSelect>
               {platformMeta(platform)?.active_limit != null ? (
                 <p className="form-text mb-0" aria-live="polite">
-                  {platformMeta(platform)?.active_count ?? 0} of{" "}
-                  {platformMeta(platform)?.active_limit} active configurations
-                  {typeof platformMeta(platform)?.active_remaining === "number"
-                    ? ` · ${platformMeta(platform)?.active_remaining} remaining`
-                    : ""}
-                  . Disabled configurations do not consume active capacity.
+                  {copy.activeCapacityHelp
+                    .replace(
+                      "{count}",
+                      String(platformMeta(platform)?.active_count ?? 0),
+                    )
+                    .replace(
+                      "{limit}",
+                      String(platformMeta(platform)?.active_limit),
+                    )
+                    .replace(
+                      "{remaining}",
+                      typeof platformMeta(platform)?.active_remaining ===
+                        "number"
+                        ? copy.remainingSuffix.replace(
+                            "{remaining}",
+                            String(platformMeta(platform)?.active_remaining),
+                          )
+                        : "",
+                    )}
                 </p>
               ) : null}
             </div>
             <div className="col-md-8">
-              <label className="form-label small">Creator / channel URL</label>
+              <label className="form-label small">{copy.creatorUrl}</label>
               <div className="d-flex gap-2">
                 <CFormInput
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
                   placeholder="https://..."
                 />
-                <Button type="button" variant="secondary" onClick={() => void handleResolve()}>
-                  Resolve
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => void handleResolve()}
+                >
+                  {copy.resolve}
                 </Button>
               </div>
             </div>
@@ -294,7 +321,7 @@ export function AccountsPanel() {
 
           <div className="row g-3">
             <div className="col-md-4">
-              <label className="form-label small">Discord channel</label>
+              <label className="form-label small">{copy.discordChannel}</label>
               <ChannelSelect
                 channels={resources?.channels ?? []}
                 value={channelId}
@@ -302,7 +329,7 @@ export function AccountsPanel() {
               />
             </div>
             <div className="col-md-4">
-              <label className="form-label small">Ping role (optional)</label>
+              <label className="form-label small">{copy.pingRoleOptional}</label>
               <RoleSelect
                 roles={resources?.roles ?? []}
                 value={roleId}
@@ -310,12 +337,12 @@ export function AccountsPanel() {
               />
             </div>
             <div className="col-md-4">
-              <label className="form-label small">Template</label>
+              <label className="form-label small">{copy.template}</label>
               <CFormSelect
                 value={templateId}
                 onChange={(e) => setTemplateId(e.target.value)}
               >
-                <option value="">Default</option>
+                <option value="">{copy.defaultTemplate}</option>
                 {templates.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name}
@@ -324,12 +351,12 @@ export function AccountsPanel() {
               </CFormSelect>
             </div>
             <div className="col-md-4">
-              <label className="form-label small">Sender style</label>
+              <label className="form-label small">{copy.senderStyle}</label>
               <CFormSelect
                 value={styleId}
                 onChange={(e) => setStyleId(e.target.value)}
               >
-                <option value="">Default NorBot</option>
+                <option value="">{copy.defaultSender}</option>
                 {styles.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.display_name}
@@ -341,7 +368,7 @@ export function AccountsPanel() {
 
           {previewPayload ? (
             <div>
-              <div className="small text-body-secondary mb-2">Preview</div>
+              <div className="small text-body-secondary mb-2">{copy.preview}</div>
               <MessagePreview content={previewPayload.content || ""} />
             </div>
           ) : null}
@@ -352,7 +379,7 @@ export function AccountsPanel() {
               disabled={saving || !resolved || !channelId}
               onClick={() => void handleSave()}
             >
-              {saving ? "Saving…" : "Save"}
+              {saving ? copy.saving : copy.save}
             </Button>
           </div>
         </div>
@@ -360,7 +387,7 @@ export function AccountsPanel() {
 
       {loading ? (
         <div className="d-flex align-items-center gap-2 text-body-secondary">
-          <CSpinner size="sm" /> Loading accounts…
+          <CSpinner size="sm" /> {copy.loadingAccounts}
         </div>
       ) : null}
 
@@ -387,14 +414,15 @@ export function AccountsPanel() {
             )}
             <div className="flex-grow-1 min-w-0">
               <div className="fw-semibold text-truncate">
-                {account.source?.display_name || "Unknown"}
+                {account.source?.display_name || copy.unknownCreator}
               </div>
               <div className="small text-body-secondary text-uppercase">
-                {account.source?.platform} · {account.status.replaceAll("_", " ")}
+                {account.source?.platform} ·{" "}
+                {localizeSubscriptionStatus(account.status, copy)}
               </div>
             </div>
             <CBadge color={account.enabled ? "success" : "secondary"}>
-              {account.enabled ? "Enabled" : "Paused"}
+              {account.enabled ? copy.enabled : copy.paused}
             </CBadge>
             <Button
               type="button"
@@ -404,13 +432,13 @@ export function AccountsPanel() {
                 void toggleAccount(guildId!, account.id, !account.enabled).catch(
                   (err) => {
                     setFeedback(
-                      err instanceof Error ? err.message : "Update failed"
+                      err instanceof Error ? err.message : copy.updateFailed
                     );
                   }
                 );
               }}
             >
-              {account.enabled ? "Pause" : "Enable"}
+              {account.enabled ? copy.pause : copy.enable}
             </Button>
             <Button
               type="button"
@@ -418,15 +446,15 @@ export function AccountsPanel() {
               size="sm"
               onClick={() => {
                 void testNotification(guildId!, account.id)
-                  .then(() => setFeedback("Test notification queued."))
+                  .then(() => setFeedback(copy.testQueued))
                   .catch((err: unknown) =>
                     setFeedback(
-                      err instanceof Error ? err.message : "Test failed"
+                      err instanceof Error ? err.message : copy.testFailed
                     )
                   );
               }}
             >
-              Test
+              {copy.test}
             </Button>
             <Button
               type="button"
@@ -434,14 +462,12 @@ export function AccountsPanel() {
               size="sm"
               onClick={() => void deleteAccount(guildId!, account.id)}
             >
-              Delete
+              {copy.delete}
             </Button>
           </div>
         ))}
         {!loading && accounts.length === 0 ? (
-          <p className="text-body-secondary mb-0">
-            No monitored accounts yet. Add a creator URL to get started.
-          </p>
+          <p className="text-body-secondary mb-0">{copy.emptyAccounts}</p>
         ) : null}
       </div>
     </div>

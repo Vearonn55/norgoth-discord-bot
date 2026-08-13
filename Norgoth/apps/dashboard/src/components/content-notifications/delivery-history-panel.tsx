@@ -6,8 +6,10 @@ import { CBadge } from "@coreui/react";
 import { formatDateTime } from "@/lib/datetime";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import { useContentNotificationsStore } from "@/stores/content-notifications-store";
+import { useContentNotificationsCopy } from "@/lib/content-notifications-copy";
 
 export function DeliveryHistoryPanel() {
+  const copy = useContentNotificationsCopy();
   const params = useParams();
   const lang = String(params?.lang || "en");
   const { guildId } = useFirstGuild();
@@ -20,20 +22,17 @@ export function DeliveryHistoryPanel() {
 
   return (
     <div className="d-flex flex-column gap-3">
-      <p className="small text-body-secondary mb-0">
-        Delivery attempts for this server. Duplicates are suppressed by platform
-        content identity.
-      </p>
+      <p className="small text-body-secondary mb-0">{copy.historyIntro}</p>
       <div className="table-responsive">
         <table className="table table-sm align-middle mb-0">
           <thead>
             <tr>
-              <th>Time</th>
-              <th>Platform</th>
-              <th>Creator</th>
-              <th>Content</th>
-              <th>Status</th>
-              <th>Latency</th>
+              <th>{copy.colTime}</th>
+              <th>{copy.colPlatform}</th>
+              <th>{copy.colCreator}</th>
+              <th>{copy.colContent}</th>
+              <th>{copy.colStatus}</th>
+              <th>{copy.colLatency}</th>
             </tr>
           </thead>
           <tbody>
@@ -75,7 +74,7 @@ export function DeliveryHistoryPanel() {
         </table>
       </div>
       {history.length === 0 ? (
-        <p className="text-body-secondary mb-0">No delivery history yet.</p>
+        <p className="text-body-secondary mb-0">{copy.emptyHistory}</p>
       ) : null}
     </div>
   );

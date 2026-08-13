@@ -5,8 +5,10 @@ import { CFormInput, CFormTextarea } from "@coreui/react";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import { useContentNotificationsStore } from "@/stores/content-notifications-store";
 import { Button } from "@/components/ui/button";
+import { useContentNotificationsCopy } from "@/lib/content-notifications-copy";
 
 export function TemplatesPanel() {
+  const copy = useContentNotificationsCopy();
   const { guildId } = useFirstGuild();
   const templates = useContentNotificationsStore((s) => s.templates);
   const loadTemplates = useContentNotificationsStore((s) => s.loadTemplates);
@@ -23,21 +25,18 @@ export function TemplatesPanel() {
 
   return (
     <div className="d-flex flex-column gap-4">
-      <p className="small text-body-secondary mb-0">
-        Reusable notification templates. Tags resolve server-side from live
-        content events.
-      </p>
+      <p className="small text-body-secondary mb-0">{copy.templatesIntro}</p>
 
       <div className="border rounded p-3 d-flex flex-column gap-3">
         <div>
-          <label className="form-label small">Name</label>
+          <label className="form-label small">{copy.templateName}</label>
           <CFormInput
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
         </div>
         <div>
-          <label className="form-label small">Content</label>
+          <label className="form-label small">{copy.templateContent}</label>
           <CFormTextarea
             rows={5}
             value={content}
@@ -45,9 +44,9 @@ export function TemplatesPanel() {
           />
         </div>
         <div className="small text-body-secondary">
-          Tags: {"{account}"} {"{title}"} {"{link}"} {"{playable_link}"}{" "}
-          {"{ping_role}"} {"{game}"} {"{viewers}"} {"{platform_icon}"}{" "}
-          {"{profile_pic}"}
+          {copy.templateTags} {"{account}"} {"{title}"} {"{link}"}{" "}
+          {"{playable_link}"} {"{ping_role}"} {"{game}"} {"{viewers}"}{" "}
+          {"{platform_icon}"} {"{profile_pic}"}
         </div>
         <Button
           type="button"
@@ -62,7 +61,7 @@ export function TemplatesPanel() {
             });
           }}
         >
-          Create template
+          {copy.createTemplate}
         </Button>
       </div>
 
@@ -86,7 +85,7 @@ export function TemplatesPanel() {
                 guildId && void deleteTemplate(guildId, template.id)
               }
             >
-              Delete
+              {copy.delete}
             </Button>
           </div>
         ))}

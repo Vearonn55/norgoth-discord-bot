@@ -4,7 +4,7 @@ import { cilBell } from "@coreui/icons";
 import { PageHeader } from "@/components/layout/page-header";
 import { Icon } from "@/components/ui/icon";
 import { AccountsPanel } from "@/components/content-notifications/accounts-panel";
-import { hasLocale } from "../../../dictionaries";
+import { getDictionary, hasLocale } from "../../../dictionaries";
 
 export default async function ContentNotificationsPage({
   params,
@@ -13,13 +13,16 @@ export default async function ContentNotificationsPage({
 }) {
   const { lang } = await params;
   if (!hasLocale(lang)) notFound();
+  const dict = await getDictionary(lang);
+  const copy = dict.contentNotifications;
+  const info = dict.featureInfo.contentNotifications;
 
   return (
     <div className="d-flex flex-column gap-4">
       <PageHeader
-        title="Content Notifications"
+        title={info?.title ?? copy.pageTitle}
         icon={<Icon icon={cilBell} size="xl" />}
-        description="Monitor YouTube, Twitch, Kick, X, and TikTok creators and publish alerts into Discord with managed webhooks."
+        description={info?.description ?? copy.pageDescription}
         category="messages"
         infoKey="contentNotifications"
         actions={
@@ -28,25 +31,25 @@ export default async function ContentNotificationsPage({
               className="btn btn-sm btn-outline-light"
               href={`/${lang}/messages/content-notifications/templates`}
             >
-              Templates
+              {copy.navTemplates}
             </Link>
             <Link
               className="btn btn-sm btn-outline-light"
               href={`/${lang}/messages/content-notifications/sender-styles`}
             >
-              Sender Styles
+              {copy.navSenderStyles}
             </Link>
             <Link
               className="btn btn-sm btn-outline-light"
               href={`/${lang}/messages/content-notifications/history`}
             >
-              History
+              {copy.navHistory}
             </Link>
             <Link
               className="btn btn-sm btn-outline-light"
               href={`/${lang}/messages/content-notifications/analytics`}
             >
-              Analytics
+              {copy.navAnalytics}
             </Link>
           </div>
         }

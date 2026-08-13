@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/layout/page-header";
 import { TemplatesPanel } from "@/components/content-notifications/templates-panel";
-import { hasLocale } from "../../../../dictionaries";
+import { getDictionary, hasLocale } from "../../../../dictionaries";
 
 export default async function TemplatesPage({
   params,
@@ -10,12 +10,14 @@ export default async function TemplatesPage({
 }) {
   const { lang } = await params;
   if (!hasLocale(lang)) notFound();
+  const dict = await getDictionary(lang);
+  const copy = dict.contentNotifications;
 
   return (
     <div className="d-flex flex-column gap-4">
       <PageHeader
-        title="Notification Templates"
-        description="Reusable message templates with runtime content tags."
+        title={copy.templatesPageTitle}
+        description={copy.templatesPageDescription}
         category="messages"
       />
       <TemplatesPanel />

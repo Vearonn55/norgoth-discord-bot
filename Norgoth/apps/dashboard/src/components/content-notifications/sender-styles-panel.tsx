@@ -5,8 +5,10 @@ import { CFormInput } from "@coreui/react";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import { useContentNotificationsStore } from "@/stores/content-notifications-store";
 import { Button } from "@/components/ui/button";
+import { useContentNotificationsCopy } from "@/lib/content-notifications-copy";
 
 export function SenderStylesPanel() {
+  const copy = useContentNotificationsCopy();
   const { guildId } = useFirstGuild();
   const styles = useContentNotificationsStore((s) => s.styles);
   const loadStyles = useContentNotificationsStore((s) => s.loadStyles);
@@ -21,20 +23,18 @@ export function SenderStylesPanel() {
 
   return (
     <div className="d-flex flex-column gap-4">
-      <p className="small text-body-secondary mb-0">
-        Optional webhook username/avatar overrides for notification identity.
-      </p>
+      <p className="small text-body-secondary mb-0">{copy.stylesIntro}</p>
 
       <div className="border rounded p-3 d-flex flex-column gap-3">
         <div>
-          <label className="form-label small">Display name</label>
+          <label className="form-label small">{copy.displayName}</label>
           <CFormInput
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
           />
         </div>
         <div>
-          <label className="form-label small">Avatar URL</label>
+          <label className="form-label small">{copy.avatarUrl}</label>
           <CFormInput
             value={avatarUrl}
             onChange={(e) => setAvatarUrl(e.target.value)}
@@ -54,7 +54,7 @@ export function SenderStylesPanel() {
             });
           }}
         >
-          Create style
+          {copy.createStyle}
         </Button>
       </div>
 
@@ -81,7 +81,7 @@ export function SenderStylesPanel() {
               size="sm"
               onClick={() => guildId && void deleteStyle(guildId, style.id)}
             >
-              Delete
+              {copy.delete}
             </Button>
           </div>
         ))}

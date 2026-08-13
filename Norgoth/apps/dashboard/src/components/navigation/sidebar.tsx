@@ -206,6 +206,12 @@ function localizedSidebarLabel(lang: string, item: SidebarItem): string {
   if (item.href === "/messages/rss-feeds") {
     return lang === "tr" ? "RSS Akışları" : "RSS Feeds";
   }
+  if (item.href === "/messages/content-notifications") {
+    return lang === "tr" ? "İçerik Bildirimleri" : "Content Notifications";
+  }
+  if (item.href === "/settings") {
+    return lang === "tr" ? "Ayarlar" : "Settings";
+  }
   return item.label;
 }
 export function getSidebarNavItems(lang: string) {

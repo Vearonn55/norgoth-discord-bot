@@ -7,11 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getDictionary, hasLocale } from "../../../dictionaries";
 
-const LOCALES = [
-  { code: "en", name: "English" },
-  { code: "tr", name: "Türkçe" },
-];
-
 export default async function LanguageSettingsPage({
   params,
 }: PageProps<"/[lang]/settings/language">) {
@@ -19,16 +14,21 @@ export default async function LanguageSettingsPage({
 
   if (!hasLocale(lang)) notFound();
 
-  await getDictionary(lang);
+  const dict = await getDictionary(lang);
+  const copy = dict.settingsPage;
+  const locales = [
+    { code: "en", name: copy.english },
+    { code: "tr", name: copy.turkish },
+  ];
 
   return (
     <div className="d-flex flex-column gap-4">
       <PageHeader
-        title="Language & Localization"
-        description="Switch the dashboard language. The selected locale is part of the URL, so links can be shared per language."
+        title={copy.languagePageTitle}
+        description={copy.languagePageDescription}
         actions={
           <Button asChild variant="secondary">
-            <Link href={`/${lang}/settings`}>Back to Settings</Link>
+            <Link href={`/${lang}/settings`}>{copy.backToSettings}</Link>
           </Button>
         }
       />
@@ -36,14 +36,14 @@ export default async function LanguageSettingsPage({
       <Card>
         <div className="d-flex flex-column gap-4">
           <div>
-            <h2 className="h5 mb-0 fw-semibold">Available Languages</h2>
+            <h2 className="h5 mb-0 fw-semibold">{copy.availableLanguages}</h2>
             <p className="mt-1 mb-0 small text-body-secondary">
-              The dashboard ships with English and Turkish dictionaries.
+              {copy.availableLanguagesHelp}
             </p>
           </div>
 
           <CRow className="g-3">
-            {LOCALES.map((locale) => {
+            {locales.map((locale) => {
               const isActive = locale.code === lang;
 
               return (
@@ -53,16 +53,16 @@ export default async function LanguageSettingsPage({
                       <div>
                         <div className="fw-semibold">{locale.name}</div>
                         <div className="mt-1 small text-body-secondary">
-                          Route: /{locale.code}
+                          {copy.routeLabel.replace("{code}", locale.code)}
                         </div>
                       </div>
 
                       {isActive ? (
-                        <Badge variant="success">Active</Badge>
+                        <Badge variant="success">{copy.active}</Badge>
                       ) : (
                         <Button asChild variant="primary">
                           <Link href={`/${locale.code}/settings/language`}>
-                            Switch
+                            {copy.switch}
                           </Link>
                         </Button>
                       )}

@@ -293,6 +293,18 @@ export function getSearchEntries(lang: string): SearchEntry[] {
         "youtube shorts",
       );
     }
+    if (page.href.endsWith("/messages/content-notifications")) {
+      page.label =
+        lang === "tr" ? "İçerik Bildirimleri" : "Content Notifications";
+      page.keywords.push(
+        "content notifications",
+        "içerik bildirimleri",
+        "kick",
+        "twitch",
+        "youtube",
+        "livestream",
+      );
+    }
   }
 
   return [...pages, ...subfeatures];
