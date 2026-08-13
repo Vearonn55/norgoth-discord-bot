@@ -12,6 +12,7 @@
 
 import { useParams } from "next/navigation";
 import { formatDateTime } from "@/lib/datetime";
+import { useLocaleDict } from "@/lib/locale-dict";
 
 export type TranscriptMessage = {
   timestamp: string;
@@ -99,6 +100,8 @@ export function TranscriptConversation({
 }: Props) {
   const params = useParams();
   const lang = String(params?.lang || "en");
+  const dict = useLocaleDict();
+  const d = dict.transcriptPortalPage;
   const messages = parseTranscript(transcript);
 
   if (messages.length === 0) {
@@ -106,7 +109,7 @@ export function TranscriptConversation({
       <div
         className={`border rounded p-3 text-body-secondary small ${className ?? ""}`}
       >
-        No messages were recorded in this transcript.
+        {d.emptyConversation}
       </div>
     );
   }
@@ -165,7 +168,7 @@ export function TranscriptConversation({
                 ) : null}
                 {message.hasEmbed ? (
                   <div className="small text-body-secondary mt-1">
-                    [embed attached]
+                    {d.embedAttached}
                   </div>
                 ) : null}
                 {message.attachments.length > 0 ? (

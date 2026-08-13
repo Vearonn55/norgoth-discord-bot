@@ -27,6 +27,7 @@ import {
   type EmbedMessage,
   type EmbedSyncStatus,
 } from "@/stores/embed-messages-store";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 
 const PAGE_SIZE = 10;
 
@@ -45,32 +46,64 @@ function statusBadgeFor({
   status,
   synced,
   deployments,
+  labels,
 }: {
   status: EmbedSyncStatus;
   synced: number;
   deployments: number;
+  labels: {
+    statusSynced: string;
+    statusOutOfDate: string;
+    statusNeedsRepair: string;
+    statusMissing: string;
+    statusError: string;
+    statusDraftOnly: string;
+  };
 }): { variant: BadgeVariant; label: string } {
   switch (status) {
     case "synced":
-      return { variant: "success", label: `${synced}/${deployments} synced` };
+      return {
+        variant: "success",
+        label: formatDict(labels.statusSynced, {
+          synced,
+          total: deployments,
+        }),
+      };
     case "out_of_date":
       return {
         variant: "warning",
-        label: `Out of date · ${synced}/${deployments} synced`,
+        label: formatDict(labels.statusOutOfDate, {
+          synced,
+          total: deployments,
+        }),
       };
     case "needs_feature_repair":
-      return { variant: "warning", label: "Needs feature repair" };
+      return { variant: "warning", label: labels.statusNeedsRepair };
     case "missing":
-      return { variant: "warning", label: `Missing · ${synced}/${deployments}` };
+      return {
+        variant: "warning",
+        label: formatDict(labels.statusMissing, {
+          synced,
+          total: deployments,
+        }),
+      };
     case "error":
-      return { variant: "danger", label: `Error · ${synced}/${deployments}` };
+      return {
+        variant: "danger",
+        label: formatDict(labels.statusError, {
+          synced,
+          total: deployments,
+        }),
+      };
     case "draft_only":
     default:
-      return { variant: "neutral", label: "Draft only" };
+      return { variant: "neutral", label: labels.statusDraftOnly };
   }
 }
 
 export function EmbedMessagesPanel({ lang }: Props) {
+  const dict = useLocaleDict();
+  const d = dict.embedLibraryPage;
   const { guildId, resources } = useFirstGuild();
   const messages = useEmbedMessagesStore((s) => s.messages);
   const loading = useEmbedMessagesStore((s) => s.loading);
@@ -104,12 +137,12 @@ export function EmbedMessagesPanel({ lang }: Props) {
     try {
       const result = await deploy(guildId, deployFor.id, deployChannelId);
       if (result) {
-        setFeedback(`Deployed “${deployFor.name}” to the selected channel.`);
+        setFeedback(formatDict(d.deployedFeedback, { name: deployFor.name }));
         setFeedbackError(false);
         setDeployFor(null);
         setDeployChannelId("");
       } else {
-        setFeedback(useEmbedMessagesStore.getState().error ?? "Deploy failed.");
+        setFeedback(useEmbedMessagesStore.getState().error ?? d.deployFailed);
         setFeedbackError(true);
       }
     } finally {
@@ -125,12 +158,16 @@ export function EmbedMessagesPanel({ lang }: Props) {
       const result = await resync(guildId, message.id);
       if (result) {
         setFeedback(
-          `Re-synced “${message.name}” (${result.synced_count}/${result.deployment_count} synced).`
+          formatDict(d.resyncFeedback, {
+            name: message.name,
+            synced: result.synced_count,
+            total: result.deployment_count,
+          })
         );
         setFeedbackError(false);
       } else {
         setFeedback(
-          useEmbedMessagesStore.getState().error ?? "Re-sync failed."
+          useEmbedMessagesStore.getState().error ?? d.resyncFailed
         );
         setFeedbackError(true);
       }
@@ -147,12 +184,16 @@ export function EmbedMessagesPanel({ lang }: Props) {
       const result = await reconcile(guildId, message.id);
       if (result) {
         setFeedback(
-          `Checked “${message.name}” — ${result.synced_count}/${result.deployment_count} synced in Discord.`
+          formatDict(d.reconcileFeedback, {
+            name: message.name,
+            synced: result.synced_count,
+            total: result.deployment_count,
+          })
         );
         setFeedbackError(false);
       } else {
         setFeedback(
-          useEmbedMessagesStore.getState().error ?? "Status check failed."
+          useEmbedMessagesStore.getState().error ?? d.reconcileFailed
         );
         setFeedbackError(true);
       }
@@ -195,7 +236,7 @@ export function EmbedMessagesPanel({ lang }: Props) {
       } else {
         setFeedback(
           useEmbedMessagesStore.getState().error ??
-            "This draft is still used by other features."
+            d.stillUsed
         );
         setFeedbackError(true);
         setPendingDelete(null);
@@ -219,7 +260,7 @@ export function EmbedMessagesPanel({ lang }: Props) {
         <div className="d-flex flex-wrap align-items-center justify-content-between gap-3">
           <CFormInput
             value={query}
-            placeholder="Search embeds…"
+            placeholder={d.searchPlaceholder}
             onChange={(e) => {
               setQuery(e.target.value);
               setPage(1);
@@ -233,7 +274,7 @@ export function EmbedMessagesPanel({ lang }: Props) {
               setCreateOpen(true);
             }}
           >
-            New Embed
+            {d.newEmbed}
           </Button>
         </div>
 
@@ -247,7 +288,7 @@ export function EmbedMessagesPanel({ lang }: Props) {
 
         {filtered.length === 0 ? (
           <p className="text-body-secondary small mb-0">
-            No saved embed drafts yet.
+            {d.empty}
           </p>
         ) : (
           <div className="d-flex flex-column gap-2">
@@ -262,6 +303,7 @@ export function EmbedMessagesPanel({ lang }: Props) {
                 status,
                 synced,
                 deployments,
+                labels: d,
               });
               return (
                 <div
@@ -277,11 +319,14 @@ export function EmbedMessagesPanel({ lang }: Props) {
                     </div>
                     <div className="small text-body-tertiary">
                       {isDraftOnly
-                        ? "Not deployed"
-                        : `Used in ${deployments} deployment${
-                            deployments === 1 ? "" : "s"
-                          }`}{" "}
-                      · Updated {formatDateTime(message.updated_at, lang)}
+                        ? d.notDeployed
+                        : formatDict(
+                            deployments === 1 ? d.usedInOne : d.usedInMany,
+                            { count: deployments },
+                          )}{" "}
+                      · {formatDict(d.updated, {
+                        time: formatDateTime(message.updated_at, lang),
+                      })}
                     </div>
                   </div>
                   <div className="d-flex flex-wrap align-items-center gap-2 flex-shrink-0">
@@ -289,13 +334,13 @@ export function EmbedMessagesPanel({ lang }: Props) {
                       {statusBadge.label}
                     </Badge>
                     {!isDraftOnly && needsResync ? (
-                      <Badge variant="warning">Edited — needs re-sync</Badge>
+                      <Badge variant="warning">{d.editedNeedsResync}</Badge>
                     ) : null}
                     <Button variant="secondary" size="sm" asChild>
                       <Link
                         href={`/${lang}/messages/embed-messages/${message.id}`}
                       >
-                        Edit
+                        {d.edit}
                       </Link>
                     </Button>
                     <Button
@@ -307,7 +352,7 @@ export function EmbedMessagesPanel({ lang }: Props) {
                       }}
                       disabled={busy}
                     >
-                      Deploy
+                      {d.deploy}
                     </Button>
                     {!isDraftOnly ? (
                       <>
@@ -316,9 +361,9 @@ export function EmbedMessagesPanel({ lang }: Props) {
                           size="sm"
                           onClick={() => void handleResync(message)}
                           disabled={busy}
-                          title="Synchronize the latest content across deployments"
+                          title={d.resyncTitle}
                         >
-                          {busy ? "Working…" : "Re-Sync"}
+                          {busy ? d.working : d.reSync}
                         </Button>
                         <Button
                           variant="secondary"
@@ -326,7 +371,7 @@ export function EmbedMessagesPanel({ lang }: Props) {
                           onClick={() => void handleReconcile(message)}
                           disabled={busy}
                         >
-                          Check
+                          {d.check}
                         </Button>
                       </>
                     ) : null}
@@ -337,7 +382,7 @@ export function EmbedMessagesPanel({ lang }: Props) {
                         setDeleteDiscord(false);
                         setPendingDelete(message);
                       }}
-                      aria-label="Delete embed draft"
+                      aria-label={d.deleteAria}
                     >
                       <Icon icon={cilTrash} />
                     </Button>
@@ -356,10 +401,10 @@ export function EmbedMessagesPanel({ lang }: Props) {
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={currentPage === 1}
             >
-              Previous
+              {d.previous}
             </Button>
             <span className="small text-body-secondary">
-              Page {currentPage} / {totalPages}
+              {formatDict(d.pageOf, { current: currentPage, total: totalPages })}
             </span>
             <Button
               variant="secondary"
@@ -367,7 +412,7 @@ export function EmbedMessagesPanel({ lang }: Props) {
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
             >
-              Next
+              {d.next}
             </Button>
           </div>
         ) : null}
@@ -382,7 +427,7 @@ export function EmbedMessagesPanel({ lang }: Props) {
         className="norgoth-embed-create-modal"
       >
         <CModalHeader>
-          <CModalTitle>New Embed</CModalTitle>
+          <CModalTitle>{d.newEmbed}</CModalTitle>
         </CModalHeader>
         <CModalBody className="norgoth-embed-create-modal-body">
           {createOpen ? (
@@ -392,12 +437,12 @@ export function EmbedMessagesPanel({ lang }: Props) {
               channels={channels}
               mode="create"
               compact
-              createLabel="Save Draft"
-              cancelLabel="Cancel"
+              createLabel={d.saveDraft}
+              cancelLabel={d.cancel}
               onCancel={() => setCreateOpen(false)}
               onCreated={(created) => {
                 setCreateOpen(false);
-                setFeedback(`Created “${created.name}”.`);
+                setFeedback(formatDict(d.createdFeedback, { name: created.name }));
                 setFeedbackError(false);
               }}
             />
@@ -412,18 +457,17 @@ export function EmbedMessagesPanel({ lang }: Props) {
         backdrop
       >
         <CModalHeader>
-          <CModalTitle>Deploy “{deployFor?.name}”</CModalTitle>
+          <CModalTitle>{formatDict(d.deployTitle, { name: deployFor?.name ?? "" })}</CModalTitle>
         </CModalHeader>
         <CModalBody>
           <p className="small text-body-secondary">
-            Choose a channel to post this embed to now. This creates a tracked
-            deployment you can keep in sync from the library.
+            {d.deployDesc}
           </p>
           <CFormSelect
             value={deployChannelId}
             onChange={(e) => setDeployChannelId(e.target.value)}
           >
-            <option value="">Select a channel…</option>
+            <option value="">{d.selectChannel}</option>
             {channels.map((channel) => (
               <option key={channel.id} value={channel.id}>
                 #{channel.name}
@@ -433,37 +477,37 @@ export function EmbedMessagesPanel({ lang }: Props) {
         </CModalBody>
         <CModalFooter>
           <Button variant="secondary" onClick={() => setDeployFor(null)}>
-            Cancel
+            {d.cancel}
           </Button>
           <Button
             variant="primary"
             onClick={() => void handleDeploy()}
             disabled={deploying || !deployChannelId}
           >
-            {deploying ? "Deploying…" : "Deploy"}
+            {deploying ? d.deploying : d.deploy}
           </Button>
         </CModalFooter>
       </CModal>
 
       <ConfirmDialog
         visible={pendingDelete !== null}
-        title="Delete Draft?"
+        title={d.deleteTitle}
         message={
           <div className="d-flex flex-column gap-3">
             <p className="mb-0 text-body-secondary">
-              This removes the reusable embed{" "}
-              <strong>{pendingDelete?.name}</strong>. By default, previously
-              deployed Discord messages are left in place.
+              {formatDict(d.deleteMessage, {
+                name: pendingDelete?.name ?? "",
+              })}
             </p>
             <CFormCheck
               id="delete-discord-messages"
-              label="Also delete the messages already posted to Discord"
+              label={d.deleteDiscordAlso}
               checked={deleteDiscord}
               onChange={(e) => setDeleteDiscord(e.target.checked)}
             />
           </div>
         }
-        confirmLabel="Delete Draft"
+        confirmLabel={d.deleteConfirm}
         destructive
         busy={deleting}
         onConfirm={confirmDelete}

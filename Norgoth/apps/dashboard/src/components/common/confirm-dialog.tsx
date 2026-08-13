@@ -8,6 +8,7 @@ import {
   CModalTitle,
 } from "@coreui/react";
 import { Button } from "@/components/ui/button";
+import { useLocaleDict } from "@/lib/locale-dict";
 
 type ConfirmDialogProps = {
   visible: boolean;
@@ -29,13 +30,17 @@ export function ConfirmDialog({
   visible,
   title,
   message,
-  confirmLabel = "Confirm",
-  cancelLabel = "Cancel",
+  confirmLabel,
+  cancelLabel,
   destructive = false,
   busy = false,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const dict = useLocaleDict();
+  const resolvedConfirm = confirmLabel ?? dict.common.confirm;
+  const resolvedCancel = cancelLabel ?? dict.common.cancel;
+
   return (
     <CModal visible={visible} onClose={onCancel} alignment="center">
       <CModalHeader>
@@ -50,14 +55,14 @@ export function ConfirmDialog({
       </CModalBody>
       <CModalFooter>
         <Button variant="secondary" onClick={onCancel} disabled={busy}>
-          {cancelLabel}
+          {resolvedCancel}
         </Button>
         <Button
           variant={destructive ? "danger" : "primary"}
           onClick={onConfirm}
           disabled={busy}
         >
-          {busy ? "Working…" : confirmLabel}
+          {busy ? dict.common.working : resolvedConfirm}
         </Button>
       </CModalFooter>
     </CModal>

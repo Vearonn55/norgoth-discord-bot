@@ -6,6 +6,7 @@ import { FeatureConfigurationModal } from "@/components/ui/feature-modal";
 import { Button } from "@/components/ui/button";
 import { ReviewRecord } from "@/components/verification/review-transcript";
 import { useManualReviewStore } from "@/stores/manual-review-store";
+import { useLocaleDict } from "@/lib/locale-dict";
 
 type ManualReviewModalProps = {
   visible: boolean;
@@ -29,6 +30,8 @@ export function ManualReviewModal({
   onClose,
   onReviewed,
 }: ManualReviewModalProps) {
+  const dict = useLocaleDict();
+  const d = dict.verificationPage;
   const detail = useManualReviewStore((s) => s.detail);
   const detailLoading = useManualReviewStore((s) => s.detailLoading);
   const detailError = useManualReviewStore((s) => s.detailError);
@@ -59,14 +62,14 @@ export function ManualReviewModal({
     <FeatureConfigurationModal
       visible={visible}
       onClose={onClose}
-      title="Review Member"
-      description="Approve or deny this pending member based on the risk analysis below."
+      title={d.reviewTitle}
+      description={d.reviewDesc}
       category="community"
       size="lg"
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={busy}>
-            Close
+            {d.close}
           </Button>
           {pending ? (
             <>
@@ -75,14 +78,14 @@ export function ManualReviewModal({
                 onClick={() => void handleDecision(false)}
                 disabled={busy}
               >
-                {busy ? "…" : "Deny"}
+                {busy ? "…" : d.deny}
               </Button>
               <Button
                 variant="primary"
                 onClick={() => void handleDecision(true)}
                 disabled={busy}
               >
-                {busy ? "…" : "Approve"}
+                {busy ? "…" : d.approve}
               </Button>
             </>
           ) : null}
@@ -98,7 +101,7 @@ export function ManualReviewModal({
       {detailLoading ? (
         <div className="d-flex align-items-center gap-2 text-body-secondary">
           <CSpinner size="sm" />
-          Loading…
+          {d.loading}
         </div>
       ) : detailError ? (
         <CAlert color="warning" className="mb-0">

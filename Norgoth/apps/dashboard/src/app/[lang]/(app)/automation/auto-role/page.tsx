@@ -12,19 +12,20 @@ export default async function AutoRolePage({
 
   if (!hasLocale(lang)) notFound();
 
-  await getDictionary(lang);
+  const dict = await getDictionary(lang);
+  const info = dict.featureInfo.autoRole;
 
   return (
     <div className="d-flex flex-column gap-4">
-        <PageHeader
-          title="Auto Role"
-          icon={<Icon icon={cilUserFollow} size="xl" />}
-          category="roles"
-          description="Automatically grant a role to every member who joins the server."
-          infoKey="autoRole"
-        />
+      <PageHeader
+        title={info.title}
+        icon={<Icon icon={cilUserFollow} size="xl" />}
+        category="roles"
+        description={info.description}
+        infoKey="autoRole"
+      />
 
-        <AutomationSettingsPanel section="autorole" />
-      </div>
+      <AutomationSettingsPanel section="autorole" />
+    </div>
   );
 }

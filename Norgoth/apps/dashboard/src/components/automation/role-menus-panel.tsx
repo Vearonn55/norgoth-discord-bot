@@ -38,10 +38,13 @@ import {
   type RoleMenuEntry,
 } from "@/stores/automation-store";
 import { useEmbedMessagesStore } from "@/stores/embed-messages-store";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 
 const PAGE_SIZE = 6;
 
 export function RoleMenusPanel() {
+  const dict = useLocaleDict();
+  const d = dict.roleMenusPage;
   const { guildId, resources, loading, error, reload } = useFirstGuild();
   const params = useParams();
   const lang = String(params?.lang || "en");
@@ -224,11 +227,11 @@ export function RoleMenusPanel() {
 
     if (editing.message_source === "text") {
       if (!editing.text_content.trim()) {
-        setSarError("Write a plain-text message before saving.");
+        setSarError(d.errWriteText);
         return;
       }
       if (!editing.channel_id) {
-        setSarError("Choose a channel to post the menu message to.");
+        setSarError(d.errChooseChannel);
         return;
       }
       const next: RoleMenu = {
@@ -256,7 +259,7 @@ export function RoleMenusPanel() {
     // that delivery — no separate "Create" or "Publish embed" action needed.
     if (sourceMode === "CREATE_NEW" && !editing.embed_message_id) {
       if (!newEmbedDraft || !newEmbedDraft.name.trim()) {
-        setSarError("Give the new embed a name before saving.");
+        setSarError(d.errEmbedName);
         return;
       }
       const embedErrors = validateEmbed(newEmbedDraft.embed);
@@ -265,7 +268,7 @@ export function RoleMenusPanel() {
         return;
       }
       if (!newMenuChannelId) {
-        setSarError("Choose a channel to post the menu message to.");
+        setSarError(d.errChooseChannel);
         return;
       }
 
@@ -282,7 +285,7 @@ export function RoleMenusPanel() {
         setSavingDraft(false);
         setSarError(
           useEmbedMessagesStore.getState().error ??
-            "Could not save the embed draft."
+            d.errSaveDraft
         );
         return;
       }
@@ -296,10 +299,7 @@ export function RoleMenusPanel() {
         (d) => d.channel_id === newMenuChannelId && d.discord_message_id
       );
       if (!delivery) {
-        setSarError(
-          "Saved the embed draft, but could not post it to the selected " +
-            "channel. Check the bot's channel permissions and try again."
-        );
+        setSarError(d.errPostEmbed);
         return;
       }
 
@@ -346,7 +346,7 @@ export function RoleMenusPanel() {
       <Card>
         <div className="d-flex align-items-center gap-2 text-body-secondary">
           <CSpinner size="sm" />
-          Loading role menus…
+          {d.loading}
         </div>
       </Card>
     );
@@ -356,10 +356,10 @@ export function RoleMenusPanel() {
     return (
       <Card>
         <div className="d-flex flex-column gap-3">
-          <Badge variant="warning">Bot required</Badge>
+          <Badge variant="warning">{d.botRequired}</Badge>
           <p className="small text-body-secondary">{error}</p>
           <Button variant="secondary" onClick={() => void reload()}>
-            Retry
+            {d.retry}
           </Button>
         </div>
       </Card>
@@ -374,9 +374,9 @@ export function RoleMenusPanel() {
       <SectionCard level="primary" category="roles">
         <div className="d-flex flex-wrap align-items-center justify-content-between gap-3">
           <div>
-            <h2 className="h5 mb-0 fw-semibold">Self-Assignable Roles</h2>
+            <h2 className="h5 mb-0 fw-semibold">{d.title}</h2>
             <p className="mt-1 mb-0 small text-body-secondary">
-              Dropdown List, Button, or Emoji Reaction · {menus.length} menus
+              {formatDict(d.subtitle, { count: menus.length })}
             </p>
           </div>
           {feedback ? (
@@ -395,8 +395,8 @@ export function RoleMenusPanel() {
         visible={editing !== null}
         title={
           editing && menus.some((menu) => menu.id === editing.id)
-            ? "Edit Menu"
-            : "New Menu"
+            ? d.editMenu
+            : d.newMenu
         }
         category="roles"
         size="xl"
@@ -415,7 +415,7 @@ export function RoleMenusPanel() {
                   !newMenuChannelId ||
                   validateEmbed(newEmbedDraft.embed).length > 0)))
         }
-        saveLabel="Save Menu"
+        saveLabel={d.saveMenu}
         onClose={() => {
           setEditing(null);
           resetSarState();
@@ -428,7 +428,7 @@ export function RoleMenusPanel() {
               <div className="col-lg-7 d-flex flex-column gap-3">
                 <div className="d-flex align-items-center justify-content-between gap-2">
                   <CFormLabel className="mb-0 fw-medium">
-                    Menu message
+                    {d.menuMessage}
                   </CFormLabel>
                   <MessageSourceToggle
                     value={editing.message_source}
@@ -471,11 +471,11 @@ export function RoleMenusPanel() {
                         )
                       }
                       height={160}
-                      placeholder="Write the message members will see above the role controls…"
+                      placeholder={d.textPlaceholder}
                     />
                     <div>
                       <CFormLabel className="fw-medium">
-                        Post menu message to channel
+                        {d.postToChannel}
                       </CFormLabel>
                       <CFormSelect
                         value={editing.channel_id ?? ""}
@@ -490,7 +490,7 @@ export function RoleMenusPanel() {
                           )
                         }
                       >
-                        <option value="">Select a channel…</option>
+                        <option value="">{d.selectChannel}</option>
                         {channels.map((channel) => (
                           <option key={channel.id} value={channel.id}>
                             #{channel.name}
@@ -510,7 +510,7 @@ export function RoleMenusPanel() {
                         }
                         onClick={() => requestSourceMode("SELECT_EXISTING")}
                       >
-                        Select From Draft
+                        {d.selectFromDraft}
                       </Button>
                       <Button
                         variant={
@@ -518,13 +518,13 @@ export function RoleMenusPanel() {
                         }
                         onClick={() => requestSourceMode("CREATE_NEW")}
                       >
-                        Create New
+                        {d.createNew}
                       </Button>
                     </div>
 
                     {sourceMode === "NONE" ? (
                       <p className="small text-body-secondary mb-0">
-                        Choose an embed source to bind this role menu to.
+                        {d.chooseEmbedSource}
                       </p>
                     ) : null}
 
@@ -568,7 +568,7 @@ export function RoleMenusPanel() {
                         />
                         <div>
                           <CFormLabel className="fw-medium">
-                            Post menu message to channel
+                            {d.postToChannel}
                           </CFormLabel>
                           <CFormSelect
                             value={newMenuChannelId}
@@ -576,7 +576,7 @@ export function RoleMenusPanel() {
                               setNewMenuChannelId(e.target.value)
                             }
                           >
-                            <option value="">Select a channel…</option>
+                            <option value="">{d.selectChannel}</option>
                             {channels.map((channel) => (
                               <option key={channel.id} value={channel.id}>
                                 #{channel.name}
@@ -584,9 +584,7 @@ export function RoleMenusPanel() {
                             ))}
                           </CFormSelect>
                           <p className="small text-body-secondary mt-1 mb-0">
-                            Saving posts this embed to the channel and binds
-                            the menu to it, so you can publish the role
-                            controls.
+                            {d.postEmbedHelp}
                           </p>
                         </div>
                       </>
@@ -609,13 +607,13 @@ export function RoleMenusPanel() {
 
                 <div>
                   <div className="mb-2 fw-medium">
-                    Roles in this menu ({editing.roles.length} / 25)
+                    {formatDict(d.rolesInMenu, { count: editing.roles.length })}
                   </div>
                   <CFormInput
                     className="mb-2"
                     value={roleSearch}
                     onChange={(e) => setRoleSearch(e.target.value)}
-                    placeholder="Search roles to add…"
+                    placeholder={d.searchRoles}
                   />
                   <div className="d-flex flex-wrap gap-2">
                     {filteredRoles.slice(0, 40).map((role) => {
@@ -711,8 +709,7 @@ export function RoleMenusPanel() {
 
                 {editing.roles.length === 0 ? (
                   <p className="small text-warning mb-0">
-                    This menu has no roles. Add at least one role before
-                    publishing.
+                    {d.noRolesWarning}
                   </p>
                 ) : null}
               </div>
@@ -736,7 +733,7 @@ export function RoleMenusPanel() {
           columns={[
             {
               key: "name",
-              header: "Menu Name",
+              header: d.colMenuName,
               cell: (menu: RoleMenu) => {
                 const draft =
                   menu.binding_type === "embed_message" && menu.embed_message_id
@@ -751,12 +748,12 @@ export function RoleMenusPanel() {
                   menu.binding_type === "embed_message"
                     ? menu.embed_message_id
                       ? draft
-                        ? `${draft.name} - bound menu`
+                        ? formatDict(d.boundMenu, { name: draft.name })
                         : embedsLoading
-                          ? "Loading…"
-                          : "Embed Draft Missing"
-                      : menu.title || "Embed-bound menu"
-                    : menu.title || "Untitled menu";
+                          ? d.loadingShort
+                          : d.embedDraftMissing
+                      : menu.title || d.embedBoundMenu
+                    : menu.title || d.untitledMenu;
                 return (
                   <div className="d-flex flex-column">
                     <span
@@ -766,8 +763,8 @@ export function RoleMenusPanel() {
                     </span>
                     <span className="small text-body-secondary text-truncate">
                       {menu.binding_type === "embed_message"
-                        ? "Bound to Embed Message"
-                        : menu.description || "Standalone embed"}
+                        ? d.boundToEmbed
+                        : menu.description || d.standaloneEmbed}
                     </span>
                   </div>
                 );
@@ -775,44 +772,51 @@ export function RoleMenusPanel() {
             },
             {
               key: "interaction",
-              header: "Assignment UI",
+              header: d.colAssignmentUi,
               cell: (menu: RoleMenu) => (
                 <Badge variant="neutral">
-                  {roleMenuInteractionLabel(menu.interaction)}
+                  {menu.interaction === "select"
+                      ? d.interactionSelect
+                      : menu.interaction === "reactions"
+                        ? d.interactionReactions
+                        : d.interactionButtons}
                 </Badge>
               ),
             },
             {
               key: "roles",
-              header: "Roles",
+              header: d.colRoles,
               cell: (menu: RoleMenu) => (
                 <span>
-                  {menu.roles.length} role{menu.roles.length === 1 ? "" : "s"}
+                  {formatDict(
+                    menu.roles.length === 1 ? d.roleCountOne : d.roleCountMany,
+                    { count: menu.roles.length },
+                  )}
                 </span>
               ),
             },
             {
               key: "status",
-              header: "Status",
+              header: d.colStatus,
               cell: (menu: RoleMenu) => (
                 <div className="d-flex flex-wrap gap-1">
                   {menu.message_id ? (
-                    <Badge variant="success">Published</Badge>
+                    <Badge variant="success">{d.published}</Badge>
                   ) : (
-                    <Badge variant="neutral">Draft</Badge>
+                    <Badge variant="neutral">{d.draft}</Badge>
                   )}
                   {menu.channel_id ? (
                     <Badge variant="info">
                       #{channelNames.get(menu.channel_id) ?? menu.channel_id}
                     </Badge>
                   ) : null}
-                  {bindingHealthBadge(menu.binding_health)}
+                  <BindingHealthBadge health={menu.binding_health} />
                 </div>
               ),
             },
             {
               key: "updated",
-              header: "Updated",
+              header: d.colUpdated,
               cell: (menu: RoleMenu) => (
                 <span className="small text-body-secondary">
                   {formatDateTime(menu.published_at, lang)}
@@ -853,7 +857,7 @@ export function RoleMenusPanel() {
                     }}
                     disabled={editing !== null}
                   >
-                    Edit
+                    {d.edit}
                   </Button>
                   <Button
                     variant="secondary"
@@ -867,7 +871,7 @@ export function RoleMenusPanel() {
                         : !menu.channel_id)
                     }
                   >
-                    Publish
+                    {d.publish}
                   </Button>
                   <Button
                     variant="danger"
@@ -875,7 +879,7 @@ export function RoleMenusPanel() {
                     onClick={() => setPendingDelete(menu)}
                     disabled={busy}
                   >
-                    Delete
+                    {d.delete}
                   </Button>
                 </div>
               ),
@@ -883,13 +887,13 @@ export function RoleMenusPanel() {
           ]}
           rows={filteredMenus}
           rowKey={(menu) => menu.id}
-          emptyMessage="No role menus yet. Create one and publish it to a channel so members can self-assign roles."
+          emptyMessage={d.emptyMenus}
           search={search}
           onSearchChange={(value) => {
             setSearch(value);
             setPage(1);
           }}
-          searchPlaceholder="Search menus…"
+          searchPlaceholder={d.searchMenus}
           page={page}
           pageSize={PAGE_SIZE}
           onPageChange={setPage}
@@ -902,7 +906,7 @@ export function RoleMenusPanel() {
               }}
               disabled={editing !== null}
             >
-              New Menu
+              {d.newMenu}
             </Button>
           }
         />
@@ -910,20 +914,24 @@ export function RoleMenusPanel() {
 
       <ConfirmDialog
         visible={pendingDelete !== null}
-        title="Delete Role Menu?"
+        title={d.deleteTitle}
         message={
           <p className="mb-0 text-body-secondary">
-            This deletes{" "}
-            <strong>{pendingDelete?.title || "this role menu"}</strong>
-            {pendingDelete?.message_id
-              ? pendingDelete?.binding_type === "embed_message"
-                ? ". The bound Embed Message stays in place; only its role controls (buttons, dropdown, or reactions) are removed."
-                : ", including the message already published to Discord (its buttons, dropdown, or reactions)."
-              : "."}{" "}
-            This cannot be undone.
+            {pendingDelete
+              ? formatDict(
+                  pendingDelete.message_id
+                    ? pendingDelete.binding_type === "embed_message"
+                      ? d.deleteEmbedBound
+                      : d.deleteStandalonePublished
+                    : d.deleteDraftOnly,
+                  {
+                    name: pendingDelete.title || d.deleteThisMenu,
+                  },
+                )
+              : ""}
           </p>
         }
-        confirmLabel="Delete Menu"
+        confirmLabel={d.deleteConfirm}
         destructive
         busy={busy}
         onConfirm={async () => {
@@ -936,14 +944,13 @@ export function RoleMenusPanel() {
 
       <ConfirmDialog
         visible={pendingSwitch !== null}
-        title="Discard new embed?"
+        title={d.discardTitle}
         message={
           <p className="mb-0 text-body-secondary">
-            You have an unsaved new embed draft. Switching source will discard
-            it. Continue?
+            {d.discardMessage}
           </p>
         }
-        confirmLabel="Discard & switch"
+        confirmLabel={d.discardConfirm}
         destructive
         onConfirm={() => {
           const next = pendingSwitch;
@@ -956,18 +963,24 @@ export function RoleMenusPanel() {
   );
 }
 
-function bindingHealthBadge(health: RoleMenu["binding_health"]) {
+function BindingHealthBadge({
+  health,
+}: {
+  health: RoleMenu["binding_health"];
+}) {
+  const dict = useLocaleDict();
+  const d = dict.roleMenusPage;
   switch (health) {
     case "healthy":
-      return <Badge variant="success">Healthy</Badge>;
+      return <Badge variant="success">{d.healthHealthy}</Badge>;
     case "needs_resync":
-      return <Badge variant="warning">Needs re-sync</Badge>;
+      return <Badge variant="warning">{d.healthNeedsResync}</Badge>;
     case "message_missing":
-      return <Badge variant="warning">Message missing</Badge>;
+      return <Badge variant="warning">{d.healthMessageMissing}</Badge>;
     case "needs_reassignment":
-      return <Badge variant="danger">Needs reassignment</Badge>;
+      return <Badge variant="danger">{d.healthNeedsReassignment}</Badge>;
     case "unbound":
-      return <Badge variant="warning">No instance</Badge>;
+      return <Badge variant="warning">{d.healthUnbound}</Badge>;
     default:
       return null;
   }

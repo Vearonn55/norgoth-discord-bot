@@ -12,19 +12,20 @@ export default async function AutoResponsesPage({
 
   if (!hasLocale(lang)) notFound();
 
-  await getDictionary(lang);
+  const dict = await getDictionary(lang);
+  const info = dict.featureInfo.autoResponses;
 
   return (
     <div className="d-flex flex-column gap-4">
-        <PageHeader
-          title="Auto-Responses"
-          icon={<Icon icon={cilList} size="xl" />}
-          category="community"
-          description="Keyword-triggered replies with match modes, optional channel restrictions, and per-rule cooldowns."
-          infoKey="autoResponses"
-        />
+      <PageHeader
+        title={info.title}
+        icon={<Icon icon={cilList} size="xl" />}
+        category="community"
+        description={info.description}
+        infoKey="autoResponses"
+      />
 
-        <AutoResponsesPanel />
-      </div>
+      <AutoResponsesPanel />
+    </div>
   );
 }

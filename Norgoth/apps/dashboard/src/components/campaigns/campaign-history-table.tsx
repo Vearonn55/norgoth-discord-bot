@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/date-range-filter";
 import { apiUrl } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import {
   useCampaignsStore,
   type Campaign,
@@ -33,40 +34,9 @@ const STATUS_VARIANTS: Record<string, BadgeVariant> = {
   stopped: "warning",
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  draft: "Draft",
-  scheduled: "Scheduled",
-  queued: "Queued",
-  running: "Running",
-  completed: "Completed",
-  failed: "Failed",
-  stopped: "Stopped",
-};
-
-const STATUS_FILTERS: { value: string; label: string }[] = [
-  { value: "all", label: "All statuses" },
-  { value: "draft", label: "Draft" },
-  { value: "scheduled", label: "Scheduled" },
-  { value: "queued", label: "Queued" },
-  { value: "running", label: "Running" },
-  { value: "completed", label: "Completed" },
-  { value: "failed", label: "Failed" },
-  { value: "stopped", label: "Stopped" },
-];
-
-function campaignName(campaign: Campaign): string {
-  return campaign.title || campaign.name || "Untitled campaign";
-}
-
-function campaignPlatforms(campaign: Campaign): string[] {
-  const keys = campaign.platform_results
-    ? Object.keys(campaign.platform_results)
-    : [];
-  if (keys.length === 0) return ["Discord"];
-  return keys.map((key) => key.charAt(0).toUpperCase() + key.slice(1));
-}
-
 export function CampaignHistoryTable() {
+  const dict = useLocaleDict();
+  const d = dict.campaignHistoryPage;
   const params = useParams();
   const lang = String(params?.lang || "en");
 
@@ -87,6 +57,39 @@ export function CampaignHistoryTable() {
   const [error, setError] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Campaign | null>(null);
 
+  const statusLabels: Record<string, string> = {
+    draft: d.statusDraft,
+    scheduled: d.statusScheduled,
+    queued: d.statusQueued,
+    running: d.statusRunning,
+    completed: d.statusCompleted,
+    failed: d.statusFailed,
+    stopped: d.statusStopped,
+  };
+
+  const statusFilters = [
+    { value: "all", label: d.filterAll },
+    { value: "draft", label: d.statusDraft },
+    { value: "scheduled", label: d.statusScheduled },
+    { value: "queued", label: d.statusQueued },
+    { value: "running", label: d.statusRunning },
+    { value: "completed", label: d.statusCompleted },
+    { value: "failed", label: d.statusFailed },
+    { value: "stopped", label: d.statusStopped },
+  ];
+
+  function campaignName(campaign: Campaign): string {
+    return campaign.title || campaign.name || d.untitled;
+  }
+
+  function campaignPlatforms(campaign: Campaign): string[] {
+    const keys = campaign.platform_results
+      ? Object.keys(campaign.platform_results)
+      : [];
+    if (keys.length === 0) return [d.discord];
+    return keys.map((key) => key.charAt(0).toUpperCase() + key.slice(1));
+  }
+
   useEffect(() => {
     void loadCampaigns();
   }, [loadCampaigns]);
@@ -97,7 +100,8 @@ export function CampaignHistoryTable() {
       for (const platform of campaignPlatforms(campaign)) seen.add(platform);
     }
     return Array.from(seen).sort();
-  }, [campaigns]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaigns, d.discord]);
 
   const filtered = useMemo(() => {
     const search = query.trim().toLowerCase();
@@ -131,7 +135,8 @@ export function CampaignHistoryTable() {
         const bTime = new Date(b.created_at || 0).getTime();
         return bTime - aTime;
       });
-  }, [campaigns, query, statusFilter, platformFilter, dateRange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaigns, query, statusFilter, platformFilter, dateRange, d.untitled, d.discord]);
 
   async function runAction(
     campaign: Campaign,
@@ -146,12 +151,12 @@ export function CampaignHistoryTable() {
         { method: "POST" }
       );
       if (!response.ok) {
-        setError("Action failed. Please try again.");
+        setError(d.actionFailed);
         return;
       }
       await loadCampaigns();
     } catch {
-      setError("Could not reach the Norgoth API.");
+      setError(d.apiUnreachable);
     } finally {
       setActionId(null);
     }
@@ -161,7 +166,7 @@ export function CampaignHistoryTable() {
     if (!pendingDelete) return;
     setActionId(pendingDelete.id);
     const ok = await deleteCampaign(pendingDelete.id);
-    if (!ok) setError("Could not delete campaign.");
+    if (!ok) setError(d.deleteFailed);
     setPendingDelete(null);
     setActionId(null);
   }
@@ -171,7 +176,7 @@ export function CampaignHistoryTable() {
     const busy = actionId === campaign.id;
     const viewBtn = (
       <Button asChild variant="secondary" size="sm">
-        <Link href={`/${lang}/campaigns/${campaign.id}`}>View</Link>
+        <Link href={`/${lang}/campaigns/${campaign.id}`}>{d.view}</Link>
       </Button>
     );
 
@@ -179,7 +184,7 @@ export function CampaignHistoryTable() {
       return (
         <div className="d-flex flex-wrap gap-2 justify-content-end">
           <Button asChild variant="secondary" size="sm">
-            <Link href={`/${lang}/campaigns/${campaign.id}/edit`}>Edit</Link>
+            <Link href={`/${lang}/campaigns/${campaign.id}/edit`}>{d.edit}</Link>
           </Button>
           <Button
             variant="primary"
@@ -187,7 +192,7 @@ export function CampaignHistoryTable() {
             disabled={busy}
             onClick={() => void runAction(campaign, "start")}
           >
-            {busy ? "…" : "Start"}
+            {busy ? "…" : d.start}
           </Button>
           <Button
             variant="danger"
@@ -195,7 +200,7 @@ export function CampaignHistoryTable() {
             disabled={busy}
             onClick={() => setPendingDelete(campaign)}
           >
-            Delete
+            {d.delete}
           </Button>
         </div>
       );
@@ -211,13 +216,12 @@ export function CampaignHistoryTable() {
             disabled={busy}
             onClick={() => void runAction(campaign, "stop")}
           >
-            {busy ? "…" : "Stop"}
+            {busy ? "…" : d.stop}
           </Button>
         </div>
       );
     }
 
-    // scheduled / queued / completed / failed / stopped
     return (
       <div className="d-flex justify-content-end">{viewBtn}</div>
     );
@@ -227,10 +231,9 @@ export function CampaignHistoryTable() {
     <Card>
       <div className="d-flex flex-column gap-3">
         <div>
-          <h2 className="h5 mb-0 fw-semibold">Campaign History</h2>
+          <h2 className="h5 mb-0 fw-semibold">{d.tableTitle}</h2>
           <p className="mt-1 mb-0 small text-body-secondary">
-            All campaigns with delivery status and audience size. Actions adapt
-            to each campaign&apos;s state.
+            {d.tableDescription}
           </p>
         </div>
 
@@ -242,20 +245,20 @@ export function CampaignHistoryTable() {
 
         {loading ? (
           <div className="d-flex align-items-center gap-2 text-body-secondary">
-            <CSpinner size="sm" /> Loading campaigns…
+            <CSpinner size="sm" /> {d.loadingCampaigns}
           </div>
         ) : (
           <DataTable
             columns={[
               {
                 key: "created_at",
-                header: "Created At",
+                header: d.colCreatedAt,
                 className: "text-nowrap",
                 cell: (row) => formatDateTime(row.created_at, lang),
               },
               {
                 key: "name",
-                header: "Name",
+                header: d.colName,
                 cell: (row) => (
                   <Link
                     href={`/${lang}/campaigns/${row.id}`}
@@ -267,39 +270,39 @@ export function CampaignHistoryTable() {
               },
               {
                 key: "platform",
-                header: "Platform",
+                header: d.colPlatform,
                 cell: (row) => campaignPlatforms(row).join(", "),
               },
               {
                 key: "audience",
-                header: "Total Audience",
+                header: d.colTotalAudience,
                 cell: (row) => (row.audience_count ?? 0).toLocaleString(),
               },
               {
                 key: "status",
-                header: "Status",
+                header: d.colStatus,
                 cell: (row) => (
                   <Badge variant={STATUS_VARIANTS[String(row.status)] ?? "neutral"}>
-                    {STATUS_LABELS[String(row.status)] ?? String(row.status)}
+                    {statusLabels[String(row.status)] ?? String(row.status)}
                   </Badge>
                 ),
               },
               {
                 key: "actions",
-                header: "Actions",
+                header: d.colActions,
                 className: "text-end",
                 cell: (row) => renderActions(row),
               },
             ]}
             rows={filtered}
             rowKey={(row) => row.id}
-            emptyMessage="No campaigns match the current filters."
+            emptyMessage={d.emptyFiltered}
             search={query}
             onSearchChange={(value) => {
               setQuery(value);
               setPage(1);
             }}
-            searchPlaceholder="Search campaigns…"
+            searchPlaceholder={d.searchPlaceholder}
             page={page}
             pageSize={10}
             onPageChange={setPage}
@@ -312,10 +315,10 @@ export function CampaignHistoryTable() {
                     setStatusFilter(e.target.value);
                     setPage(1);
                   }}
-                  aria-label="Filter by status"
+                  aria-label={d.filterByStatus}
                   style={{ minWidth: 150 }}
                 >
-                  {STATUS_FILTERS.map((item) => (
+                  {statusFilters.map((item) => (
                     <option key={item.value} value={item.value}>
                       {item.label}
                     </option>
@@ -329,10 +332,10 @@ export function CampaignHistoryTable() {
                       setPlatformFilter(e.target.value);
                       setPage(1);
                     }}
-                    aria-label="Filter by platform"
+                    aria-label={d.filterByPlatform}
                     style={{ minWidth: 140 }}
                   >
-                    <option value="all">All platforms</option>
+                    <option value="all">{d.allPlatforms}</option>
                     {platformOptions.map((platform) => (
                       <option key={platform} value={platform}>
                         {platform}
@@ -349,13 +352,15 @@ export function CampaignHistoryTable() {
 
       <ConfirmDialog
         visible={pendingDelete !== null}
-        title="Delete campaign"
+        title={d.deleteTitle}
         message={
           pendingDelete
-            ? `Delete "${campaignName(pendingDelete)}"? This cannot be undone.`
+            ? formatDict(d.deleteConfirmMessage, {
+                name: campaignName(pendingDelete),
+              })
             : ""
         }
-        confirmLabel="Delete"
+        confirmLabel={d.deleteConfirm}
         destructive
         busy={actionId !== null && pendingDelete !== null}
         onConfirm={() => void confirmDelete()}

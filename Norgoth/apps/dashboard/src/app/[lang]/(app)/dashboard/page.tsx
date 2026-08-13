@@ -16,7 +16,8 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { MetricWidget } from "@/components/ui/metric-widget";
 import { apiUrl } from "@/lib/api";
-import { hasLocale } from "../../dictionaries";
+import { formatDict } from "@/lib/locale-dict";
+import { getDictionary, hasLocale } from "../../dictionaries";
 
 type HomeStatus = {
   botConnected: boolean;
@@ -70,27 +71,29 @@ export default async function DashboardPage({
 
   if (!hasLocale(lang)) notFound();
 
+  const dict = await getDictionary(lang);
+  const d = dict.dashboard;
   const status = await getHomeStatus();
 
   const quickActions = [
     {
-      title: "Create Campaign",
-      description: "Send a message to a Discord channel through the bot.",
+      title: d.quickCreateCampaignTitle,
+      description: d.quickCreateCampaignDesc,
       href: "/campaigns/new",
     },
     {
-      title: "Verification Settings",
-      description: "Channels, roles, and policy for member verification.",
+      title: d.quickVerificationTitle,
+      description: d.quickVerificationDesc,
       href: "/community/onboarding",
     },
     {
-      title: "Welcome & Leave Messages",
-      description: "Greet new members and post a message when they leave.",
+      title: d.quickWelcomeTitle,
+      description: d.quickWelcomeDesc,
       href: "/automation/welcome-goodbye-invite",
     },
     {
-      title: "Bot Runtime",
-      description: "Gateway status, latency, intents, and servers.",
+      title: d.quickBotRuntimeTitle,
+      description: d.quickBotRuntimeDesc,
       href: "/settings/bot-runtime",
     },
   ];
@@ -101,20 +104,20 @@ export default async function DashboardPage({
 
       <div className="d-flex flex-column gap-4">
         <PageHeader
-          title="NorBot"
+          title={d.title}
           category="dashboard"
           icon={<Icon icon={cilSpeedometer} size="xl" />}
           description={
             status.guildName
-              ? `Managing ${status.guildName}`
-              : "Discord community management: verification, moderation, campaigns, and onboarding."
+              ? formatDict(d.managingGuild, { name: status.guildName })
+              : d.descriptionFallback
           }
           actions={
             <Button asChild variant="primary">
               <Link href={`/${lang}/campaigns/new`}>
                 <span className="d-inline-flex align-items-center gap-2">
                   <Icon icon={cilSend} />
-                  Create Campaign
+                  {d.createCampaign}
                 </span>
               </Link>
             </Button>
@@ -128,13 +131,17 @@ export default async function DashboardPage({
               className="text-decoration-none d-block h-100"
             >
               <MetricWidget
-                label="Bot"
-                value={status.botConnected ? "Connected" : "Offline"}
+                label={d.botLabel}
+                value={
+                  status.botConnected
+                    ? dict.common.connected
+                    : dict.common.offline
+                }
                 accent={status.botConnected ? "success" : "danger"}
                 helper={
                   status.botConnected
-                    ? status.guildName ?? "Online"
-                    : "Start apps/bot with a token"
+                    ? status.guildName ?? d.botHelperOnline
+                    : d.botHelperOffline
                 }
                 icon={<Icon icon={cilMediaPlay} size="lg" />}
               />
@@ -146,10 +153,14 @@ export default async function DashboardPage({
               className="text-decoration-none d-block h-100"
             >
               <MetricWidget
-                label="Queue"
-                value={status.queuePaused ? "Paused" : "Running"}
+                label={d.queueLabel}
+                value={
+                  status.queuePaused ? dict.common.paused : dict.common.running
+                }
                 accent={status.queuePaused ? "warning" : "success"}
-                helper={`${status.queuedCount} campaign(s) queued`}
+                helper={formatDict(d.queueHelper, {
+                  count: status.queuedCount,
+                })}
                 icon={<Icon icon={cilSend} size="lg" />}
               />
             </Link>
@@ -160,10 +171,12 @@ export default async function DashboardPage({
               className="text-decoration-none d-block h-100"
             >
               <MetricWidget
-                label="Campaign Worker"
-                value={status.workerOnline ? "Online" : "Offline"}
+                label={d.workerLabel}
+                value={
+                  status.workerOnline ? dict.common.online : dict.common.offline
+                }
                 accent={status.workerOnline ? "success" : "danger"}
-                helper="Delivers campaign messages"
+                helper={d.workerHelper}
                 icon={<Icon icon={cilMediaPlay} size="lg" />}
               />
             </Link>
@@ -175,13 +188,8 @@ export default async function DashboardPage({
 
         {!status.botConnected && (
           <CAlert color="warning" className="mb-0">
-            <h2 className="h5">Finish setup: bring the bot online</h2>
-            <p className="mb-0">
-              Add <code>DISCORD_BOT_TOKEN</code> to <code>Norgoth/.env</code>,
-              start the bot (<code>apps/bot</code>), and invite it to your
-              server. Every feature on this dashboard activates automatically
-              once the bot connects.
-            </p>
+            <h2 className="h5">{d.setupTitle}</h2>
+            <p className="mb-0">{d.setupBody}</p>
           </CAlert>
         )}
 
@@ -200,7 +208,9 @@ export default async function DashboardPage({
                         {action.description}
                       </p>
                     </div>
-                    <span className="small fw-medium text-nowrap">Open →</span>
+                    <span className="small fw-medium text-nowrap">
+                      {dict.common.openArrow}
+                    </span>
                   </div>
                 </Card>
               </Link>

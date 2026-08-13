@@ -7,6 +7,7 @@ import { MetricWidget } from "@/components/ui/metric-widget";
 import { Icon } from "@/components/ui/icon";
 import { apiUrl } from "@/lib/api";
 import { useGuildStore } from "@/stores/guild-store";
+import { useLocaleDict } from "@/lib/locale-dict";
 
 type VerificationHomeState = {
   label: string;
@@ -15,11 +16,13 @@ type VerificationHomeState = {
 };
 
 export function HomeVerificationMetric({ lang }: { lang: string }) {
+  const dict = useLocaleDict();
+  const d = dict.dashboard;
   const selectedGuild = useGuildStore((s) => s.selectedGuild);
   const [state, setState] = useState<VerificationHomeState>({
-    label: "Select a server",
+    label: d.verificationSelectServer,
     accent: "warning",
-    helper: "Choose a server to see verification status",
+    helper: d.verificationSelectHelper,
   });
 
   useEffect(() => {
@@ -29,9 +32,9 @@ export function HomeVerificationMetric({ lang }: { lang: string }) {
       if (!selectedGuild?.id) {
         if (!cancelled) {
           setState({
-            label: "Select a server",
+            label: d.verificationSelectServer,
             accent: "warning",
-            helper: "Choose a server to see verification status",
+            helper: d.verificationSelectHelper,
           });
         }
         return;
@@ -40,12 +43,12 @@ export function HomeVerificationMetric({ lang }: { lang: string }) {
       try {
         const response = await fetch(
           apiUrl(`/api/v1/guilds/${selectedGuild.id}/configuration/setup`),
-          { cache: "no-store", credentials: "include" }
+          { cache: "no-store", credentials: "include" },
         );
         if (!response.ok) {
           if (!cancelled) {
             setState({
-              label: "Unavailable",
+              label: d.verificationUnavailable,
               accent: "warning",
               helper: selectedGuild.name,
             });
@@ -60,19 +63,19 @@ export function HomeVerificationMetric({ lang }: { lang: string }) {
         if (cancelled) return;
         if (setup === "active") {
           setState({
-            label: "Enabled",
+            label: dict.common.enabled,
             accent: "success",
             helper: selectedGuild.name,
           });
         } else if (setup === "disabled") {
           setState({
-            label: "Disabled",
+            label: dict.common.disabled,
             accent: "warning",
             helper: selectedGuild.name,
           });
         } else if (setup === "incomplete" || setup === "not_configured") {
           setState({
-            label: "Not configured",
+            label: d.verificationNotConfigured,
             accent: "warning",
             helper: selectedGuild.name,
           });
@@ -86,7 +89,7 @@ export function HomeVerificationMetric({ lang }: { lang: string }) {
       } catch {
         if (!cancelled) {
           setState({
-            label: "Unavailable",
+            label: d.verificationUnavailable,
             accent: "warning",
             helper: selectedGuild.name,
           });
@@ -98,7 +101,13 @@ export function HomeVerificationMetric({ lang }: { lang: string }) {
     return () => {
       cancelled = true;
     };
-  }, [selectedGuild?.id, selectedGuild?.name]);
+  }, [
+    selectedGuild?.id,
+    selectedGuild?.name,
+    d,
+    dict.common.enabled,
+    dict.common.disabled,
+  ]);
 
   return (
     <Link
@@ -106,7 +115,7 @@ export function HomeVerificationMetric({ lang }: { lang: string }) {
       className="text-decoration-none d-block h-100"
     >
       <MetricWidget
-        label="Verification"
+        label={d.verificationMetricLabel}
         value={state.label}
         accent={state.accent}
         helper={state.helper}

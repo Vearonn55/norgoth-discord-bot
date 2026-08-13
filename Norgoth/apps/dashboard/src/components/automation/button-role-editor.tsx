@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import type { GuildEmojiItem } from "@/lib/discord/emoji-data";
 import type { RoleMenuStyle } from "@/lib/discord/role-menu-modes";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import type { RoleMenuEntry } from "@/stores/automation-store";
 import type { GuildRole } from "@/stores/guild-store";
 import { roleColorStyles } from "@/lib/discord/role-color";
@@ -30,26 +31,25 @@ export function ButtonRoleEditor({
   onUpdate,
   onRemove,
 }: ButtonRoleEditorProps) {
+  const dict = useLocaleDict();
+  const d = dict.roleMenusPage;
+
   if (entries.length === 0) {
     return (
-      <p className="mb-0 small text-body-secondary">
-        Add roles above. Each becomes a Discord button.
-      </p>
+      <p className="mb-0 small text-body-secondary">{d.buttonEmpty}</p>
     );
   }
 
   return (
     <div className="d-flex flex-column gap-3">
       <div>
-        <h4 className="h6 fw-semibold mb-1">Button settings</h4>
-        <p className="mb-0 small text-body-secondary">
-          Choose Discord-supported button colors. Custom RGB colors are not
-          available for Discord buttons.
-        </p>
+        <h4 className="h6 fw-semibold mb-1">{d.buttonSettings}</h4>
+        <p className="mb-0 small text-body-secondary">{d.buttonSettingsDesc}</p>
       </div>
       {entries.map((entry) => {
         const role = rolesById.get(entry.role_id);
         const tint = roleColorStyles(role?.color);
+        const name = role?.name ?? entry.label;
         return (
           <div
             key={entry.role_id}
@@ -62,21 +62,21 @@ export function ButtonRoleEditor({
           >
             <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
               <DiscordRoleBadge
-                name={role?.name ?? entry.label}
+                name={name}
                 color={role?.color}
               />
               <Button
                 variant="danger"
                 size="sm"
                 onClick={() => onRemove(entry.role_id)}
-                aria-label={`Remove ${role?.name ?? entry.label}`}
+                aria-label={formatDict(d.removeAria, { name })}
               >
                 <Icon icon={cilTrash} />
               </Button>
             </div>
             <div className="row g-3">
               <div className="col-md-4">
-                <CFormLabel className="small">Button label</CFormLabel>
+                <CFormLabel className="small">{d.buttonLabel}</CFormLabel>
                 <CFormInput
                   value={entry.label}
                   onChange={(e) =>
@@ -86,7 +86,7 @@ export function ButtonRoleEditor({
                 />
               </div>
               <div className="col-md-4">
-                <CFormLabel className="small">Button emoji</CFormLabel>
+                <CFormLabel className="small">{d.buttonEmoji}</CFormLabel>
                 <DiscordEmojiPicker
                   value={entry.emoji ?? ""}
                   onChange={(emoji) => onUpdate(entry.role_id, { emoji })}
@@ -100,7 +100,7 @@ export function ButtonRoleEditor({
                 />
               </div>
               <div className="col-12">
-                <CFormLabel className="small">Button color</CFormLabel>
+                <CFormLabel className="small">{d.buttonColor}</CFormLabel>
                 <DiscordButtonStylePicker
                   value={(entry.style as RoleMenuStyle) ?? "secondary"}
                   onChange={(style) => onUpdate(entry.role_id, { style })}

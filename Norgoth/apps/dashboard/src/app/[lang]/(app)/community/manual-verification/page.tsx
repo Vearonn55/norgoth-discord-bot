@@ -14,15 +14,16 @@ export default async function ManualVerificationPage({
 
   if (!hasLocale(lang)) notFound();
 
-  await getDictionary(lang);
+  const dict = await getDictionary(lang);
+  const info = dict.featureInfo.manualVerification;
 
   return (
     <div className="d-flex flex-column gap-4">
       <PageHeader
-        title="Manual Verification"
+        title={info.title}
         icon={<Icon icon={cilTask} size="xl" />}
         category="community"
-        description="Review members flagged for manual verification and approve or deny access."
+        description={info.description}
         infoKey="manualVerification"
       />
 

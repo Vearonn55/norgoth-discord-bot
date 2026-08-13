@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
 import {
   CAlert,
   CFormCheck,
@@ -34,72 +33,27 @@ import {
   cilUser,
 } from "@coreui/icons";
 import { useFeatureInfo } from "@/lib/feature-info";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 
-const PLATFORM_META: {
-  key: keyof RichLinkPlatforms;
-  name: string;
-  nameTr: string;
-  description: string;
-  descriptionTr: string;
-  icon: string | string[];
-}[] = [
-  {
-    key: "twitter",
-    name: "Twitter / X",
-    nameTr: "Twitter / X",
-    description: `Status links → ${FIXED_REWRITE_HOSTS.twitter}`,
-    descriptionTr: `Durum bağlantıları → ${FIXED_REWRITE_HOSTS.twitter}`,
-    icon: cilShare,
-  },
-  {
-    key: "bluesky",
-    name: "Bluesky",
-    nameTr: "Bluesky",
-    description: `Profile posts → ${FIXED_REWRITE_HOSTS.bluesky}`,
-    descriptionTr: `Profil gönderileri → ${FIXED_REWRITE_HOSTS.bluesky}`,
-    icon: cilBell,
-  },
-  {
-    key: "tiktok",
-    name: "TikTok",
-    nameTr: "TikTok",
-    description: `Video links → ${FIXED_REWRITE_HOSTS.tiktok}`,
-    descriptionTr: `Video bağlantıları → ${FIXED_REWRITE_HOSTS.tiktok}`,
-    icon: cilImage,
-  },
-  {
-    key: "instagram",
-    name: "Instagram",
-    nameTr: "Instagram",
-    description: `Posts / reels / stories → ${FIXED_REWRITE_HOSTS.instagram}`,
-    descriptionTr: `Gönderi / reel / hikâye → ${FIXED_REWRITE_HOSTS.instagram}`,
-    icon: cilUser,
-  },
-  {
-    key: "reddit",
-    name: "Reddit",
-    nameTr: "Reddit",
-    description: `Posts / short links → ${FIXED_REWRITE_HOSTS.reddit}`,
-    descriptionTr: `Gönderi / kısa bağlantılar → ${FIXED_REWRITE_HOSTS.reddit}`,
-    icon: cilLink,
-  },
-  {
-    key: "pixiv",
-    name: "Pixiv",
-    nameTr: "Pixiv",
-    description: `Artwork links → ${FIXED_REWRITE_HOSTS.pixiv}`,
-    descriptionTr: `Eser bağlantıları → ${FIXED_REWRITE_HOSTS.pixiv}`,
-    icon: cilImage,
-  },
-  {
-    key: "youtube_shorts",
-    name: "YouTube Shorts",
-    nameTr: "YouTube Shorts",
-    description: `/shorts → ${FIXED_REWRITE_HOSTS.youtube_shorts}`,
-    descriptionTr: `/shorts → ${FIXED_REWRITE_HOSTS.youtube_shorts}`,
-    icon: cilMediaPlay,
-  },
-];
+const PLATFORM_ICONS: Record<keyof RichLinkPlatforms, string | string[]> = {
+  twitter: cilShare,
+  bluesky: cilBell,
+  tiktok: cilImage,
+  instagram: cilUser,
+  reddit: cilLink,
+  pixiv: cilImage,
+  youtube_shorts: cilMediaPlay,
+};
+
+const PLATFORM_NAMES: Record<keyof RichLinkPlatforms, string> = {
+  twitter: "Twitter / X",
+  bluesky: "Bluesky",
+  tiktok: "TikTok",
+  instagram: "Instagram",
+  reddit: "Reddit",
+  pixiv: "Pixiv",
+  youtube_shorts: "YouTube Shorts",
+};
 
 function normalizeHost(host: string): string {
   let h = host.toLowerCase();
@@ -132,8 +86,7 @@ function previewRewrite(
         key: "twitter",
         hosts: ["twitter.com", "x.com", "mobile.twitter.com", "mobile.x.com"],
         match: () => lower.includes("/status/"),
-        rewrite: () =>
-          `https://${FIXED_REWRITE_HOSTS.twitter}${path}`,
+        rewrite: () => `https://${FIXED_REWRITE_HOSTS.twitter}${path}`,
       },
       {
         key: "bluesky",
@@ -195,7 +148,9 @@ function previewRewrite(
         match: () => /^\/shorts\/[A-Za-z0-9_-]{6,}/.test(path),
         rewrite: () => {
           const m = path.match(/^\/shorts\/([A-Za-z0-9_-]{6,})/);
-          return m ? `https://${FIXED_REWRITE_HOSTS.youtube_shorts}/${m[1]}` : "";
+          return m
+            ? `https://${FIXED_REWRITE_HOSTS.youtube_shorts}/${m[1]}`
+            : "";
         },
       },
     ];
@@ -214,9 +169,8 @@ function previewRewrite(
 }
 
 export function RichLinkEmbedsPanel() {
-  const params = useParams();
-  const lang = String(params?.lang || "en");
-  const isTr = lang === "tr";
+  const dict = useLocaleDict();
+  const d = dict.richLinkEmbedsPage;
   const { guildId, resources, loading: guildLoading } = useFirstGuild();
   const config = useRichLinkEmbedsStore((s) => s.config);
   const loading = useRichLinkEmbedsStore((s) => s.loading);
@@ -227,6 +181,30 @@ export function RichLinkEmbedsPanel() {
   const info = useFeatureInfo("richLinkEmbeds");
   const [draft, setDraft] = useState<RichLinkEmbedsConfig | null>(null);
   const [testUrl, setTestUrl] = useState("");
+
+  const platformMeta = useMemo(
+    () =>
+      (
+        Object.keys(PLATFORM_NAMES) as Array<keyof RichLinkPlatforms>
+      ).map((key) => {
+        const descKey = {
+          twitter: d.platformDescTwitter,
+          bluesky: d.platformDescBluesky,
+          tiktok: d.platformDescTiktok,
+          instagram: d.platformDescInstagram,
+          reddit: d.platformDescReddit,
+          pixiv: d.platformDescPixiv,
+          youtube_shorts: d.platformDescYoutubeShorts,
+        }[key];
+        return {
+          key,
+          name: PLATFORM_NAMES[key],
+          description: formatDict(descKey, { host: FIXED_REWRITE_HOSTS[key] }),
+          icon: PLATFORM_ICONS[key],
+        };
+      }),
+    [d],
+  );
 
   useEffect(() => {
     if (!guildId) return;
@@ -245,20 +223,13 @@ export function RichLinkEmbedsPanel() {
   if (guildLoading || loading || !draft) {
     return (
       <div className="d-flex align-items-center gap-2">
-        <CSpinner size="sm" />{" "}
-        {isTr
-          ? "Bağlantı önizleme ayarları yükleniyor…"
-          : "Loading link embeds…"}
+        <CSpinner size="sm" /> {d.loading}
       </div>
     );
   }
 
   if (!guildId) {
-    return (
-      <p className="text-body-secondary">
-        {isTr ? "Önce bir sunucu seçin." : "Select a server first."}
-      </p>
-    );
+    return <p className="text-body-secondary">{d.selectServer}</p>;
   }
 
   function patch(partial: Partial<RichLinkEmbedsConfig>) {
@@ -286,7 +257,7 @@ export function RichLinkEmbedsPanel() {
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(config);
   const disclosureHosts = Object.values(FIXED_REWRITE_HOSTS).join(", ");
-  const featureTitle = info?.title ?? (isTr ? "Bağlantı Önizlemeleri" : "Link Embeds");
+  const featureTitle = info?.title ?? "Link Embeds";
 
   return (
     <div className="d-flex flex-column gap-4">
@@ -294,12 +265,7 @@ export function RichLinkEmbedsPanel() {
         title={featureTitle}
         category="messages"
         icon={<Icon icon={cilLink} size="xl" />}
-        description={
-          info?.description ??
-          (isTr
-            ? "Üye mesajlarını düzenlemeden gömme dostu sosyal medya bağlantılarıyla yanıtlar."
-            : "Reply with embed-friendly social media links without editing member messages.")
-        }
+        description={info?.description}
         infoKey="richLinkEmbeds"
         masterToggle={{
           enabled: draft.enabled,
@@ -314,9 +280,7 @@ export function RichLinkEmbedsPanel() {
 
       {!draft.enabled ? (
         <CAlert color="secondary" className="mb-0">
-          {isTr
-            ? "Bağlantı Önizlemeleri duraklatıldı. Platform tercihleri kaydedilebilir; canlı işlem yapılmaz."
-            : "Link Embeds is paused. Platform preferences can still be edited and saved; live rewriting will not run."}
+          {d.pausedAlert}
         </CAlert>
       ) : null}
 
@@ -324,17 +288,18 @@ export function RichLinkEmbedsPanel() {
         <SectionCard
           level="primary"
           category="messages"
-          header={isTr ? "Platformlar" : "Platforms"}
+          header={d.platforms}
         >
           <div className="d-flex flex-wrap gap-3 p-1">
-            {PLATFORM_META.map((platform) => (
-              <div key={platform.key} style={{ minWidth: 260, flex: "1 1 260px" }}>
+            {platformMeta.map((platform) => (
+              <div
+                key={platform.key}
+                style={{ minWidth: 260, flex: "1 1 260px" }}
+              >
                 <MiniFeatureCard
                   icon={platform.icon}
-                  name={isTr ? platform.nameTr : platform.name}
-                  description={
-                    isTr ? platform.descriptionTr : platform.description
-                  }
+                  name={platform.name}
+                  description={platform.description}
                   category="messages"
                   enabled={draft.platforms[platform.key]}
                   disabledAccent={
@@ -353,16 +318,10 @@ export function RichLinkEmbedsPanel() {
           </div>
         </SectionCard>
 
-        <SectionCard
-          level="secondary"
-          category="messages"
-          header={isTr ? "Kanallar" : "Channels"}
-        >
+        <SectionCard level="secondary" category="messages" header={d.channels}>
           <div className="d-flex flex-column gap-3 p-1">
             <div>
-              <CFormLabel>
-                {isTr ? "İzin listesi (boş = tümü)" : "Allowlist (empty = all)"}
-              </CFormLabel>
+              <CFormLabel>{d.allowlist}</CFormLabel>
               <ChannelSelect
                 channels={resources?.channels ?? []}
                 value=""
@@ -386,7 +345,7 @@ export function RichLinkEmbedsPanel() {
               />
             </div>
             <div>
-              <CFormLabel>{isTr ? "Engellenen kanallar" : "Denylist"}</CFormLabel>
+              <CFormLabel>{d.denylist}</CFormLabel>
               <ChannelSelect
                 channels={resources?.channels ?? []}
                 value=""
@@ -412,34 +371,22 @@ export function RichLinkEmbedsPanel() {
           </div>
         </SectionCard>
 
-        <SectionCard
-          level="secondary"
-          category="messages"
-          header={isTr ? "Davranış" : "Behavior"}
-        >
+        <SectionCard level="secondary" category="messages" header={d.behavior}>
           <div className="d-flex flex-column gap-3 p-1">
             <CFormCheck
               id="rle-ignore-bots"
-              label={isTr ? "Bot mesajlarını yok say" : "Ignore bot messages"}
+              label={d.ignoreBots}
               checked={draft.ignore_bots}
               onChange={(e) => patch({ ignore_bots: e.target.checked })}
             />
             <CFormCheck
               id="rle-process-edits"
-              label={
-                isTr
-                  ? "Düzenlenen mesajları işle"
-                  : "Also process message edits"
-              }
+              label={d.processEdits}
               checked={draft.process_edits}
               onChange={(e) => patch({ process_edits: e.target.checked })}
             />
             <div style={{ maxWidth: 240 }}>
-              <CFormLabel>
-                {isTr
-                  ? "Mesaj başına en fazla bağlantı"
-                  : "Max links per message"}
-              </CFormLabel>
+              <CFormLabel>{d.maxLinks}</CFormLabel>
               <NumberInput
                 value={draft.max_links_per_message}
                 defaultValue={3}
@@ -448,32 +395,22 @@ export function RichLinkEmbedsPanel() {
                 onCommit={(next) => patch({ max_links_per_message: next })}
               />
             </div>
-            <p className="small text-body-secondary mb-0">
-              {isTr
-                ? "Başarılı yanıttan sonra bot, Yönet Mesajlar izni varsa özgün gömmeleri bastırmayı dener."
-                : "After a successful reply, the bot tries to suppress the original embeds when it has Manage Messages."}
-            </p>
+            <p className="small text-body-secondary mb-0">{d.suppressNote}</p>
           </div>
         </SectionCard>
 
         <SectionCard
           level="secondary"
           category="messages"
-          header={isTr ? "Gizlilik bildirimi" : "External service disclosure"}
+          header={d.disclosureHeader}
         >
           <div className="d-flex flex-column gap-3 p-1">
             <CAlert color="info" className="mb-0">
-              {isTr
-                ? `Yeniden yazılan bağlantılar sabit üçüncü taraf gömme alan adlarına yönlendirir (${disclosureHosts}). Bu alan adları NorBot tarafından işletilmez; kullanılabilirlik ve gizlilik politikaları değişebilir. Sunucu yöneticileri hedef alan adını değiştiremez.`
-                : `Rewritten links point to fixed third-party embed fixer domains (${disclosureHosts}). These hosts are not operated by NorBot; availability and privacy policies may change. Guild admins cannot change target domains.`}
+              {formatDict(d.disclosureBody, { hosts: disclosureHosts })}
             </CAlert>
             <CFormCheck
               id="rle-disclosure"
-              label={
-                isTr
-                  ? "Üçüncü taraf alan adlarının kullanıldığını anlıyorum"
-                  : "I understand external fixer domains are used"
-              }
+              label={d.disclosureAck}
               checked={draft.disclosure_acknowledged}
               onChange={(e) =>
                 patch({ disclosure_acknowledged: e.target.checked })
@@ -482,17 +419,9 @@ export function RichLinkEmbedsPanel() {
           </div>
         </SectionCard>
 
-        <SectionCard
-          level="secondary"
-          category="messages"
-          header={isTr ? "Bağlantı testi" : "Test URL"}
-        >
+        <SectionCard level="secondary" category="messages" header={d.testUrl}>
           <div className="d-flex flex-column gap-2 p-1">
-            <CFormLabel>
-              {isTr
-                ? "Yeniden yazmayı önizlemek için bir URL yapıştırın"
-                : "Paste a URL to preview the rewrite (client-side only)"}
-            </CFormLabel>
+            <CFormLabel>{d.testUrlHelp}</CFormLabel>
             <CFormInput
               value={testUrl}
               onChange={(e) => setTestUrl(e.target.value)}
@@ -501,10 +430,8 @@ export function RichLinkEmbedsPanel() {
             {testUrl.trim() ? (
               <p className="small mb-0 text-body-secondary">
                 {preview
-                  ? `${isTr ? "Önizleme" : "Preview"}: ${preview}`
-                  : isTr
-                    ? "Eşleşen platform yok veya platform kapalı."
-                    : "No matching enabled platform."}
+                  ? `${d.preview}: ${preview}`
+                  : d.noMatch}
               </p>
             ) : null}
           </div>
@@ -522,13 +449,7 @@ export function RichLinkEmbedsPanel() {
             })
           }
         >
-          {saving
-            ? isTr
-              ? "Kaydediliyor…"
-              : "Saving…"
-            : isTr
-              ? "Ayarları kaydet"
-              : "Save Settings"}
+          {saving ? d.saving : d.saveSettings}
         </Button>
       </PageActionFooter>
     </div>

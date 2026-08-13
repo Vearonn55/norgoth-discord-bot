@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { CNav, CNavItem, CNavLink } from "@coreui/react";
 import { FeatureConfigurationModal } from "@/components/ui/feature-modal";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { VerificationSettingsForm } from "@/components/verification/verification
 import { HighRiskServersSection } from "@/components/verification/high-risk-servers-section";
 import { WhitelistedUsersSection } from "@/components/verification/whitelisted-users-section";
 import { useFirstGuild } from "@/lib/use-first-guild";
+import { useLocaleDict } from "@/lib/locale-dict";
 
 type VerificationSettingsModalProps = {
   visible: boolean;
@@ -15,12 +16,6 @@ type VerificationSettingsModalProps = {
 };
 
 type Section = "general" | "high-risk" | "whitelist";
-
-const SECTIONS: { id: Section; label: string }[] = [
-  { id: "general", label: "General" },
-  { id: "high-risk", label: "High Risk Servers" },
-  { id: "whitelist", label: "Whitelisted Users" },
-];
 
 /**
  * Verification Settings popout. Replaces the previously hidden standalone
@@ -32,25 +27,37 @@ export function VerificationSettingsModal({
   visible,
   onClose,
 }: VerificationSettingsModalProps) {
+  const dict = useLocaleDict();
+  const d = dict.verificationPage;
   const { guildId } = useFirstGuild();
   const [section, setSection] = useState<Section>("general");
+
+  const sections = useMemo(
+    () =>
+      [
+        { id: "general" as const, label: d.tabGeneral },
+        { id: "high-risk" as const, label: d.tabHighRisk },
+        { id: "whitelist" as const, label: d.tabWhitelist },
+      ] satisfies { id: Section; label: string }[],
+    [d.tabGeneral, d.tabHighRisk, d.tabWhitelist],
+  );
 
   return (
     <FeatureConfigurationModal
       visible={visible}
       onClose={onClose}
-      title="Verification Settings"
-      description="Channels, roles, verification policy, high-risk servers, and whitelisted users."
+      title={d.settingsModalTitle}
+      description={d.settingsModalDesc}
       category="community"
       size="xl"
       footer={
         <Button variant="secondary" onClick={onClose}>
-          Close
+          {d.close}
         </Button>
       }
     >
       <CNav variant="tabs" className="mb-4">
-        {SECTIONS.map((item) => (
+        {sections.map((item) => (
           <CNavItem key={item.id}>
             <CNavLink
               active={section === item.id}

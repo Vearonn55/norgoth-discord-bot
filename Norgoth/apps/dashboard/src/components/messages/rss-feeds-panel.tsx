@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
   CAlert,
@@ -26,14 +26,7 @@ import { Icon } from "@/components/ui/icon";
 import { cilNotes } from "@coreui/icons";
 import { useFeatureInfo } from "@/lib/feature-info";
 import { formatDateTime } from "@/lib/datetime";
-
-const INTERVAL_OPTIONS = [
-  { value: 300, label: "5 minutes" },
-  { value: 600, label: "10 minutes" },
-  { value: 900, label: "15 minutes" },
-  { value: 1800, label: "30 minutes" },
-  { value: 3600, label: "1 hour" },
-];
+import { useLocaleDict } from "@/lib/locale-dict";
 
 type Draft = {
   feed_url: string;
@@ -56,7 +49,8 @@ const emptyDraft = (): Draft => ({
 export function RssFeedsPanel() {
   const params = useParams();
   const lang = String(params?.lang || "en");
-  const isTr = lang === "tr";
+  const dict = useLocaleDict();
+  const d = dict.rssFeedsPage;
   const { guildId, resources, loading: guildLoading } = useFirstGuild();
   const feeds = useRssFeedsStore((s) => s.feeds);
   const maxFeeds = useRssFeedsStore((s) => s.maxFeeds);
@@ -70,6 +64,17 @@ export function RssFeedsPanel() {
   const remove = useRssFeedsStore((s) => s.remove);
   const probe = useRssFeedsStore((s) => s.probe);
   const info = useFeatureInfo("rssFeeds");
+
+  const intervalOptions = useMemo(
+    () => [
+      { value: 300, label: d.interval5m },
+      { value: 600, label: d.interval10m },
+      { value: 900, label: d.interval15m },
+      { value: 1800, label: d.interval30m },
+      { value: 3600, label: d.interval1h },
+    ],
+    [d],
+  );
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -112,10 +117,13 @@ export function RssFeedsPanel() {
       const result = await probe(guildId, draft.feed_url.trim());
       setProbeResult(result);
       if (result.ok && result.feed_title && !draft.display_name) {
-        setDraft((d) => ({ ...d, display_name: result.feed_title || "" }));
+        setDraft((prev) => ({
+          ...prev,
+          display_name: result.feed_title || "",
+        }));
       }
     } catch (e) {
-      setLocalError(e instanceof Error ? e.message : "Probe failed.");
+      setLocalError(e instanceof Error ? e.message : d.probeFailed);
     }
   }
 
@@ -123,11 +131,7 @@ export function RssFeedsPanel() {
     if (!guildId) return;
     setLocalError(null);
     if (!draft.feed_url.trim() || !draft.channel_id) {
-      setLocalError(
-        isTr
-          ? "Feed URL ve kanal gerekli."
-          : "Feed URL and channel are required.",
-      );
+      setLocalError(d.urlAndChannelRequired);
       return;
     }
     try {
@@ -154,25 +158,20 @@ export function RssFeedsPanel() {
       setShowForm(false);
       setEditingId(null);
     } catch (e) {
-      setLocalError(e instanceof Error ? e.message : "Save failed.");
+      setLocalError(e instanceof Error ? e.message : d.saveFailed);
     }
   }
 
   if (guildLoading || loading) {
     return (
       <div className="d-flex align-items-center gap-2">
-        <CSpinner size="sm" />{" "}
-        {isTr ? "RSS akışları yükleniyor…" : "Loading RSS feeds…"}
+        <CSpinner size="sm" /> {d.loading}
       </div>
     );
   }
 
   if (!guildId) {
-    return (
-      <p className="text-body-secondary">
-        {isTr ? "Önce bir sunucu seçin." : "Select a server first."}
-      </p>
-    );
+    return <p className="text-body-secondary">{d.selectServer}</p>;
   }
 
   const channelName = (id: string) =>
@@ -184,10 +183,7 @@ export function RssFeedsPanel() {
         title={info?.title ?? "RSS Feeds"}
         category="messages"
         icon={<Icon icon={cilNotes} size="xl" />}
-        description={
-          info?.description ??
-          "Post new items from RSS 2.0 / Atom feeds into a Discord channel."
-        }
+        description={info?.description}
         infoKey="rssFeeds"
         actions={
           <Button
@@ -195,15 +191,13 @@ export function RssFeedsPanel() {
             disabled={feeds.length >= maxFeeds}
             onClick={openCreate}
           >
-            {isTr ? "Akış ekle" : "Add feed"}
+            {d.addFeed}
           </Button>
         }
       />
 
       <CAlert color="info" className="mb-0">
-        {isTr
-          ? "Mevcut öğeler yayınlanmaz — yalnızca eklenen yeni öğeler Discord’a gider. Sunucu başına en fazla 5 akış; en kısa yoklama 5 dakikadır."
-          : "Existing items won’t be posted — only items that appear after you add the feed. Max 5 feeds per server; minimum poll interval is 5 minutes."}
+        {d.infoBanner}
       </CAlert>
 
       {(error || localError) && (
@@ -211,45 +205,31 @@ export function RssFeedsPanel() {
       )}
 
       <p className="small text-body-secondary mb-0">
-        {isTr ? "Worker:" : "Worker:"}{" "}
-        {workerOnline
-          ? isTr
-            ? "çevrimiçi"
-            : "online"
-          : isTr
-            ? "çevrimdışı / bilinmiyor"
-            : "offline / unknown"}{" "}
-        · {feeds.length}/{maxFeeds} {isTr ? "akış" : "feeds"}
+        {d.worker}{" "}
+        {workerOnline ? d.workerOnline : d.workerOffline} · {feeds.length}/
+        {maxFeeds} {d.feedsCount}
       </p>
 
       {showForm ? (
         <SectionCard
           level="primary"
           category="messages"
-          header={
-            editingId
-              ? isTr
-                ? "Akışı düzenle"
-                : "Edit feed"
-              : isTr
-                ? "Yeni akış"
-                : "New feed"
-          }
+          header={editingId ? d.editFeed : d.newFeed}
         >
           <div className="d-flex flex-column gap-3 p-1">
             <div>
-              <CFormLabel>Feed URL</CFormLabel>
+              <CFormLabel>{d.feedUrl}</CFormLabel>
               <div className="d-flex gap-2 flex-wrap">
                 <CFormInput
                   value={draft.feed_url}
                   onChange={(e) =>
-                    setDraft((d) => ({ ...d, feed_url: e.target.value }))
+                    setDraft((prev) => ({ ...prev, feed_url: e.target.value }))
                   }
                   placeholder="https://example.com/feed.xml"
                   className="flex-grow-1"
                 />
                 <Button variant="secondary" onClick={() => void runProbe()}>
-                  {isTr ? "Sına" : "Probe"}
+                  {d.probe}
                 </Button>
               </div>
               {probeResult ? (
@@ -265,48 +245,51 @@ export function RssFeedsPanel() {
               ) : null}
             </div>
             <div>
-              <CFormLabel>{isTr ? "Görünen ad" : "Display name"}</CFormLabel>
+              <CFormLabel>{d.displayName}</CFormLabel>
               <CFormInput
                 value={draft.display_name}
                 onChange={(e) =>
-                  setDraft((d) => ({ ...d, display_name: e.target.value }))
+                  setDraft((prev) => ({
+                    ...prev,
+                    display_name: e.target.value,
+                  }))
                 }
-                placeholder={isTr ? "İsteğe bağlı" : "Optional"}
+                placeholder={d.optional}
               />
             </div>
             <div>
-              <CFormLabel>{isTr ? "Hedef kanal" : "Destination channel"}</CFormLabel>
+              <CFormLabel>{d.destinationChannel}</CFormLabel>
               <ChannelSelect
                 channels={resources?.channels ?? []}
                 value={draft.channel_id}
-                onChange={(id) => setDraft((d) => ({ ...d, channel_id: id }))}
+                onChange={(id) =>
+                  setDraft((prev) => ({ ...prev, channel_id: id }))
+                }
               />
             </div>
             <div>
-              <CFormLabel>
-                {isTr ? "Bahsetme rolü (isteğe bağlı)" : "Mention role (optional)"}
-              </CFormLabel>
+              <CFormLabel>{d.mentionRole}</CFormLabel>
               <RoleSelect
                 roles={resources?.roles ?? []}
                 value={draft.mention_role_id}
                 onChange={(id) =>
-                  setDraft((d) => ({ ...d, mention_role_id: id }))
+                  setDraft((prev) => ({ ...prev, mention_role_id: id }))
                 }
-                emptyLabel={isTr ? "Rol yok" : "No role"}
+                emptyLabel={d.noRole}
               />
             </div>
             <div style={{ maxWidth: 280 }}>
-              <CFormLabel>{isTr ? "Yoklama aralığı" : "Poll interval"}</CFormLabel>
+              <CFormLabel>{d.pollInterval}</CFormLabel>
               <CFormSelect
                 value={String(draft.poll_interval_seconds)}
                 onChange={(e) =>
-                  setDraft((d) => ({
-                    ...d,
+                  setDraft((prev) => ({
+                    ...prev,
                     poll_interval_seconds: Number(e.target.value),
                   }))
                 }
               >
-                {INTERVAL_OPTIONS.map((opt) => (
+                {intervalOptions.map((opt) => (
                   <option key={opt.value} value={opt.value}>
                     {opt.label}
                   </option>
@@ -315,10 +298,10 @@ export function RssFeedsPanel() {
             </div>
             <CFormCheck
               id="rss-enabled"
-              label={isTr ? "Etkin" : "Enabled"}
+              label={d.enabled}
               checked={draft.enabled}
               onChange={(e) =>
-                setDraft((d) => ({ ...d, enabled: e.target.checked }))
+                setDraft((prev) => ({ ...prev, enabled: e.target.checked }))
               }
             />
             <div className="d-flex gap-2">
@@ -327,13 +310,7 @@ export function RssFeedsPanel() {
                 disabled={saving}
                 onClick={() => void save()}
               >
-                {saving
-                  ? isTr
-                    ? "Kaydediliyor…"
-                    : "Saving…"
-                  : isTr
-                    ? "Kaydet"
-                    : "Save"}
+                {saving ? d.saving : d.save}
               </Button>
               <Button
                 variant="secondary"
@@ -342,33 +319,25 @@ export function RssFeedsPanel() {
                   setEditingId(null);
                 }}
               >
-                {isTr ? "İptal" : "Cancel"}
+                {d.cancel}
               </Button>
             </div>
           </div>
         </SectionCard>
       ) : null}
 
-      <SectionCard
-        level="secondary"
-        category="messages"
-        header={isTr ? "Akışlar" : "Feeds"}
-      >
+      <SectionCard level="secondary" category="messages" header={d.feedsHeader}>
         {feeds.length === 0 ? (
-          <p className="text-body-secondary mb-0 p-1">
-            {isTr
-              ? "Henüz RSS akışı yok."
-              : "No RSS feeds configured yet."}
-          </p>
+          <p className="text-body-secondary mb-0 p-1">{d.empty}</p>
         ) : (
           <div className="table-responsive">
             <table className="table table-dark table-sm align-middle mb-0">
               <thead>
                 <tr>
-                  <th>{isTr ? "Ad / URL" : "Name / URL"}</th>
-                  <th>{isTr ? "Kanal" : "Channel"}</th>
-                  <th>{isTr ? "Durum" : "Status"}</th>
-                  <th>{isTr ? "Son başarı" : "Last success"}</th>
+                  <th>{d.colNameUrl}</th>
+                  <th>{d.colChannel}</th>
+                  <th>{d.colStatus}</th>
+                  <th>{d.colLastSuccess}</th>
                   <th />
                 </tr>
               </thead>
@@ -377,7 +346,9 @@ export function RssFeedsPanel() {
                   <tr key={feed.id}>
                     <td>
                       <div className="fw-semibold">
-                        {feed.display_name || feed.format_hint || "Feed"}
+                        {feed.display_name ||
+                          feed.format_hint ||
+                          d.feedFallback}
                       </div>
                       <div
                         className="small text-body-secondary text-truncate"
@@ -386,7 +357,9 @@ export function RssFeedsPanel() {
                         {feed.feed_url}
                       </div>
                       {feed.last_error ? (
-                        <div className="small text-danger">{feed.last_error}</div>
+                        <div className="small text-danger">
+                          {feed.last_error}
+                        </div>
                       ) : null}
                     </td>
                     <td>#{channelName(feed.channel_id)}</td>
@@ -401,13 +374,7 @@ export function RssFeedsPanel() {
                           aria-label={`Toggle ${feed.display_name || feed.feed_url}`}
                         />
                         <span className="small">
-                          {feed.enabled
-                            ? isTr
-                              ? "Açık"
-                              : "On"
-                            : isTr
-                              ? "Kapalı"
-                              : "Off"}
+                          {feed.enabled ? d.on : d.off}
                         </span>
                       </div>
                     </td>
@@ -423,25 +390,19 @@ export function RssFeedsPanel() {
                           variant="secondary"
                           onClick={() => openEdit(feed)}
                         >
-                          {isTr ? "Düzenle" : "Edit"}
+                          {d.edit}
                         </Button>
                         <Button
                           size="sm"
                           variant="danger"
                           disabled={saving}
                           onClick={() => {
-                            if (
-                              window.confirm(
-                                isTr
-                                  ? "Bu akışı silmek istiyor musunuz?"
-                                  : "Delete this feed?",
-                              )
-                            ) {
+                            if (window.confirm(d.deleteConfirm)) {
                               void remove(guildId, feed.id);
                             }
                           }}
                         >
-                          {isTr ? "Sil" : "Delete"}
+                          {d.delete}
                         </Button>
                       </div>
                     </td>

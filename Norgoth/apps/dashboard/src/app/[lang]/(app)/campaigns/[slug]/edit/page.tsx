@@ -15,8 +15,8 @@ export default async function EditCampaignPage({
   return (
     <div className="d-flex flex-column gap-4">
         <PageHeader
-          title="Edit Campaign"
-          description="Update the campaign name, delivery target, message, and schedule. Queued or running campaigns must be stopped before editing."
+          title={dict.campaignsPage.editTitle}
+          description={dict.campaignsPage.editDescription}
         />
 
         <CampaignEditLoader lang={lang} dict={dict} campaignId={slug} />

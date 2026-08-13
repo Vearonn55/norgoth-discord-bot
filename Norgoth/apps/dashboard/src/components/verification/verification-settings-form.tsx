@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { NumberInput } from "@/components/ui/number-input";
 import { browserApiUrl } from "@/lib/api";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import {
   canPublishOrCopy,
@@ -26,6 +27,8 @@ import {
  * can be dropped into either a standalone page or a modal without prop wiring.
  */
 export function VerificationSettingsForm() {
+  const dict = useLocaleDict();
+  const d = dict.verificationPage;
   const {
     guildId,
     resources,
@@ -61,7 +64,7 @@ export function VerificationSettingsForm() {
     return (
       <div className="d-flex align-items-center gap-2 text-body-secondary">
         <CSpinner size="sm" />
-        <span>Loading verification settings…</span>
+        <span>{d.loadingSettings}</span>
       </div>
     );
   }
@@ -69,10 +72,10 @@ export function VerificationSettingsForm() {
   if (guildError || !guildId) {
     return (
       <div className="d-flex flex-column gap-3">
-        <Badge variant="warning">Bot required</Badge>
+        <Badge variant="warning">{d.botRequired}</Badge>
         <p className="mb-0 text-body-secondary">{guildError}</p>
         <Button variant="secondary" onClick={() => void reload()}>
-          Retry
+          {d.retry}
         </Button>
       </div>
     );
@@ -92,6 +95,19 @@ export function VerificationSettingsForm() {
         ? "warning"
         : "warning";
 
+  const setupLabel =
+    setupState === "active"
+      ? d.setupActive
+      : setupState === "disabled"
+        ? d.setupDisabled
+        : setupState === "incomplete"
+          ? d.setupIncomplete
+          : setupState === "degraded"
+            ? d.setupDegraded
+            : configured
+              ? d.setupConfigured
+              : d.setupNotConfigured;
+
   return (
     <div className="d-flex flex-column gap-4">
       <div className="d-flex flex-wrap align-items-center gap-2">
@@ -106,38 +122,28 @@ export function VerificationSettingsForm() {
           />
         ) : null}
         {resources && <Badge variant="success">{resources.guild_name}</Badge>}
-        <Badge variant={setupBadgeVariant}>
-          {setupState === "active"
-            ? "Verification active"
-            : setupState === "disabled"
-              ? "Configured · disabled"
-              : setupState === "incomplete"
-                ? "Setup incomplete"
-                : setupState === "degraded"
-                  ? "Discord resources degraded"
-                  : configured
-                    ? "Verification configured"
-                    : "Not configured yet"}
-        </Badge>
+        <Badge variant={setupBadgeVariant}>{setupLabel}</Badge>
       </div>
 
       {(setupState === "not_configured" || setupState === "incomplete") && (
         <CAlert color="info" className="mb-0 py-2">
-          Create or reuse Discord channels and roles, then save them here. Public
-          verification and Discord panel publish stay locked until required
-          bindings are saved
-          {missing.length ? ` (missing: ${missing.join(", ")})` : ""}.
+          {formatDict(d.setupAlert, {
+            missing: missing.length
+              ? formatDict(d.missingSuffix, { list: missing.join(", ") })
+              : "",
+          })}
         </CAlert>
       )}
 
       <Card>
         <div className="d-flex flex-column gap-4">
-          <h2 className="h5 mb-0">Channels</h2>
+          <h2 className="h5 mb-0">{d.channels}</h2>
 
           <CRow className="g-3">
             <CCol md={6}>
               <Select
-                label="Verification channel"
+                label={d.verificationChannel}
+                selectPlaceholder={d.selectPlaceholder}
                 value={config.verification_channel_id}
                 options={channels.map((c) => ({
                   value: c.id,
@@ -150,7 +156,8 @@ export function VerificationSettingsForm() {
             </CCol>
             <CCol md={6}>
               <Select
-                label="Log channel"
+                label={d.logChannel}
+                selectPlaceholder={d.selectPlaceholder}
                 value={config.log_channel_id}
                 options={channels.map((c) => ({
                   value: c.id,
@@ -163,12 +170,13 @@ export function VerificationSettingsForm() {
             </CCol>
           </CRow>
 
-          <h2 className="h5 mb-0">Roles</h2>
+          <h2 className="h5 mb-0">{d.roles}</h2>
 
           <CRow className="g-3">
             <CCol md={6}>
               <Select
-                label="Unverified role"
+                label={d.unverifiedRole}
+                selectPlaceholder={d.selectPlaceholder}
                 value={config.unverified_role_id}
                 options={roles.map((r) => ({
                   value: r.id,
@@ -181,7 +189,8 @@ export function VerificationSettingsForm() {
             </CCol>
             <CCol md={6}>
               <Select
-                label="Base member role"
+                label={d.memberRole}
+                selectPlaceholder={d.selectPlaceholder}
                 value={config.member_role_id}
                 options={roles.map((r) => ({
                   value: r.id,
@@ -193,16 +202,13 @@ export function VerificationSettingsForm() {
               />
             </CCol>
           </CRow>
-          <p className="mb-0 small text-body-secondary">
-            On successful verification the Unverified role is removed and the
-            Base member role is granted. NorBot does not create these Discord
-            resources — select existing ones.
-          </p>
+          <p className="mb-0 small text-body-secondary">{d.rolesHelp}</p>
 
           <CRow className="g-3">
             <CCol md={6}>
               <Select
-                label="Manual review role (optional)"
+                label={d.manualReviewRole}
+                selectPlaceholder={d.selectPlaceholder}
                 value={config.manual_review_role_id}
                 options={roles.map((r) => ({
                   value: r.id,
@@ -213,24 +219,23 @@ export function VerificationSettingsForm() {
                 }
               />
               <p className="mb-0 mt-1 small text-body-secondary">
-                Pinged in the log channel when a member is routed to Manual
-                Review (e.g. a High Risk Server match).
+                {d.manualReviewRoleHelp}
               </p>
             </CCol>
           </CRow>
 
-          <h2 className="h5 mb-0">Policy</h2>
+          <h2 className="h5 mb-0">{d.policy}</h2>
 
           <CRow className="g-3">
             <CCol md={6}>
-              <CFormLabel>Minimum account age (days)</CFormLabel>
+              <CFormLabel>{d.minAccountAge}</CFormLabel>
               <NumberInput
                 value={config.minimum_account_age_days}
                 defaultValue={0}
                 min={0}
                 max={3650}
                 step={1}
-                aria-label="Minimum account age in days"
+                aria-label={d.minAccountAgeAria}
                 onCommit={(next) =>
                   setConfig((c) => ({
                     ...c,
@@ -241,22 +246,14 @@ export function VerificationSettingsForm() {
             </CCol>
           </CRow>
 
-          <p className="mb-0 small text-body-secondary">
-            The verification master switch lives in the page header. VPN / Proxy
-            and Shared IP detection are configured from the mini cards on the
-            Member Verification page.
-          </p>
+          <p className="mb-0 small text-body-secondary">{d.policyNote}</p>
         </div>
       </Card>
 
       <Card>
         <div className="d-flex flex-column gap-3">
-          <h2 className="h5 mb-0">Verification link & Discord panel</h2>
-          <p className="mb-0 text-body-secondary small">
-            Members open this URL in a browser to complete Discord OAuth.
-            Requires Discord OAuth env vars and an active setup (channels +
-            roles saved, master enabled).
-          </p>
+          <h2 className="h5 mb-0">{d.linkPanelTitle}</h2>
+          <p className="mb-0 text-body-secondary small">{d.linkPanelDesc}</p>
           <code className="d-block border rounded p-3 small text-success text-break">
             {verifyUrl}
           </code>
@@ -266,7 +263,7 @@ export function VerificationSettingsForm() {
               disabled={!linkReady}
               onClick={() => void copyVerifyLink(verifyUrl)}
             >
-              {copied ? "Copied" : "Copy link"}
+              {copied ? d.copied : d.copyLink}
             </Button>
             {linkReady ? (
               <a
@@ -275,11 +272,11 @@ export function VerificationSettingsForm() {
                 rel="noreferrer"
                 className="d-inline-flex"
               >
-                <Button variant="secondary">Open in browser</Button>
+                <Button variant="secondary">{d.openInBrowser}</Button>
               </a>
             ) : (
               <Button variant="secondary" disabled>
-                Open in browser
+                {d.openInBrowser}
               </Button>
             )}
             <Button
@@ -287,7 +284,7 @@ export function VerificationSettingsForm() {
               onClick={() => void publishPanel(guildId)}
               disabled={publishing || !linkReady}
             >
-              {publishing ? "Publishing…" : "Publish Discord verify panel"}
+              {publishing ? d.publishing : d.publishPanel}
             </Button>
           </div>
           {publishFeedback && (
@@ -304,18 +301,20 @@ export function VerificationSettingsForm() {
           onClick={() => void save(guildId)}
           disabled={saving}
         >
-          {saving ? "Saving…" : "Save Verification Settings"}
+          {saving ? d.saving : d.saveSettings}
         </Button>
         <Button
           variant="secondary"
           onClick={() => void validateDiscord(guildId)}
           disabled={validating || !hasLocalRequired(config)}
         >
-          {validating ? "Validating…" : "Validate Discord"}
+          {validating ? d.validating : d.validateDiscord}
         </Button>
 
         {savedAt && (
-          <span className="small text-success">Saved at {savedAt}</span>
+          <span className="small text-success">
+            {formatDict(d.savedAt, { time: savedAt })}
+          </span>
         )}
 
         {error && (
@@ -347,11 +346,13 @@ function Select({
   value,
   options,
   onChange,
+  selectPlaceholder,
 }: {
   label: string;
   value: string;
   options: { value: string; label: string }[];
   onChange: (value: string) => void;
+  selectPlaceholder: string;
 }) {
   return (
     <div>
@@ -360,7 +361,7 @@ function Select({
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
-        <option value="">Select…</option>
+        <option value="">{selectPlaceholder}</option>
         {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}

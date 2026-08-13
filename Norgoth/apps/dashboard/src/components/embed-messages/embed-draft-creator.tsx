@@ -13,11 +13,13 @@ import {
   type EmbedMessage,
 } from "@/stores/embed-messages-store";
 import type { DiscordEmbedPayload } from "@/lib/discord/message-payload";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import {
   DISCORD_LIMITS,
   scrubEmptyEmbedUrls,
   validateEmbed,
 } from "@/lib/discord/message-payload";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 
 const EMPTY_EMBED: DiscordEmbedPayload = {
   title: "",
@@ -93,6 +95,8 @@ export function EmbedDraftCreator({
   onDraftChange,
   createLabel,
 }: EmbedDraftCreatorProps) {
+  const dict = useLocaleDict();
+  const d = dict.embedLibraryPage;
   const create = useEmbedMessagesStore((s) => s.create);
   const update = useEmbedMessagesStore((s) => s.update);
 
@@ -134,7 +138,7 @@ export function EmbedDraftCreator({
   async function handleSave(): Promise<void> {
     if (!guildId) return;
     if (!name.trim()) {
-      setFeedback("Draft Name is required.");
+      setFeedback(d.nameRequired);
       setFeedbackError(true);
       return;
     }
@@ -160,13 +164,13 @@ export function EmbedDraftCreator({
 
       if (!result) {
         const storeError = useEmbedMessagesStore.getState().error;
-        setFeedback(storeError ?? "Failed to save.");
+        setFeedback(storeError ?? d.failedToSave);
         setFeedbackError(true);
         return;
       }
 
       setMessage(result);
-      setFeedback("Saved.");
+      setFeedback(d.saved);
       setFeedbackError(false);
       if (isEdit) onSaved?.(result);
       else onCreated?.(result);
@@ -179,34 +183,34 @@ export function EmbedDraftCreator({
     <Card>
       <div className="d-flex flex-column gap-3">
         <div>
-          <CFormLabel>Draft Name</CFormLabel>
+          <CFormLabel>{d.draftName}</CFormLabel>
           <CFormInput
             value={name}
             maxLength={120}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Internal name (not shown in Discord)"
+            placeholder={d.draftNamePlaceholder}
           />
         </div>
         <div>
-          <CFormLabel>Description</CFormLabel>
+          <CFormLabel>{d.description}</CFormLabel>
           <CFormInput
             value={description}
             maxLength={500}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Optional note for your team"
+            placeholder={d.descriptionPlaceholder}
           />
         </div>
         <div>
-          <CFormLabel>Message content (above embed)</CFormLabel>
+          <CFormLabel>{d.messageContent}</CFormLabel>
           <RichMessageEditor
             value={content}
             onChange={setContent}
             height={140}
-            placeholder="Optional text shown above the embed."
+            placeholder={d.messageContentPlaceholder}
           />
           {content.length > DISCORD_LIMITS.content ? (
             <p className="small text-danger mb-0 mt-1">
-              Message content exceeds {DISCORD_LIMITS.content} characters.
+              {formatDict(d.contentTooLong, { limit: DISCORD_LIMITS.content })}
             </p>
           ) : null}
         </div>
@@ -221,14 +225,14 @@ export function EmbedDraftCreator({
         />
 
         <div>
-          <CFormLabel>Embed description</CFormLabel>
+          <CFormLabel>{d.embedDescription}</CFormLabel>
           <RichMessageEditor
             value={embed.description ?? ""}
             onChange={(markdown) =>
               setEmbed((current) => ({ ...current, description: markdown }))
             }
             height={200}
-            placeholder="The main body of the embed."
+            placeholder={d.embedDescriptionPlaceholder}
           />
         </div>
 
@@ -248,14 +252,14 @@ export function EmbedDraftCreator({
               disabled={saving || !guildId}
             >
               {saving
-                ? "Saving…"
+                ? d.saving
                 : isEdit
-                  ? "Save"
-                  : (createLabel ?? "Save Draft")}
+                  ? d.save
+                  : (createLabel ?? d.saveDraft)}
             </Button>
             {onCancel ? (
               <Button variant="secondary" onClick={onCancel}>
-                {cancelLabel ?? (isEdit ? "Back to list" : "Cancel")}
+                {cancelLabel ?? (isEdit ? d.backToList : d.cancel)}
               </Button>
             ) : null}
           </div>

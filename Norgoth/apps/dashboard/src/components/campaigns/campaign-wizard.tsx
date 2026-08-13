@@ -34,6 +34,7 @@ import type { Dictionary } from "@/app/[lang]/dictionaries";
 import type { Locale } from "@/i18n/config";
 import { apiUrl } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
+import { formatDict } from "@/lib/locale-dict";
 import { useCampaignsStore } from "@/stores/campaigns-store";
 import { useCampaignWizardDraftStore } from "@/stores/campaign-wizard-draft-store";
 
@@ -100,7 +101,10 @@ function buildLaunchAt(state: CampaignWizardState) {
   ).toISOString();
 }
 
-function validateLaunchAt(state: CampaignWizardState, isTR: boolean) {
+function validateLaunchAt(
+  state: CampaignWizardState,
+  copy: Dictionary["campaignWizard"],
+) {
   if (state.launch.launchMode !== "scheduled") {
     return null;
   }
@@ -108,24 +112,18 @@ function validateLaunchAt(state: CampaignWizardState, isTR: boolean) {
   const launchAt = buildLaunchAt(state);
 
   if (!launchAt) {
-    return isTR
-      ? "Zamanlanmış kampanya için tarih ve saat seçmelisin."
-      : "You must select both date and time for a scheduled campaign.";
+    return copy.scheduleNeedDateTime;
   }
 
   const launchDate = new Date(launchAt);
   const minimumAllowedDate = new Date(Date.now() + MINIMUM_SCHEDULE_DELAY_MS);
 
   if (Number.isNaN(launchDate.getTime())) {
-    return isTR
-      ? "Planlanan tarih/saat geçerli değil."
-      : "Scheduled date/time is invalid.";
+    return copy.scheduleInvalid;
   }
 
   if (launchDate.getTime() < minimumAllowedDate.getTime()) {
-    return isTR
-      ? "Zamanlanmış kampanya en az 2 dakika sonrasına ayarlanmalı."
-      : "Scheduled campaigns must be set at least 2 minutes in the future.";
+    return copy.scheduleTooSoon;
   }
 
   return null;
@@ -180,12 +178,16 @@ function RoleFilterPicker({
   roles,
   selected,
   onChange,
+  searchPlaceholder,
+  emptyMessage,
 }: {
   label: string;
   hint: string;
   roles: WizardRole[];
   selected: string[];
   onChange: (ids: string[]) => void;
+  searchPlaceholder: string;
+  emptyMessage: string;
 }) {
   return (
     <div className="d-flex flex-column gap-2">
@@ -196,7 +198,7 @@ function RoleFilterPicker({
 
       {roles.length === 0 ? (
         <CAlert color="secondary" className="mb-0">
-          No roles found in this server.
+          {emptyMessage}
         </CAlert>
       ) : (
         <RoleMultiPicker
@@ -208,7 +210,7 @@ function RoleFilterPicker({
           selectedIds={selected}
           onChange={onChange}
           excludeManaged={false}
-          searchPlaceholder="Search roles…"
+          searchPlaceholder={searchPlaceholder}
         />
       )}
     </div>
@@ -271,7 +273,7 @@ function StatBox({
 
 export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps) {
   const router = useRouter();
-  const isTR = lang === "tr";
+  const wizardCopy = dict.campaignWizard;
   const isEdit = Boolean(editCampaign);
 
   const step = useCampaignsStore((s) => s.wizardStep);
@@ -318,7 +320,7 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
     !isEdit && draftHydrated && hasDraft() && !bannerDismissed;
 
   const [guildId, setGuildId] = useState<string | null>(null);
-  const [guildName, setGuildName] = useState<string>("the server");
+  const [guildName, setGuildName] = useState<string>(wizardCopy.defaultServerName);
   const [channels, setChannels] = useState<WizardChannel[]>([]);
   const [roles, setRoles] = useState<WizardRole[]>([]);
   const [members, setMembers] = useState<WizardMember[]>([]);
@@ -337,9 +339,7 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
 
         if (!Array.isArray(guilds) || guilds.length === 0) {
           if (!cancelled) {
-            setResourcesError(
-              "Bot is offline or not in any server. Start the bot to configure delivery.",
-            );
+            setResourcesError(wizardCopy.botOfflineDelivery);
           }
           return;
         }
@@ -348,7 +348,7 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
 
         if (!cancelled) {
           setGuildId(String(guild.id));
-          setGuildName(String(guild.name ?? "the server"));
+          setGuildName(String(guild.name ?? wizardCopy.defaultServerName));
         }
 
         const [resourcesResponse, membersResponse] = await Promise.all([
@@ -383,7 +383,7 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
         }
       } catch {
         if (!cancelled) {
-          setResourcesError("Could not reach the Norgoth API for guild data.");
+          setResourcesError(wizardCopy.guildApiError);
         }
       }
     }
@@ -393,7 +393,11 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [
+    wizardCopy.botOfflineDelivery,
+    wizardCopy.defaultServerName,
+    wizardCopy.guildApiError,
+  ]);
 
   const isDM = wizardState.audience.deliveryTarget === "dm";
 
@@ -433,8 +437,8 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
   }, [isDM, dmRecipients.length]);
 
   const scheduleValidationError = useMemo(() => {
-    return validateLaunchAt(wizardState, isTR);
-  }, [wizardState, isTR]);
+    return validateLaunchAt(wizardState, wizardCopy);
+  }, [wizardState, wizardCopy]);
 
   const targetSelected = isDM
     ? dmRecipients.length > 0
@@ -464,9 +468,10 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
       // DM preview uses a sample display name; runtime resolves per recipient.
       "{user_name}": isDM ? "Alice" : "member",
       "{server_name}": guildName,
-      "{campaign_name}": wizardState.basics.name.trim() || "Campaign",
+      "{campaign_name}":
+        wizardState.basics.name.trim() || wizardCopy.defaultCampaignName,
     }),
-    [isDM, guildName, wizardState.basics.name],
+    [isDM, guildName, wizardState.basics.name, wizardCopy.defaultCampaignName],
   );
 
   const previewHtml = useMemo(() => {
@@ -496,7 +501,7 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
       setSubmitError(null);
       setSubmitMessage(null);
 
-      const validationError = validateLaunchAt(wizardState, isTR);
+      const validationError = validateLaunchAt(wizardState, wizardCopy);
 
       if (validationError) {
         setSubmitError(validationError);
@@ -504,12 +509,12 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
       }
 
       if (!isDM && !wizardState.audience.channelId) {
-        setSubmitError("Select a Discord delivery channel first.");
+        setSubmitError(wizardCopy.selectChannelFirst);
         return;
       }
 
       if (isDM && dmRecipients.length === 0) {
-        setSubmitError("The current role filters match no members.");
+        setSubmitError(wizardCopy.roleFiltersEmpty);
         return;
       }
 
@@ -560,7 +565,7 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(errorText || "Request failed.");
+        throw new Error(errorText || wizardCopy.requestFailed);
       }
 
       const result = await response.json();
@@ -568,7 +573,7 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
 
       addStoredActivity({
         id: `act_${Date.now()}`,
-        title: isEdit ? "Campaign updated" : "Campaign created",
+        title: isEdit ? wizardCopy.campaignUpdated : wizardCopy.campaignCreated,
         meta: createdName,
         type: "success",
         created_at: new Date().toISOString(),
@@ -576,10 +581,10 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
 
       setSubmitMessage(
         isEdit
-          ? `Campaign updated: ${createdName}`
+          ? `${wizardCopy.campaignUpdated}: ${createdName}`
           : launchAt
-            ? `Campaign scheduled: ${createdName}`
-            : `Campaign queued for delivery: ${createdName}`,
+            ? `${wizardCopy.campaignScheduled}: ${createdName}`
+            : `${wizardCopy.campaignQueued}: ${createdName}`,
       );
 
       if (!isEdit) {
@@ -596,7 +601,7 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
       }, 800);
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Unknown error occurred.";
+        error instanceof Error ? error.message : wizardCopy.unknownError;
       setSubmitError(message);
     } finally {
       setIsSubmitting(false);
@@ -610,13 +615,13 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
           <CAlert color="info" className="mb-0">
             <div className="d-flex flex-wrap align-items-center justify-content-between gap-3">
               <div>
-                <div className="fw-semibold">Saved draft found</div>
+                <div className="fw-semibold">{wizardCopy.draftFoundTitle}</div>
                 <div className="small">
-                  Updated{" "}
-                  {draft?.updatedAt
-                    ? formatDateTime(draft.updatedAt, lang)
-                    : "recently"}
-                  . Continue where you left off, discard, or start new.
+                  {formatDict(wizardCopy.draftFoundBody, {
+                    when: draft?.updatedAt
+                      ? formatDateTime(draft.updatedAt, lang)
+                      : wizardCopy.recently,
+                  })}
                 </div>
               </div>
               <div className="d-flex flex-wrap gap-2">
@@ -632,7 +637,7 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                     setBannerDismissed(true);
                   }}
                 >
-                  Continue
+                  {wizardCopy.continueDraft}
                 </Button>
                 <Button
                   variant="secondary"
@@ -644,7 +649,7 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                     setStep(1);
                   }}
                 >
-                  Discard
+                  {wizardCopy.discardDraft}
                 </Button>
                 <Button
                   variant="secondary"
@@ -656,7 +661,7 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                     setBannerDismissed(true);
                   }}
                 >
-                  Start new
+                  {wizardCopy.startNewDraft}
                 </Button>
               </div>
             </div>
@@ -670,12 +675,10 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
               size="sm"
               onClick={() => {
                 saveDraft(step, wizardState);
-                setSubmitMessage(
-                  isTR ? "Taslak kaydedildi." : "Draft saved locally.",
-                );
+                setSubmitMessage(wizardCopy.draftSaved);
               }}
             >
-              Save draft
+              {wizardCopy.saveDraft}
             </Button>
           </div>
         ) : null}
@@ -740,7 +743,7 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                         },
                       }))
                     }
-                    placeholder="Campaign name"
+                    placeholder={wizardCopy.campaignNamePlaceholder}
                   />
                 </div>
 
@@ -763,11 +766,10 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                       }))
                     }
                     height={180}
-                    placeholder="Internal note about the purpose of this campaign (not sent to Discord)"
+                    placeholder={wizardCopy.internalNotePlaceholder}
                   />
                   <p className="mt-1 mb-0 small text-body-secondary">
-                    Formatting is stored for dashboard display; not sent to
-                    Discord.
+                    {wizardCopy.formattingInternalNote}
                   </p>
                 </div>
               </div>
@@ -791,8 +793,7 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                 <div>
                   <h2 className="h5 mb-1">{dict.campaignWizard.audienceTitle}</h2>
                   <p className="mb-0 text-body-secondary small">
-                    Choose where the message goes: one channel post, or a direct
-                    message to every targeted member.
+                    {wizardCopy.audienceDescription}
                   </p>
                 </div>
 
@@ -803,19 +804,18 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                 ) : null}
 
                 <div>
-                  <CFormLabel>Delivery Target</CFormLabel>
+                  <CFormLabel>{wizardCopy.deliveryTarget}</CFormLabel>
                   <CRow className="g-3">
                     {[
                       {
                         value: "channel" as const,
-                        label: "Channel Broadcast",
-                        description: "Post the message once to a text channel.",
+                        label: wizardCopy.channelBroadcast,
+                        description: wizardCopy.channelBroadcastDesc,
                       },
                       {
                         value: "dm" as const,
-                        label: "Member DMs",
-                        description:
-                          "Send a direct message to every targeted member.",
+                        label: wizardCopy.memberDms,
+                        description: wizardCopy.memberDmsDesc,
                       },
                     ].map((option) => (
                       <CCol key={option.value} md={6}>
@@ -843,10 +843,11 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                 {!isDM ? (
                   <div className="border rounded p-3 d-flex flex-column gap-3">
                     <div>
-                      <h3 className="h6 mb-1">Discord Delivery Channel</h3>
+                      <h3 className="h6 mb-1">
+                        {wizardCopy.discordDeliveryChannel}
+                      </h3>
                       <p className="mb-0 text-body-secondary small">
-                        The campaign message is posted to this channel by
-                        NorBot.
+                        {wizardCopy.discordDeliveryChannelDesc}
                       </p>
                     </div>
 
@@ -862,7 +863,7 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                         }))
                       }
                     >
-                      <option value="">Select a channel…</option>
+                      <option value="">{wizardCopy.selectChannel}</option>
                       {channels.map((channel) => (
                         <option key={channel.id} value={channel.id}>
                           #{channel.name}
@@ -872,41 +873,44 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
 
                     {!wizardState.audience.channelId ? (
                       <CAlert color="danger" className="mb-0">
-                        Select a delivery channel to launch this campaign.
+                        {wizardCopy.selectDeliveryChannel}
                       </CAlert>
                     ) : null}
                   </div>
                 ) : (
                   <div className="border rounded p-3 d-flex flex-column gap-3">
                     <div>
-                      <h3 className="h6 mb-1">DM Audience Filters</h3>
+                      <h3 className="h6 mb-1">{wizardCopy.dmAudienceFilters}</h3>
                       <p className="mb-0 text-body-secondary small">
-                        Bots are always excluded. Members with disabled DMs are
-                        counted as failed deliveries at send time.
+                        {wizardCopy.dmAudienceFiltersDesc}
                       </p>
                     </div>
 
                     <RoleFilterPicker
                       label={dict.campaignWizard.includeRoles}
-                      hint="If any roles are selected, only members with at least one of them receive the DM."
+                      hint={wizardCopy.includeRolesHint}
                       roles={roles}
                       selected={wizardState.audience.includeRoleIds}
                       onChange={(ids) => setRoleList("includeRoleIds", ids)}
+                      searchPlaceholder={wizardCopy.searchRoles}
+                      emptyMessage={wizardCopy.noRolesFound}
                     />
 
                     <RoleFilterPicker
                       label={dict.campaignWizard.excludeRoles}
-                      hint="Members with any of these roles never receive the DM."
+                      hint={wizardCopy.excludeRolesHint}
                       roles={roles}
                       selected={wizardState.audience.excludeRoleIds}
                       onChange={(ids) => setRoleList("excludeRoleIds", ids)}
+                      searchPlaceholder={wizardCopy.searchRoles}
+                      emptyMessage={wizardCopy.noRolesFound}
                     />
 
                     {dmRecipients.length === 0 ? (
                       <CAlert color="danger" className="mb-0">
                         {members.length === 0
-                          ? "No member snapshot available yet. Make sure the bot is online."
-                          : "The current filters match no members."}
+                          ? wizardCopy.noMemberSnapshot
+                          : wizardCopy.filtersMatchNone}
                       </CAlert>
                     ) : null}
                   </div>
@@ -922,33 +926,33 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                       {dict.campaignWizard.audienceSummary}
                     </h3>
                     <Badge variant="info">
-                      {isDM ? "Member DMs" : "Channel"}
+                      {isDM ? wizardCopy.memberDms : wizardCopy.channelLabel}
                     </Badge>
                   </div>
 
                   <StatBox
                     label={
                       isDM
-                        ? "DM Recipients"
+                        ? wizardCopy.dmRecipients
                         : dict.campaignWizard.estimatedAudience
                     }
                     value={
                       isDM
                         ? dmRecipients.length
                         : wizardState.audience.channelId
-                          ? "1 channel"
+                          ? wizardCopy.oneChannel
                           : "—"
                     }
                   />
 
                   {isDM ? (
-                    <StatBox label="Excluded (bots)" value={botMemberCount} />
+                    <StatBox label={wizardCopy.excludedBots} value={botMemberCount} />
                   ) : null}
 
                   <p className="mb-0 text-body-secondary small">
                     {isDM
-                      ? "DMs are sent one-by-one with rate limiting; large audiences take longer."
-                      : "A single message is posted to the selected channel."}
+                      ? wizardCopy.dmRateLimitNote
+                      : wizardCopy.channelPostNote}
                   </p>
                 </div>
               </SidePanel>
@@ -1018,12 +1022,14 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                             },
                           }))
                         }
-                        placeholder="Embed title (defaults to campaign name)"
+                        placeholder={wizardCopy.embedTitlePlaceholder}
                       />
                     </div>
 
                     <div>
-                      <CFormLabel className="d-block">Embed color</CFormLabel>
+                      <CFormLabel className="d-block">
+                        {wizardCopy.embedColorLabel}
+                      </CFormLabel>
                       <EmbedColorPicker
                         value={wizardState.message.embedColor}
                         onChange={(hex) =>
@@ -1038,8 +1044,8 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                     <CRow className="g-3">
                       <CCol md={6}>
                         <EmbedMediaPicker
-                          label="Thumbnail"
-                          helper="Upper-right of the embed."
+                          label={wizardCopy.thumbnailLabel}
+                          helper={wizardCopy.thumbnailHelper}
                           value={wizardState.message.embedThumbnailUrl}
                           guildId={guildId ?? undefined}
                           onChange={(url) =>
@@ -1055,8 +1061,8 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                       </CCol>
                       <CCol md={6}>
                         <EmbedMediaPicker
-                          label="Main image / banner"
-                          helper="Large image beneath the body."
+                          label={wizardCopy.mainImageLabel}
+                          helper={wizardCopy.mainImageHelper}
                           value={wizardState.message.embedImageUrl}
                           guildId={guildId ?? undefined}
                           banner
@@ -1090,12 +1096,10 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                       }))
                     }
                     variables={CAMPAIGN_VARIABLES}
-                    placeholder="Write the campaign message…"
+                    placeholder={wizardCopy.messageBodyPlaceholder}
                   />
                   <p className="mt-2 mb-0 small text-body-secondary">
-                    Formatting is converted to Discord markdown on send.
-                    Variables resolve per recipient in DM mode; in channel mode
-                    {" {user_name} "} becomes “member” (no single recipient).
+                    {wizardCopy.formattingSendNote}
                   </p>
                 </div>
               </div>
@@ -1117,7 +1121,7 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                         title: substituteVariables(
                           wizardState.message.subject ||
                             wizardState.basics.name ||
-                            "Campaign",
+                            wizardCopy.defaultCampaignName,
                           previewSampleValues,
                         ),
                         description: substituteVariables(
@@ -1129,7 +1133,7 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                           wizardState.message.embedThumbnailUrl || undefined,
                         image_url:
                           wizardState.message.embedImageUrl || undefined,
-                        footer: "NorBot Campaign",
+                        footer: wizardCopy.embedFooter,
                       }}
                       mode="embed"
                       showImagePlaceholders
@@ -1141,16 +1145,17 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                         dangerouslySetInnerHTML={{
                           __html:
                             previewHtml ||
-                            '<p class="text-body-secondary">Message body preview…</p>',
+                            `<p class="text-body-secondary">${wizardCopy.messageBodyPreview}</p>`,
                         }}
                       />
                     </div>
                   )}
 
                   <p className="mb-0 text-body-secondary small">
-                    Preview shows sample values: {"{user_name}"} →{" "}
-                    {previewSampleValues["{user_name}"]}, {"{server_name}"} →{" "}
-                    {guildName}.
+                    {formatDict(wizardCopy.previewSampleNote, {
+                      userSample: previewSampleValues["{user_name}"],
+                      serverName: guildName,
+                    })}
                   </p>
                 </div>
               </SidePanel>
@@ -1174,7 +1179,11 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                 <CRow className="g-3">
                   <CCol md={6} xl={4}>
                     <ValidationStatCard
-                      label={isDM ? "DM Recipients" : "Channel Deliveries"}
+                      label={
+                        isDM
+                          ? wizardCopy.dmRecipients
+                          : wizardCopy.channelDeliveries
+                      }
                       value={estimatedAudience}
                       tone="success"
                     />
@@ -1183,14 +1192,14 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                     <>
                       <CCol md={6} xl={4}>
                         <ValidationStatCard
-                          label="Bots Excluded"
+                          label={wizardCopy.botsExcluded}
                           value={botMemberCount}
                           tone="warning"
                         />
                       </CCol>
                       <CCol md={6} xl={4}>
                         <ValidationStatCard
-                          label="Role Filters Active"
+                          label={wizardCopy.roleFiltersActive}
                           value={
                             wizardState.audience.includeRoleIds.length +
                             wizardState.audience.excludeRoleIds.length
@@ -1201,7 +1210,7 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                   ) : (
                     <CCol md={6} xl={4}>
                       <ValidationStatCard
-                        label="Server Members Reached"
+                        label={wizardCopy.serverMembersReached}
                         value={members.filter((m) => !m.bot).length}
                       />
                     </CCol>
@@ -1240,8 +1249,7 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                     </div>
                     {isDM && riskLevel !== "low" ? (
                       <p className="mt-2 mb-0 small text-body-secondary">
-                        Large DM audiences are delivered slowly to respect
-                        Discord rate limits.
+                        {wizardCopy.largeDmRiskNote}
                       </p>
                     ) : null}
                   </div>
@@ -1357,9 +1365,7 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                       </CAlert>
                     ) : (
                       <CAlert color="info" className="mb-0">
-                        {isTR
-                          ? "Zamanlanmış kampanya launch_at zamanı gelene kadar Upcoming panelinde bekler."
-                          : "Scheduled campaigns stay in the Upcoming panel until launch_at is reached."}
+                        {wizardCopy.scheduleWaitingNote}
                       </CAlert>
                     )}
                   </>
@@ -1373,11 +1379,15 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                   <h3 className="h6 mb-0">{dict.campaignWizard.finalReview}</h3>
 
                   <div className="border rounded p-3">
-                    <div className="small text-body-secondary">Delivery</div>
+                    <div className="small text-body-secondary">
+                      {wizardCopy.delivery}
+                    </div>
                     <div className="mt-2 d-flex flex-wrap gap-2">
                       <Badge variant="info">
                         {isDM
-                          ? `DM to ${dmRecipients.length} members`
+                          ? formatDict(wizardCopy.dmToMembers, {
+                              count: dmRecipients.length,
+                            })
                           : wizardState.audience.channelId
                             ? `#${
                                 channels.find(
@@ -1385,7 +1395,7 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                                     c.id === wizardState.audience.channelId,
                                 )?.name ?? wizardState.audience.channelId
                               }`
-                            : "Not selected"}
+                            : wizardCopy.notSelected}
                       </Badge>
                       <Badge variant="neutral">
                         {wizardState.message.messageType === "text"
@@ -1433,9 +1443,9 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
 
                   <p className="mb-0 text-body-secondary small">
                     {isEdit
-                      ? "Saving updates this campaign without launching it."
+                      ? wizardCopy.saveWithoutLaunch
                       : wizardState.launch.launchMode === "now"
-                        ? "Launching queues the campaign for immediate delivery by the worker."
+                        ? wizardCopy.launchQueuesNow
                         : dict.campaignWizard.launchNote}
                   </p>
 
@@ -1446,9 +1456,9 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                     onClick={handleLaunchCampaign}
                   >
                     {isSubmitting
-                      ? "Submitting..."
+                      ? wizardCopy.submitting
                       : isEdit
-                        ? "Save Changes"
+                        ? wizardCopy.saveChanges
                         : dict.campaignWizard.launchCampaign}
                   </Button>
 

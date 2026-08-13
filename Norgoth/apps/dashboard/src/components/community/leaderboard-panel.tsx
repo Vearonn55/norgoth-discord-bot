@@ -15,23 +15,20 @@ import {
   SegmentedControl,
   SegmentedPanel,
 } from "@/components/ui/segmented-control";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import {
   useLevelingStore,
   type LeaderboardMetric,
 } from "@/stores/leveling-store";
 
-const METRIC_TABS = [
-  { id: "text", label: "Text XP" },
-  { id: "voice", label: "Voice XP" },
-  { id: "net_upvotes", label: "Top Upvote" },
-] as const;
-
 function isMetricId(value: string | null): value is LeaderboardMetric {
   return value === "text" || value === "voice" || value === "net_upvotes";
 }
 
 export function LeaderboardPanel() {
+  const dict = useLocaleDict();
+  const d = dict.leaderboardPage;
   const params = useParams();
   const searchParams = useSearchParams();
   const lang = typeof params?.lang === "string" ? params.lang : "en";
@@ -47,6 +44,16 @@ export function LeaderboardPanel() {
   const loadLeaderboard = useLevelingStore((s) => s.loadLeaderboard);
   const feedback = useLevelingStore((s) => s.feedback);
   const feedbackIsError = useLevelingStore((s) => s.feedbackIsError);
+
+  const metricTabs = useMemo(
+    () =>
+      [
+        { id: "text" as const, label: d.tabText },
+        { id: "voice" as const, label: d.tabVoice },
+        { id: "net_upvotes" as const, label: d.tabNetUpvotes },
+      ] as const,
+    [d.tabText, d.tabVoice, d.tabNetUpvotes]
+  );
 
   // Deep-link from global search: ?metric=text|voice|net_upvotes
   useEffect(() => {
@@ -78,7 +85,7 @@ export function LeaderboardPanel() {
       <Card>
         <div className="d-flex align-items-center gap-2 text-body-secondary">
           <CSpinner size="sm" />
-          Loading leaderboards…
+          {d.loading}
         </div>
       </Card>
     );
@@ -88,11 +95,11 @@ export function LeaderboardPanel() {
     return (
       <Card>
         <div className="d-flex flex-column gap-3">
-          <Badge variant="warning">Bot required</Badge>
+          <Badge variant="warning">{d.botRequired}</Badge>
           <p className="mb-0 small text-body-secondary">{error}</p>
           <div>
             <Button variant="secondary" onClick={() => void reload()}>
-              Retry
+              {d.retry}
             </Button>
           </div>
         </div>
@@ -102,32 +109,32 @@ export function LeaderboardPanel() {
 
   const isNet = leaderboardMetric === "net_upvotes";
   const headerTitle = isNet
-    ? "Top Upvote"
+    ? d.tabNetUpvotes
     : leaderboardMetric === "voice"
-      ? "Voice XP"
-      : "Text XP";
+      ? d.tabVoice
+      : d.tabText;
 
   const emptyMessage = isNet
-    ? "Nobody has net upvotes yet. Enable Top Trending and let members vote on posts."
+    ? d.emptyNet
     : leaderboardMetric === "voice"
-      ? "Nobody has earned Voice XP yet. Set Voice XP per minute above 0 on Levels & Activity, then members earn XP while in voice with at least one other human."
-      : "Nobody has earned Text XP yet. XP is granted as members chat.";
+      ? d.emptyVoice
+      : d.emptyText;
 
   return (
     <div className="d-flex flex-column gap-4">
       <PageHeader
-        title="Leaderboards"
+        title={d.title}
         icon={<Icon icon={cilBarChart} size="xl" />}
         category="leveling"
-        description="Top members by Text XP, Voice XP, or All-Time net upvotes from Top Trending."
+        description={d.description}
         infoKey="leaderboard"
       />
 
       <SegmentedControl
-        options={[...METRIC_TABS]}
+        options={[...metricTabs]}
         value={leaderboardMetric}
         onChange={onMetricChange}
-        ariaLabel="Leaderboard metric"
+        ariaLabel={d.metricAria}
       />
 
       <SegmentedPanel>
@@ -141,24 +148,25 @@ export function LeaderboardPanel() {
                   className="text-body-secondary mt-1"
                 />
                 <div>
-                  <h2 className="h5 mb-0 fw-semibold">{headerTitle} rankings</h2>
+                  <h2 className="h5 mb-0 fw-semibold">
+                    {formatDict(d.rankingsTitle, { metric: headerTitle })}
+                  </h2>
                   <p className="mt-1 mb-0 small text-body-secondary">
                     {isNet ? (
                       <>
-                        All-Time net upvotes from{" "}
+                        {d.netDescBefore}{" "}
                         <Link href={`/${lang}/community/feed-channels`}>
-                          Top Trending
+                          {d.netDescLink}
                         </Link>
-                        . Negatives reduce an author&apos;s total.
+                        {d.netDescAfter}
                       </>
                     ) : (
                       <>
-                        Pre-split XP is attributed to Text. Voice XP requires a
-                        non-zero voice rate on{" "}
+                        {d.xpDescBefore}{" "}
                         <Link href={`/${lang}/community/leveling`}>
-                          Levels &amp; Activity
+                          {d.xpDescLink}
                         </Link>
-                        .
+                        {d.xpDescAfter}
                       </>
                     )}
                   </p>
@@ -172,7 +180,7 @@ export function LeaderboardPanel() {
                   guildId && void loadLeaderboard(guildId, leaderboardMetric)
                 }
               >
-                Refresh
+                {d.refresh}
               </Button>
             </div>
 
@@ -201,7 +209,7 @@ export function LeaderboardPanel() {
                         },
                         {
                           key: "name",
-                          header: "Member",
+                          header: d.colMember,
                           cell: (row) => (
                             <div className="d-flex align-items-center gap-2">
                               <LeaderboardAvatar
@@ -225,7 +233,7 @@ export function LeaderboardPanel() {
                         },
                         {
                           key: "net",
-                          header: "Net",
+                          header: d.colNet,
                           cell: (row) =>
                             (
                               row.net_upvotes ?? row.xp ?? 0
@@ -233,19 +241,19 @@ export function LeaderboardPanel() {
                         },
                         {
                           key: "up",
-                          header: "Upvotes",
+                          header: d.colUpvotes,
                           cell: (row) =>
                             (row.upvote_total ?? 0).toLocaleString(),
                         },
                         {
                           key: "down",
-                          header: "Downvotes",
+                          header: d.colDownvotes,
                           cell: (row) =>
                             (row.downvote_total ?? 0).toLocaleString(),
                         },
                         {
                           key: "posts",
-                          header: "Posts",
+                          header: d.colPosts,
                           cell: (row) =>
                             (row.post_count ?? 0).toLocaleString(),
                         },
@@ -258,7 +266,7 @@ export function LeaderboardPanel() {
                         },
                         {
                           key: "name",
-                          header: "Member",
+                          header: d.colMember,
                           cell: (row) => (
                             <div className="d-flex align-items-center gap-2">
                               <LeaderboardAvatar
@@ -282,9 +290,11 @@ export function LeaderboardPanel() {
                         },
                         {
                           key: "level",
-                          header: "Level",
+                          header: d.colLevel,
                           cell: (row) => (
-                            <Badge variant="info">Level {row.level}</Badge>
+                            <Badge variant="info">
+                              {formatDict(d.levelBadge, { level: row.level })}
+                            </Badge>
                           ),
                         },
                         {
@@ -296,10 +306,10 @@ export function LeaderboardPanel() {
                 }
                 rows={filteredLeaderboard}
                 rowKey={(row) => row.user_id}
-                emptyMessage="No matching members."
+                emptyMessage={d.emptyMatching}
                 search={leaderboardSearch}
                 onSearchChange={setLeaderboardSearch}
-                searchPlaceholder="Search members…"
+                searchPlaceholder={d.searchMembers}
                 page={leaderboardPage}
                 pageSize={10}
                 onPageChange={setLeaderboardPage}

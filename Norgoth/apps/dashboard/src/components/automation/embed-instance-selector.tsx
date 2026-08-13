@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { CFormLabel, CFormSelect } from "@coreui/react";
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/datetime";
+import { useLocaleDict } from "@/lib/locale-dict";
 import {
   useEmbedMessagesStore,
   type EmbedMessage,
@@ -36,6 +37,8 @@ export function EmbedInstanceSelector({
   embedDeliveryId,
   onChange,
 }: EmbedInstanceSelectorProps) {
+  const dict = useLocaleDict();
+  const d = dict.roleMenusPage;
   const params = useParams();
   const lang = String(params?.lang || "en");
 
@@ -73,18 +76,18 @@ export function EmbedInstanceSelector({
       delivery.published_at ?? delivery.created_at,
       lang
     );
-    return `#${channel} : ${when}`;
+    return `#${channel} · ${when}`;
   }
 
   return (
     <div className="d-flex flex-column gap-3">
       <div>
-        <CFormLabel>Embed Message</CFormLabel>
+        <CFormLabel>{d.embedMessage}</CFormLabel>
         <input
           className="form-control mb-2"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search embed messages…"
+          placeholder={d.searchEmbedMessages}
         />
         <CFormSelect
           value={embedMessageId ?? ""}
@@ -93,28 +96,28 @@ export function EmbedInstanceSelector({
             onChange(id, null, null);
           }}
         >
-          <option value="">Select an Embed Message…</option>
+          <option value="">{d.selectEmbedMessage}</option>
           {filteredMessages.map((message) => (
             <option key={message.id} value={message.id}>
               {message.name}
-              {message.has_published ? "" : " (draft)"}
+              {message.has_published ? "" : d.draftSuffix}
             </option>
           ))}
         </CFormSelect>
         {loading ? (
-          <p className="small text-body-secondary mt-1 mb-0">Loading…</p>
+          <p className="small text-body-secondary mt-1 mb-0">{d.loadingShort}</p>
         ) : null}
       </div>
 
       {selectedMessage ? (
         instances.length > 0 ? (
           <div>
-            <CFormLabel>Published instance</CFormLabel>
+            <CFormLabel>{d.publishedInstance}</CFormLabel>
             <CFormSelect
               value={embedDeliveryId ?? ""}
               onChange={(event) => {
                 const deliveryId = event.target.value || null;
-                const delivery = instances.find((d) => d.id === deliveryId);
+                const delivery = instances.find((x) => x.id === deliveryId);
                 onChange(
                   selectedMessage.id,
                   deliveryId,
@@ -122,39 +125,31 @@ export function EmbedInstanceSelector({
                 );
               }}
             >
-              <option value="">Select a published instance…</option>
+              <option value="">{d.selectPublishedInstance}</option>
               {instances.map((delivery) => (
                 <option key={delivery.id} value={delivery.id}>
                   {instanceLabel(delivery)}
                 </option>
               ))}
             </CFormSelect>
-            <p className="small text-body-secondary mt-1 mb-0">
-              Role controls attach to this exact published message. The embed
-              content stays owned by the Embed Message.
-            </p>
+            <p className="small text-body-secondary mt-1 mb-0">{d.instanceHelp}</p>
           </div>
         ) : (
           <div className="border rounded p-3 small d-flex flex-column gap-2">
-            <span className="text-warning fw-medium">
-              This Embed Message has no published instance yet.
-            </span>
-            <span className="text-body-secondary">
-              Publish the Embed Message to a channel first, then select the
-              instance here.
-            </span>
+            <span className="text-warning fw-medium">{d.noPublishedInstance}</span>
+            <span className="text-body-secondary">{d.publishEmbedFirst}</span>
             <Link
               href={`/${lang}/messages/embed-messages/${selectedMessage.id}`}
               className="text-decoration-none"
             >
-              Open Embed Message →
+              {d.openEmbedMessage}
             </Link>
           </div>
         )
       ) : null}
 
       {embedDeliveryId ? (
-        <Badge variant="success">Instance bound</Badge>
+        <Badge variant="success">{d.instanceBound}</Badge>
       ) : null}
     </div>
   );

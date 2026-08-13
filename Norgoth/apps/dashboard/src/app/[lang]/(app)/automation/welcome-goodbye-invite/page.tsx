@@ -12,19 +12,20 @@ export default async function WelcomeFlowPage({
 
   if (!hasLocale(lang)) notFound();
 
-  await getDictionary(lang);
+  const dict = await getDictionary(lang);
+  const info = dict.featureInfo.welcomeLeave;
 
   return (
     <div className="d-flex flex-column gap-4">
-        <PageHeader
-          title="Welcome & Leave"
-          icon={<Icon icon={cilCommentBubble} size="xl" />}
-          category="community"
-          description="Send a welcome message when a member joins and a leave message when they leave, with live delivery status and a test send."
-          infoKey="welcomeLeave"
-        />
+      <PageHeader
+        title={info.title}
+        icon={<Icon icon={cilCommentBubble} size="xl" />}
+        category="community"
+        description={info.description}
+        infoKey="welcomeLeave"
+      />
 
-        <AutomationSettingsPanel section="welcome" />
-      </div>
+      <AutomationSettingsPanel section="welcome" />
+    </div>
   );
 }

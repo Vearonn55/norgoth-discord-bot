@@ -1,11 +1,10 @@
 "use client";
 
 import {
-  ROLE_MENU_INTERACTION_HELP,
-  ROLE_MENU_INTERACTION_LABELS,
   ROLE_MENU_INTERACTIONS,
   type RoleMenuInteraction,
 } from "@/lib/discord/role-menu-modes";
+import { useLocaleDict } from "@/lib/locale-dict";
 
 type AssignmentMethodSelectorProps = {
   value: RoleMenuInteraction;
@@ -16,13 +15,27 @@ export function AssignmentMethodSelector({
   value,
   onChange,
 }: AssignmentMethodSelectorProps) {
+  const dict = useLocaleDict();
+  const d = dict.roleMenusPage;
+
+  const labels: Record<RoleMenuInteraction, string> = {
+    buttons: d.interactionButtons,
+    select: d.interactionSelect,
+    reactions: d.interactionReactions,
+  };
+  const help: Record<RoleMenuInteraction, string> = {
+    buttons: d.interactionButtonsHelp,
+    select: d.interactionSelectHelp,
+    reactions: d.interactionReactionsHelp,
+  };
+
   return (
     <div className="d-flex flex-column gap-2">
-      <div className="fw-semibold">How members choose roles</div>
+      <div className="fw-semibold">{d.howMembersChoose}</div>
       <div
         className="row g-2"
         role="radiogroup"
-        aria-label="Role assignment method"
+        aria-label={d.assignmentMethodAria}
       >
         {ROLE_MENU_INTERACTIONS.map((method) => {
           const selected = value === method;
@@ -38,12 +51,8 @@ export function AssignmentMethodSelector({
                 ].join(" ")}
                 onClick={() => onChange(method)}
               >
-                <div className="fw-semibold">
-                  {ROLE_MENU_INTERACTION_LABELS[method]}
-                </div>
-                <div className="small opacity-75 mt-1">
-                  {ROLE_MENU_INTERACTION_HELP[method]}
-                </div>
+                <div className="fw-semibold">{labels[method]}</div>
+                <div className="small opacity-75 mt-1">{help[method]}</div>
               </button>
             </div>
           );

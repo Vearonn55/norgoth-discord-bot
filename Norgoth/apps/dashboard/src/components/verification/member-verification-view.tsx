@@ -8,6 +8,7 @@ import { Icon } from "@/components/ui/icon";
 import { MutedSection } from "@/components/ui/feature-muting";
 import { VerificationDetectorsPanel } from "@/components/verification/verification-detectors-panel";
 import { VerificationLogsPanel } from "@/components/verification/verification-logs-panel";
+import { useFeatureInfo } from "@/lib/feature-info";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import { useVerificationStore } from "@/stores/verification-store";
 
@@ -18,7 +19,8 @@ import { useVerificationStore } from "@/stores/verification-store";
  * `guild_settings.enabled` flag, transitioned atomically backend-side.
  */
 export function MemberVerificationView() {
-  const { guildId, selectedGuild } = useFirstGuild();
+  const { guildId } = useFirstGuild();
+  const info = useFeatureInfo("memberVerification");
   const config = useVerificationStore((s) => s.config);
   const loading = useVerificationStore((s) => s.loading);
   const error = useVerificationStore((s) => s.error);
@@ -39,13 +41,12 @@ export function MemberVerificationView() {
   return (
     <div className="d-flex flex-column gap-4">
       <PageHeader
-        title="Member Verification"
+        title={info?.title ?? "Member Verification"}
         icon={<Icon icon={cilPeople} size="xl" />}
         category="community"
         description={
-          selectedGuild
-            ? `Verification outcomes for members joining ${selectedGuild.name}.`
-            : "Verification outcomes for members joining this server."
+          info?.description ??
+          "Screens members joining your server and applies your verification policy before granting access."
         }
         infoKey="memberVerification"
         masterToggle={{

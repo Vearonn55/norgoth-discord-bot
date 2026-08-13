@@ -12,14 +12,15 @@ export default async function InvitesPage({
 
   if (!hasLocale(lang)) notFound();
 
-  await getDictionary(lang);
+  const dict = await getDictionary(lang);
+  const info = dict.featureInfo.inviteTracking;
 
   return (
     <div className="d-flex flex-column gap-4">
       <PageHeader
-        title="Invite Tracking"
+        title={info.title}
         icon={<Icon icon={cilLink} size="xl" />}
-        description="Who invited whom: join attribution, inviter leaderboard, and leave/rejoin tracking."
+        description={info.description}
         infoKey="inviteTracking"
       />
 

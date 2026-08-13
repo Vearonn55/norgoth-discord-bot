@@ -16,7 +16,7 @@ export default async function NewCampaignPage({
     <div className="d-flex flex-column gap-4">
         <PageHeader
           title={dict.campaignWizard.newCampaignTitle}
-          description="Create a Discord campaign: pick a channel broadcast or member DMs, write the message with rich formatting, validate the audience, and launch now or on a schedule."
+          description={dict.campaignsPage.newDescription}
         />
 
         <CampaignWizard lang={lang} dict={dict} />

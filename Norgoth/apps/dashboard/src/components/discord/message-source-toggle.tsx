@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { useLocaleDict } from "@/lib/locale-dict";
 
 export type MessageSourceMode = "text" | "embed";
 
@@ -18,28 +19,31 @@ type MessageSourceToggleProps = {
 export function MessageSourceToggle({
   value,
   onChange,
-  ariaLabel = "Message type",
+  ariaLabel,
   className = "",
 }: MessageSourceToggleProps) {
+  const dict = useLocaleDict();
+  const label = ariaLabel ?? dict.common.messageTypeAria;
+
   return (
     <div
       className={`btn-group btn-group-sm ${className}`.trim()}
       role="group"
-      aria-label={ariaLabel}
+      aria-label={label}
     >
       <Button
         variant={value === "text" ? "primary" : "secondary"}
         size="sm"
         onClick={() => onChange("text")}
       >
-        Plain text
+        {dict.common.plainText}
       </Button>
       <Button
         variant={value === "embed" ? "primary" : "secondary"}
         size="sm"
         onClick={() => onChange("embed")}
       >
-        Embed draft
+        {dict.common.embedDraft}
       </Button>
     </div>
   );

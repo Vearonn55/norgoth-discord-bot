@@ -23,6 +23,7 @@ import { TicketPanelPreview } from "@/components/community/ticket-panel-preview"
 import { MessageSourceToggle } from "@/components/discord/message-source-toggle";
 import { RichMessageEditor } from "@/components/editors/rich-message-editor";
 import { formatDateTime } from "@/lib/datetime";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import {
   useEmbedMessagesStore,
@@ -37,6 +38,8 @@ import {
 type EmbedSourceMode = "NONE" | "SELECT_EXISTING" | "CREATE_NEW";
 
 export function TicketsPanel() {
+  const dict = useLocaleDict();
+  const d = dict.ticketsPage;
   const params = useParams();
   const lang = String(params?.lang || "en");
   const { guildId, resources, loading, error, reload } = useFirstGuild();
@@ -109,7 +112,7 @@ export function TicketsPanel() {
       <Card>
         <div className="d-flex align-items-center gap-2 text-body-secondary">
           <CSpinner size="sm" />
-          <span>Loading ticket settings…</span>
+          <span>{d.loading}</span>
         </div>
       </Card>
     );
@@ -119,10 +122,10 @@ export function TicketsPanel() {
     return (
       <Card>
         <div className="d-flex flex-column gap-3">
-          <Badge variant="warning">Bot required</Badge>
+          <Badge variant="warning">{d.botRequired}</Badge>
           <p className="mb-0 text-body-secondary">{error}</p>
           <Button variant="secondary" onClick={() => void reload()}>
-            Retry
+            {d.retry}
           </Button>
         </div>
       </Card>
@@ -154,15 +157,14 @@ export function TicketsPanel() {
           <Card className="h-100">
             <div className="d-flex flex-column gap-2">
               <div>
-                <h2 className="h5 mb-1">Ticket Support Role</h2>
+                <h2 className="h5 mb-1">{d.supportRoleTitle}</h2>
                 <p className="mb-0 text-body-secondary small">
-                  Roles that can see every ticket, plus the welcome text posted
-                  inside new tickets.
+                  {d.supportRoleDesc}
                 </p>
               </div>
 
               <div>
-                <CFormLabel className="mb-1 small">Support roles</CFormLabel>
+                <CFormLabel className="mb-1 small">{d.supportRoles}</CFormLabel>
                 <RoleMultiPicker
                   roles={roles}
                   selectedIds={config.support_role_ids}
@@ -174,13 +176,13 @@ export function TicketsPanel() {
                   }
                   maxSelected={20}
                   pageSize={4}
-                  searchPlaceholder="Search support roles…"
+                  searchPlaceholder={d.searchSupportRoles}
                 />
               </div>
 
               <div>
                 <CFormLabel className="mb-1 small">
-                  Message inside new tickets
+                  {d.welcomeLabel}
                 </CFormLabel>
                 <RichMessageEditor
                   key="ticket-welcome-editor"
@@ -192,10 +194,10 @@ export function TicketsPanel() {
                     }))
                   }
                   height={160}
-                  placeholder="Support will be with you shortly…"
+                  placeholder={d.welcomePlaceholder}
                 />
                 <p className="mt-1 mb-0 small text-body-secondary">
-                  {config.welcome_text.length}/1000 characters
+                  {formatDict(d.charCount, { count: config.welcome_text.length })}
                 </p>
               </div>
 
@@ -206,7 +208,7 @@ export function TicketsPanel() {
                   onClick={() => void save(guildId)}
                   disabled={saving}
                 >
-                  {saving ? "Saving…" : "Save Settings"}
+                  {saving ? d.saving : d.saveSettings}
                 </Button>
 
                 {feedback ? (
@@ -227,10 +229,9 @@ export function TicketsPanel() {
             <div className="d-flex flex-column gap-3">
               <div className="d-flex align-items-center justify-content-between gap-3">
                 <div>
-                  <h2 className="h5 mb-1">Ticket Panels</h2>
+                  <h2 className="h5 mb-1">{d.panelsTitle}</h2>
                   <p className="mb-0 text-body-secondary small">
-                    Each panel posts an Open Ticket button. Bind an Embed
-                    Library draft for the message visual.
+                    {d.panelsDesc}
                   </p>
                 </div>
 
@@ -243,14 +244,13 @@ export function TicketsPanel() {
                     setCreatorKey((k) => k + 1);
                   }}
                 >
-                  New panel
+                  {d.newPanel}
                 </Button>
               </div>
 
               {panels.length === 0 ? (
                 <CAlert color="secondary" className="mb-0">
-                  No panels yet. Create one to give members a button that opens
-                  a ticket.
+                  {d.emptyPanels}
                 </CAlert>
               ) : (
                 <div className="d-flex flex-column gap-2">
@@ -263,13 +263,13 @@ export function TicketsPanel() {
                         <Badge
                           variant={panel.message_id ? "success" : "neutral"}
                         >
-                          {panel.message_id ? "Published" : "Draft"}
+                          {panel.message_id ? d.published : d.draft}
                         </Badge>
                         <span className="fw-medium">{panel.name}</span>
                         <span className="text-body-secondary small">
                           {channelName(panel.channel_id)
                             ? `#${channelName(panel.channel_id)}`
-                            : "No channel set"}
+                            : d.noChannelSet}
                         </span>
                       </div>
 
@@ -279,7 +279,7 @@ export function TicketsPanel() {
                           size="sm"
                           onClick={() => setEditingPanel({ ...panel })}
                         >
-                          Edit
+                          {d.edit}
                         </Button>
                         <Button
                           variant="primary"
@@ -292,10 +292,10 @@ export function TicketsPanel() {
                           }
                         >
                           {publishingPanelId === panel.id
-                            ? "Publishing…"
+                            ? d.publishing
                             : panel.message_id
-                              ? "Update"
-                              : "Publish"}
+                              ? d.update
+                              : d.publish}
                         </Button>
                         <Button
                           variant="danger"
@@ -303,7 +303,7 @@ export function TicketsPanel() {
                           onClick={() => setPendingDeletePanel(panel)}
                           disabled={panelsSaving}
                         >
-                          Delete
+                          {d.delete}
                         </Button>
                       </div>
                     </div>
@@ -319,9 +319,12 @@ export function TicketsPanel() {
         <div className="d-flex flex-column gap-3">
           <div className="d-flex align-items-center justify-content-between gap-3">
             <div>
-              <h2 className="h5 mb-1">Tickets</h2>
+              <h2 className="h5 mb-1">{d.ticketsTitle}</h2>
               <p className="mb-0 text-body-secondary small">
-                {openTickets.length} open · {tickets.length} total
+                {formatDict(d.ticketsCount, {
+                  open: openTickets.length,
+                  total: tickets.length,
+                })}
               </p>
             </div>
 
@@ -330,14 +333,13 @@ export function TicketsPanel() {
               size="sm"
               onClick={() => void load(guildId)}
             >
-              Refresh
+              {d.refresh}
             </Button>
           </div>
 
           {tickets.length === 0 ? (
             <CAlert color="secondary" className="mb-0">
-              No tickets yet. Publish the panel and members can open tickets
-              from Discord.
+              {d.emptyTickets}
             </CAlert>
           ) : (
             <div className="d-flex flex-column gap-2">
@@ -362,7 +364,9 @@ export function TicketsPanel() {
 
                   <div className="d-flex align-items-center gap-3 small text-body-secondary">
                     <span>
-                      Opened {formatDateTime(ticket.opened_at, lang)}
+                      {formatDict(d.openedAt, {
+                        time: formatDateTime(ticket.opened_at, lang),
+                      })}
                     </span>
                     {ticket.status === "closed" ? (
                       <Button
@@ -370,7 +374,7 @@ export function TicketsPanel() {
                         size="sm"
                         onClick={() => void viewTranscript(guildId, ticket)}
                       >
-                        Transcript
+                        {d.transcript}
                       </Button>
                     ) : null}
                   </div>
@@ -386,15 +390,16 @@ export function TicketsPanel() {
           <div className="d-flex flex-column gap-3">
             <div className="d-flex align-items-center justify-content-between gap-3">
               <h3 className="h6 mb-0">
-                Transcript — Ticket #
-                {String(transcript.ticketNumber).padStart(4, "0")}
+                {formatDict(d.transcriptTitle, {
+                  number: String(transcript.ticketNumber).padStart(4, "0"),
+                })}
               </h3>
               <Button
                 variant="secondary"
                 size="sm"
                 onClick={() => setTranscript(null)}
               >
-                Close
+                {d.close}
               </Button>
             </div>
             <TranscriptConversation
@@ -407,8 +412,8 @@ export function TicketsPanel() {
 
       <FeatureConfigurationModal
         visible={editingPanel !== null}
-        title={editingPanel ? "Edit ticket panel" : "Ticket panel"}
-        description="Configure channel, category, Open Ticket button, and the panel message (plain text or Embed Library draft)."
+        title={editingPanel ? d.editPanelTitle : d.panelTitle}
+        description={d.panelModalDesc}
         category="community"
         icon="cilChatBubble"
         onClose={() => {
@@ -419,7 +424,7 @@ export function TicketsPanel() {
           await saveEditingPanel(guildId);
         }}
         saving={panelsSaving}
-        saveLabel="Save panel"
+        saveLabel={d.savePanel}
         size="xl"
         saveDisabled={
           !editingPanel ||
@@ -434,7 +439,7 @@ export function TicketsPanel() {
           <div className="d-flex flex-column gap-3">
             <CRow className="g-3">
               <CCol md={6}>
-                <CFormLabel>Panel name (internal)</CFormLabel>
+                <CFormLabel>{d.panelName}</CFormLabel>
                 <CFormInput
                   value={editingPanel.name}
                   onChange={(event) =>
@@ -448,7 +453,7 @@ export function TicketsPanel() {
                 />
               </CCol>
               <CCol md={6}>
-                <CFormLabel>Channel</CFormLabel>
+                <CFormLabel>{d.channel}</CFormLabel>
                 <CFormSelect
                   value={editingPanel.channel_id ?? ""}
                   onChange={(event) =>
@@ -462,7 +467,7 @@ export function TicketsPanel() {
                     )
                   }
                 >
-                  <option value="">Select a channel…</option>
+                  <option value="">{d.selectChannel}</option>
                   {channels.map((channel) => (
                     <option key={channel.id} value={channel.id}>
                       #{channel.name}
@@ -474,7 +479,7 @@ export function TicketsPanel() {
 
             <CRow className="g-3">
               <CCol md={6}>
-                <CFormLabel>Open ticket category</CFormLabel>
+                <CFormLabel>{d.openCategory}</CFormLabel>
                 <CFormSelect
                   value={editingPanel.open_category_id ?? ""}
                   onChange={(event) =>
@@ -488,10 +493,12 @@ export function TicketsPanel() {
                     )
                   }
                 >
-                  <option value="">No category (top level)</option>
+                  <option value="">{d.noCategory}</option>
                   {openCategoryMissing ? (
                     <option value={editingPanel.open_category_id ?? ""}>
-                      Unavailable (id {editingPanel.open_category_id})
+                      {formatDict(d.unavailableCategory, {
+                        id: editingPanel.open_category_id ?? "",
+                      })}
                     </option>
                   ) : null}
                   {categories.map((category) => (
@@ -502,7 +509,7 @@ export function TicketsPanel() {
                 </CFormSelect>
               </CCol>
               <CCol md={6}>
-                <CFormLabel>Button label</CFormLabel>
+                <CFormLabel>{d.buttonLabel}</CFormLabel>
                 <CFormInput
                   value={editingPanel.button_label}
                   onChange={(event) =>
@@ -519,14 +526,13 @@ export function TicketsPanel() {
 
             {openCategoryMissing ? (
               <CAlert color="warning" className="mb-0 py-2">
-                A previously selected category no longer exists in this server.
-                Pick a replacement before publishing.
+                {d.categoryMissingWarn}
               </CAlert>
             ) : null}
 
             <div>
               <div className="d-flex align-items-center justify-content-between gap-2 mb-2">
-                <CFormLabel className="fw-medium mb-0">Panel message</CFormLabel>
+                <CFormLabel className="fw-medium mb-0">{d.panelMessage}</CFormLabel>
                 <MessageSourceToggle
                   value={editingPanel.message_source}
                   onChange={(next) => {
@@ -558,7 +564,7 @@ export function TicketsPanel() {
                     )
                   }
                   height={180}
-                  placeholder="Write the panel message members will see…"
+                  placeholder={d.panelTextPlaceholder}
                 />
               ) : (
                 <>
@@ -572,7 +578,7 @@ export function TicketsPanel() {
                       size="sm"
                       onClick={() => setEmbedSourceMode("SELECT_EXISTING")}
                     >
-                      Select From Draft
+                      {d.selectFromDraft}
                     </Button>
                     <Button
                       variant={
@@ -586,14 +592,13 @@ export function TicketsPanel() {
                         setCreatorKey((k) => k + 1);
                       }}
                     >
-                      Create New
+                      {d.createNew}
                     </Button>
                   </div>
 
                   {embedSourceMode === "NONE" ? (
                     <p className="small text-body-secondary mb-0">
-                      Choose an Embed Library draft for this panel&apos;s
-                      message, or create a new one without leaving Tickets.
+                      {d.embedNoneHelp}
                     </p>
                   ) : null}
 
@@ -602,8 +607,8 @@ export function TicketsPanel() {
                       <CFormInput
                         value={draftSearch}
                         onChange={(e) => setDraftSearch(e.target.value)}
-                        placeholder="Search drafts…"
-                        aria-label="Search Embed Library drafts"
+                        placeholder={d.searchDrafts}
+                        aria-label={d.searchDraftsAria}
                       />
                       <CFormSelect
                         value={editingPanel.embed_message_id ?? ""}
@@ -619,7 +624,7 @@ export function TicketsPanel() {
                           )
                         }
                       >
-                        <option value="">Select a draft…</option>
+                        <option value="">{d.selectDraft}</option>
                         {filteredDrafts.map((draft) => (
                           <option key={draft.id} value={draft.id}>
                             {draft.name}
@@ -628,7 +633,7 @@ export function TicketsPanel() {
                       </CFormSelect>
                       {embedMessages.length === 0 && !embedLoading ? (
                         <p className="small text-body-secondary mb-0">
-                          No Embed Library drafts yet. Use Create New.
+                          {d.emptyDrafts}
                         </p>
                       ) : null}
                     </div>
@@ -641,8 +646,8 @@ export function TicketsPanel() {
                       channels={channels}
                       mode="create"
                       compact
-                      createLabel="Save Draft"
-                      cancelLabel="Back"
+                      createLabel={d.saveDraft}
+                      cancelLabel={d.back}
                       onCancel={() =>
                         setEmbedSourceMode(
                           editingPanel.embed_message_id
@@ -697,7 +702,7 @@ export function TicketsPanel() {
 
             {editingPanel.channel_id ? null : (
               <CAlert color="secondary" className="mb-0 py-2">
-                Choose a channel before publishing this panel.
+                {d.chooseChannelBeforePublish}
               </CAlert>
             )}
           </div>
@@ -706,17 +711,26 @@ export function TicketsPanel() {
 
       <ConfirmDialog
         visible={pendingDeletePanel !== null}
-        title="Delete Ticket Panel?"
+        title={d.deleteTitle}
         message={
           <p className="mb-0 text-body-secondary">
-            This deletes the panel <strong>{pendingDeletePanel?.name}</strong>.
-            {pendingDeletePanel?.message_id
-              ? " Its published Open Ticket button will stop working; remove the message in Discord if it is still posted."
-              : ""}{" "}
-            This cannot be undone.
+            {(() => {
+              const [before, after = ""] = d.deleteMessage.split("{name}");
+              return (
+                <>
+                  {before}
+                  <strong>{pendingDeletePanel?.name}</strong>
+                  {after}
+                  {pendingDeletePanel?.message_id
+                    ? d.deleteMessagePublished
+                    : ""}
+                  {d.deleteMessageAfter}
+                </>
+              );
+            })()}
           </p>
         }
-        confirmLabel="Delete Panel"
+        confirmLabel={d.deleteConfirm}
         destructive
         busy={panelsSaving}
         onConfirm={async () => {

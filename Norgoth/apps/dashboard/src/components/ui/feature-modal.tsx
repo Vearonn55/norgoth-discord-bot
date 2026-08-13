@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import type { NorgothCategory } from "@/lib/design/category";
 import { categoryAccent } from "@/lib/design/category";
+import { useLocaleDict } from "@/lib/locale-dict";
 
 export type FeatureModalSaveState = "idle" | "dirty" | "saving" | "saved" | "error";
 
@@ -56,13 +57,17 @@ export function FeatureConfigurationModal({
   saving = false,
   error,
   saveState,
-  saveLabel = "Save",
-  savedLabel = "Saved",
-  cancelLabel = "Cancel",
+  saveLabel,
+  savedLabel,
+  cancelLabel,
   saveDisabled = false,
   size = "lg",
   footer,
 }: FeatureConfigurationModalProps) {
+  const dict = useLocaleDict();
+  const resolvedSave = saveLabel ?? dict.common.save;
+  const resolvedSaved = savedLabel ?? dict.common.saved;
+  const resolvedCancel = cancelLabel ?? dict.common.cancel;
   const accent = category ? categoryAccent(category) : undefined;
   const isSaving = saving || saveState === "saving";
   const isSaved = saveState === "saved";
@@ -79,7 +84,11 @@ export function FeatureConfigurationModal({
       <CModalHeader style={accent ? { borderBottomColor: accent } : undefined}>
         <CModalTitle className="d-flex align-items-center gap-2">
           {icon ? (
-            <Icon icon={icon} style={accent ? { color: accent } : undefined} height={20} />
+            <Icon
+              icon={icon}
+              style={accent ? { color: accent } : undefined}
+              height={20}
+            />
           ) : null}
           {title}
         </CModalTitle>
@@ -99,7 +108,7 @@ export function FeatureConfigurationModal({
         {footer ?? (
           <>
             <Button variant="secondary" onClick={onClose} disabled={isSaving}>
-              {cancelLabel}
+              {resolvedCancel}
             </Button>
             {onSave ? (
               <Button
@@ -107,7 +116,11 @@ export function FeatureConfigurationModal({
                 onClick={() => void onSave()}
                 disabled={isSaving || saveDisabled}
               >
-                {isSaving ? "Saving…" : isSaved ? savedLabel : saveLabel}
+                {isSaving
+                  ? dict.common.saving
+                  : isSaved
+                    ? resolvedSaved
+                    : resolvedSave}
               </Button>
             ) : null}
           </>

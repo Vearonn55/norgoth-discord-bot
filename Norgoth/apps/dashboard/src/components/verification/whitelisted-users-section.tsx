@@ -8,6 +8,7 @@ import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { FeatureConfigurationModal } from "@/components/ui/feature-modal";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { formatDateTime } from "@/lib/datetime";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import {
   useVerificationListsStore,
   type WhitelistEntry,
@@ -16,6 +17,8 @@ import {
 const PAGE_SIZE = 8;
 
 export function WhitelistedUsersSection({ guildId }: { guildId: string }) {
+  const dict = useLocaleDict();
+  const d = dict.verificationPage;
   const params = useParams();
   const lang = String(params?.lang || "en");
 
@@ -53,21 +56,21 @@ export function WhitelistedUsersSection({ guildId }: { guildId: string }) {
   const columns: DataTableColumn<WhitelistEntry>[] = [
     {
       key: "id",
-      header: "Discord User ID",
+      header: d.colUserId,
       cell: (row) => (
         <span className="font-monospace small">{row.discord_user_id}</span>
       ),
     },
     {
       key: "reason",
-      header: "Note",
+      header: d.colNote,
       cell: (row) => (
         <span className="small text-body-secondary">{row.reason || "—"}</span>
       ),
     },
     {
       key: "created",
-      header: "Added",
+      header: d.colAdded,
       cell: (row) => (
         <span className="small text-body-secondary">
           {formatDateTime(row.created_at, lang)}
@@ -80,7 +83,7 @@ export function WhitelistedUsersSection({ guildId }: { guildId: string }) {
       className: "text-end",
       cell: (row) => (
         <Button variant="danger" size="sm" onClick={() => setPendingRemove(row)}>
-          Remove
+          {d.remove}
         </Button>
       ),
     },
@@ -89,7 +92,7 @@ export function WhitelistedUsersSection({ guildId }: { guildId: string }) {
   async function submitAdd() {
     const trimmed = userId.trim();
     if (!/^[0-9]{1,20}$/.test(trimmed)) {
-      setFormError("Enter a valid Discord user ID (numeric snowflake).");
+      setFormError(d.invalidUserId);
       return;
     }
     setSaving(true);
@@ -97,7 +100,7 @@ export function WhitelistedUsersSection({ guildId }: { guildId: string }) {
     const result = await add(guildId, trimmed, reason.trim());
     setSaving(false);
     if (!result.ok) {
-      setFormError(result.error ?? "Could not add the user.");
+      setFormError(result.error ?? d.couldNotAddUser);
       return;
     }
     setUserId("");
@@ -117,12 +120,10 @@ export function WhitelistedUsersSection({ guildId }: { guildId: string }) {
     <div className="d-flex flex-column gap-3">
       <div className="d-flex align-items-start justify-content-between gap-3 flex-wrap">
         <p className="mb-0 small text-body-secondary" style={{ maxWidth: 520 }}>
-          Whitelisted users bypass High Risk Server manual review, alt-account
-          (shared IP) detection, and VPN/proxy denial. They cannot bypass core
-          integrity checks such as malformed or revoked Discord authorization.
+          {d.whitelistIntro}
         </p>
         <Button variant="primary" size="sm" onClick={() => setAddOpen(true)}>
-          Add User
+          {d.addUser}
         </Button>
       </div>
 
@@ -141,27 +142,27 @@ export function WhitelistedUsersSection({ guildId }: { guildId: string }) {
           setSearch(value);
           setPage(1);
         }}
-        searchPlaceholder="Search by user ID or note…"
+        searchPlaceholder={d.searchWhitelist}
         page={page}
         pageSize={PAGE_SIZE}
         onPageChange={setPage}
-        emptyMessage={loading ? "Loading…" : "No whitelisted users configured."}
+        emptyMessage={loading ? d.loading : d.emptyWhitelist}
       />
 
       <FeatureConfigurationModal
         visible={addOpen}
         onClose={() => setAddOpen(false)}
-        title="Whitelist User"
-        description="This user will bypass High Risk Server review, shared-IP, and VPN/proxy checks."
+        title={d.whitelistTitle}
+        description={d.whitelistDesc}
         category="community"
         onSave={submitAdd}
         saving={saving}
         error={formError}
-        saveLabel="Add User"
+        saveLabel={d.addUser}
       >
         <div className="d-flex flex-column gap-3">
           <div>
-            <CFormLabel>Discord User ID</CFormLabel>
+            <CFormLabel>{d.colUserId}</CFormLabel>
             <CFormInput
               value={userId}
               onChange={(e) => setUserId(e.target.value)}
@@ -170,13 +171,13 @@ export function WhitelistedUsersSection({ guildId }: { guildId: string }) {
             />
           </div>
           <div>
-            <CFormLabel>Note (optional)</CFormLabel>
+            <CFormLabel>{d.noteOptional}</CFormLabel>
             <CFormTextarea
               rows={2}
               value={reason}
               maxLength={200}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="Why is this user whitelisted?"
+              placeholder={d.whitelistNotePlaceholder}
             />
           </div>
         </div>
@@ -184,13 +185,15 @@ export function WhitelistedUsersSection({ guildId }: { guildId: string }) {
 
       <ConfirmDialog
         visible={pendingRemove !== null}
-        title="Remove whitelisted user"
+        title={d.removeWhitelistTitle}
         message={
           pendingRemove
-            ? `Remove user ${pendingRemove.discord_user_id} from the whitelist?`
+            ? formatDict(d.removeWhitelistMessage, {
+                id: pendingRemove.discord_user_id,
+              })
             : ""
         }
-        confirmLabel="Remove"
+        confirmLabel={d.remove}
         destructive
         busy={removing}
         onConfirm={confirmRemove}

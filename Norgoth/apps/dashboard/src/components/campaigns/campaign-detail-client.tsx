@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { apiUrl } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 
 type CampaignStatus =
   | "draft"
@@ -83,8 +84,6 @@ export default function CampaignDetailClient() {
 
   const lang = String(params?.lang || "en");
   const campaignId = String(params?.slug || "");
-  const isTR = lang === "tr";
-
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [activities, setActivities] = useState<CampaignActivity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -92,55 +91,8 @@ export default function CampaignDetailClient() {
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const t = {
-    back: isTR ? "Geri" : "Back",
-    subtitle: isTR
-      ? "Campaign durumunu, platform metriklerini, mesaj formatlarını, retry akışını ve execution loglarını takip et."
-      : "Track campaign status, platform metrics, message formats, retry flow, and execution logs.",
-    status: isTR ? "Durum" : "Status",
-    audience: "Audience",
-    sent: "Sent",
-    failed: "Failed",
-    retries: isTR ? "Retry" : "Retries",
-    permanentFailed: isTR ? "Kalıcı Fail" : "Permanent Failed",
-    progress: isTR ? "İlerleme" : "Progress",
-    execute: "Execute",
-    start: isTR ? "Başlat" : "Start",
-    stop: isTR ? "Durdur" : "Stop",
-    complete: isTR ? "Tamamla" : "Complete",
-    edit: isTR ? "Düzenle" : "Edit",
-    delete: isTR ? "Sil" : "Delete",
-    message: "Message",
-    timestamps: isTR ? "Zaman Bilgileri" : "Timestamps",
-    retrySummary: isTR ? "Retry Özeti" : "Retry Summary",
-    platformBreakdown: "Delivery Breakdown",
-    platformSubtitle: isTR
-      ? "Discord teslimat metrikleri: kanal mesajı veya üye DM'leri."
-      : "Discord delivery metrics for channel posts and member DMs.",
-    deliveryAnalytics: isTR ? "Teslimat Analitiği" : "Delivery Analytics",
-    deliveryAnalyticsSubtitle: isTR
-      ? "Gönderilen, başarısız, retry ve kalıcı fail teslimatların dağılımı."
-      : "Distribution of sent, failed, retried, and permanently failed deliveries.",
-    activityLog: "Execution Activity Log",
-    activitySubtitle: isTR
-      ? "Bu campaign için backend execution ve platform retry eventleri."
-      : "Backend execution and platform retry events for this campaign.",
-    createdAt: isTR ? "Oluşturuldu" : "Created At",
-    updatedAt: isTR ? "Güncellendi" : "Updated At",
-    executedAt: isTR ? "Çalıştırıldı" : "Executed At",
-    loading: isTR ? "Yükleniyor..." : "Loading...",
-    notFound: isTR ? "Campaign bulunamadı." : "Campaign not found.",
-    noActivity: isTR ? "Henüz activity yok." : "No activity yet.",
-    noPlatformData: isTR
-      ? "Henüz teslimat metriği yok. Campaign execute edildiğinde burada görünür."
-      : "No delivery metrics yet. They appear after the campaign executes.",
-    noDeliveryData: isTR
-      ? "Henüz teslimat verisi yok. Campaign execute edildiğinde grafik burada görünür."
-      : "No delivery data yet. The chart appears after the campaign executes.",
-    backendError: isTR
-      ? "Backend verisi alınamadı. API açık mı kontrol et."
-      : "Backend data could not be loaded. Check if the API is running.",
-  };
+  const dict = useLocaleDict();
+  const t = dict.campaignDetail;
 
   const isExecuting =
     campaign?.status === "queued" || campaign?.status === "running";
@@ -187,27 +139,27 @@ export default function CampaignDetailClient() {
 
     return [
       {
-        name: "Sent",
+        name: t.chartSent,
         value: Number(campaign.sent_count || 0),
         color: "#6ee7b7",
       },
       {
-        name: "Failed",
+        name: t.chartFailed,
         value: Number(campaign.failed_count || 0),
         color: "#fca5a5",
       },
       {
-        name: "Retries",
+        name: t.chartRetries,
         value: Number(campaign.retry_count || 0),
         color: "#fcd34d",
       },
       {
-        name: "Permanent",
+        name: t.chartPermanent,
         value: Number(campaign.permanent_failed_count || 0),
         color: "#f87171",
       },
     ];
-  }, [campaign]);
+  }, [campaign, t.chartSent, t.chartFailed, t.chartRetries, t.chartPermanent]);
 
   const hasDeliveryData = deliveryChartData.some((entry) => entry.value > 0);
 
@@ -361,14 +313,10 @@ export default function CampaignDetailClient() {
     <div className="d-flex flex-column gap-4">
       <ConfirmDialog
         visible={confirmDelete}
-        title={isTR ? "Kampanya silinsin mi?" : "Delete campaign?"}
-        message={
-          isTR
-            ? "Bu kampanya kalıcı olarak silinecek. Bu işlem geri alınamaz."
-            : "This campaign will be permanently removed. This cannot be undone."
-        }
-        confirmLabel={isTR ? "Sil" : "Delete"}
-        cancelLabel={isTR ? "İptal" : "Cancel"}
+        title={t.deleteTitle}
+        message={t.deleteMessage}
+        confirmLabel={t.delete}
+        cancelLabel={t.cancel}
         destructive
         busy={actionLoading === "delete"}
         onConfirm={performDelete}
@@ -378,19 +326,19 @@ export default function CampaignDetailClient() {
       <div className="d-flex align-items-center justify-content-between gap-3">
         <Button asChild variant="secondary" size="sm">
           <Link href={`/${lang}/campaigns`}>
-            ← {isTR ? "Kampanyalar" : "Campaigns"}
+            ← {t.campaigns}
           </Link>
         </Button>
 
         <Button asChild variant="secondary" size="sm">
           <Link
             href={
-              isTR
+              lang === "tr"
                 ? `/en/campaigns/${campaignId}`
                 : `/tr/campaigns/${campaignId}`
             }
           >
-            {isTR ? "EN" : "TR"}
+            {lang === "tr" ? "EN" : "TR"}
           </Link>
         </Button>
       </div>
@@ -490,9 +438,7 @@ export default function CampaignDetailClient() {
 
                   {hasPermanentFailures ? (
                     <CAlert color="danger" className="mb-4">
-                      {isTR
-                        ? `Campaign tamamlandı fakat ${permanentFailedCount} teslimat kalıcı olarak başarısız oldu.`
-                        : `Campaign completed, but ${permanentFailedCount} deliveries permanently failed.`}
+                      {formatDict(t.permanentFailuresAlert, { count: permanentFailedCount })}
                     </CAlert>
                   ) : null}
 
@@ -535,7 +481,7 @@ export default function CampaignDetailClient() {
 
                     {isExecuting ? (
                       <p className="mt-3 small text-success">
-                        Live execution active. Metrics refresh every 5 seconds.
+                        {t.liveExecution}
                       </p>
                     ) : null}
                   </div>
@@ -572,19 +518,15 @@ export default function CampaignDetailClient() {
                   {campaign.delivery_target === "dm" ? (
                     <div className="mb-4 border rounded p-4">
                       <h2 className="mb-1 small fw-semibold ">
-                        {isTR ? "DM Teslimat Sonuçları" : "DM Delivery Results"}
+                        {t.dmResultsTitle}
                       </h2>
                       <p className="mb-4 small text-body-secondary">
-                        {isTR
-                          ? "Her alıcı için teslimat durumu ve hata detayı."
-                          : "Per-recipient delivery status and failure detail."}
+                        {t.dmResultsSubtitle}
                       </p>
 
                       {recipientResults.length === 0 ? (
                         <div className="border rounded p-4 small text-body-secondary">
-                          {isTR
-                            ? "Henüz alıcı sonucu yok. Campaign execute edildiğinde burada görünür."
-                            : "No recipient results yet. They appear once the campaign executes."}
+                          {t.noRecipientResults}
                         </div>
                       ) : (
                         <div
@@ -612,7 +554,7 @@ export default function CampaignDetailClient() {
                               </div>
                               <div className="col-2 text-body-secondary">
                                 {result.attempts}{" "}
-                                {result.attempts === 1 ? "attempt" : "attempts"}
+                                {result.attempts === 1 ? t.attemptOne : t.attemptMany}
                               </div>
                               <div className="col-4 text-truncate small text-body-secondary">
                                 {result.error || "—"}
@@ -683,24 +625,16 @@ export default function CampaignDetailClient() {
                       <InfoBox
                         label={t.retries}
                         value={String(retryCount)}
-                        helper={
-                          isTR
-                            ? "Worker tarafından uygulanan toplam retry round sayısı."
-                            : "Total retry rounds applied by the worker."
-                        }
+                        helper={t.retriesHelper}
                       />
                       <InfoBox
                         label={t.permanentFailed}
                         value={String(permanentFailedCount)}
                         danger={permanentFailedCount > 0}
-                        helper={
-                          isTR
-                            ? "Retry sonrasında kurtarılamayan toplam teslimatlar."
-                            : "Total deliveries that could not be recovered after retries."
-                        }
+                        helper={t.permanentHelper}
                       />
                       <InfoBox
-                        label="Result"
+                        label={t.result}
                         value={
                           hasPermanentFailures
                             ? "completed_with_failures"
@@ -709,12 +643,8 @@ export default function CampaignDetailClient() {
                         danger={hasPermanentFailures}
                         helper={
                           hasPermanentFailures
-                            ? isTR
-                              ? "Campaign başarıyla bitti fakat fail kayıtları kaldı."
-                              : "Campaign finished, but failed records remain."
-                            : isTR
-                              ? "Campaign retry açısından temiz durumda."
-                              : "Campaign is clean from retry perspective."
+                            ? t.resultWithFailuresHelper
+                            : t.resultCleanHelper
                         }
                       />
                     </div>
@@ -789,11 +719,11 @@ export default function CampaignDetailClient() {
                             </div>
 
                             <div className="col-2">
-                              Sent: {activity.sent_count}
+                              {formatDict(t.activitySent, { count: activity.sent_count })}
                             </div>
 
                             <div className="col-2 text-danger">
-                              Failed: {activity.failed_count}
+                              {formatDict(t.activityFailed, { count: activity.failed_count })}
                             </div>
                           </div>
                         ))}
@@ -822,6 +752,8 @@ function PlatformCard({
   permanentFailed: number;
   successRate: number;
 }) {
+  const dict = useLocaleDict();
+  const t = dict.campaignDetail;
   return (
     <div className="border rounded p-4">
       <div className="mb-3 d-flex align-items-center justify-content-between gap-3">
@@ -830,12 +762,12 @@ function PlatformCard({
             {platform}
           </p>
           <p className="mt-1 mb-0 small text-body-secondary">
-            Success Rate: {successRate}%
+            {formatDict(t.successRate, { rate: successRate })}
           </p>
         </div>
 
         <Badge variant={permanentFailed > 0 ? "danger" : "success"}>
-          {permanentFailed > 0 ? "issues" : "clean"}
+          {permanentFailed > 0 ? t.issues : t.clean}
         </Badge>
       </div>
 
@@ -848,11 +780,11 @@ function PlatformCard({
       </div>
 
       <div className="row g-3 small">
-        <SmallStat label="Sent" value={sent} />
-        <SmallStat label="Failed" value={failed} danger={failed > 0} />
-        <SmallStat label="Retry" value={retry} />
+        <SmallStat label={t.sent} value={sent} />
+        <SmallStat label={t.failed} value={failed} danger={failed > 0} />
+        <SmallStat label={t.retries} value={retry} />
         <SmallStat
-          label="Permanent"
+          label={t.chartPermanent}
           value={permanentFailed}
           danger={permanentFailed > 0}
         />

@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmbedMessageEditor } from "@/components/embed-messages/embed-message-editor";
-import { hasLocale } from "../../../../dictionaries";
+import { getDictionary, hasLocale } from "../../../../dictionaries";
 
 export default async function EmbedMessageEditorPage({
   params,
@@ -11,13 +11,15 @@ export default async function EmbedMessageEditorPage({
   const { lang, id } = await params;
   if (!hasLocale(lang)) notFound();
 
+  const dict = await getDictionary(lang);
+  const info = dict.featureInfo.embedMessages;
   const isNew = id === "new";
 
   return (
     <div className="d-flex flex-column gap-4">
       <PageHeader
-        title={isNew ? "New Embed" : "Edit Embed"}
-        description="Design the reusable embed content and preview it live. Deploy and re-sync from the Embed Library."
+        title={isNew ? info.newTitle : info.editTitle}
+        description={info.editDescription}
         category="messages"
       />
       <EmbedMessageEditor lang={lang} messageId={id} />

@@ -42,11 +42,14 @@ import {
   isBlankDiscordMarkdown,
 } from "@/lib/discord-markdown-validation";
 import { copyEmbedIntoHoneypot } from "@/lib/honeypot-embed-copy";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 
 type HoneypotFeature = "config" | "punishment" | "exemptions";
 type EmbedSourceMode = "INLINE" | "SELECT_EXISTING" | "CREATE_NEW";
 
 export function HoneypotPanel() {
+  const dict = useLocaleDict();
+  const d = dict.honeypotPage;
   const params = useParams();
   const lang = String(params?.lang || "en");
   const { guildId, resources, loading: guildLoading, error: guildError } = useFirstGuild();
@@ -95,24 +98,24 @@ export function HoneypotPanel() {
   if (guildLoading || loading) {
     return (
       <div className="d-flex align-items-center gap-2">
-        <CSpinner size="sm" /> Loading honeypot...
+        <CSpinner size="sm" /> {d.loading}
       </div>
     );
   }
 
   if (!guildId) {
-    return <p className="text-body-secondary">Select a server first.</p>;
+    return <p className="text-body-secondary">{d.selectServer}</p>;
   }
 
   if (!draft) {
     return (
       <div className="d-flex flex-column gap-3">
         <CAlert color="danger" className="mb-0">
-          {error || guildError || "Honeypot configuration could not be loaded."}
+          {error || guildError || d.loadFailed}
         </CAlert>
         <div className="d-flex gap-2">
           <Button variant="secondary" onClick={() => void load(guildId)}>
-            Retry
+            {d.retry}
           </Button>
         </div>
       </div>
@@ -127,7 +130,7 @@ export function HoneypotPanel() {
     setDraft((prev) => {
       if (!prev) return prev;
       const base = (prev.warning_embed ?? {
-        title: "Honeypot Channel",
+        title: d.defaultEmbedTitle,
         description: "",
       }) as Record<string, unknown>;
       return {
@@ -159,7 +162,7 @@ export function HoneypotPanel() {
     if (!isBlankDiscordMarkdown(content)) {
       const check = assertDiscordMarkdownLength(content, 2000);
       if (check.reason === "too_long") {
-        setLocalError("Warning content must be 2000 characters or fewer.");
+        setLocalError(d.warningContentTooLong);
         return;
       }
     }
@@ -167,7 +170,7 @@ export function HoneypotPanel() {
       (draft.warning_embed as DiscordEmbedPayload | null)?.description ?? ""
     );
     if (!isBlankDiscordMarkdown(desc) && desc.trim().length > 4096) {
-      setLocalError("Embed description must be 4096 characters or fewer.");
+      setLocalError(d.embedDescriptionTooLong);
       return;
     }
     const normalized: HoneypotConfig = {
@@ -191,7 +194,7 @@ export function HoneypotPanel() {
   }
 
   const embed = (draft.warning_embed ?? {
-    title: "Honeypot Channel",
+    title: d.defaultEmbedTitle,
     description: "",
   }) as DiscordEmbedPayload;
 
@@ -200,10 +203,10 @@ export function HoneypotPanel() {
   return (
     <div className="d-flex flex-column gap-4">
       <PageHeader
-        title="Honeypot"
+        title={d.title}
         category="security"
         icon={<Icon icon={cilBug} size="xl" />}
-        description="Trap channels that catch spam bots posting indiscriminately across every visible channel."
+        description={d.description}
         infoKey="honeypot"
         masterToggle={{
           enabled: draft.enabled,
@@ -221,10 +224,8 @@ export function HoneypotPanel() {
         ) : null}
         <span>
           {draft.enabled
-            ? honeypotInfo?.alertActive ||
-              "The honeypot is active. Legitimate members must be warned never to use the trap channel."
-            : honeypotInfo?.alertInactive ||
-              "The honeypot trap is currently inactive. Enable it from the header to start catching spam bots."}
+            ? honeypotInfo?.alertActive
+            : honeypotInfo?.alertInactive}
         </span>
       </CAlert>
 
@@ -237,8 +238,14 @@ export function HoneypotPanel() {
           <div className="col">
             <MiniFeatureCard
               icon={cilSettings}
-              name="Configuration"
-              description={`${draft.trap_channel_ids.length} trap channel${draft.trap_channel_ids.length === 1 ? "" : "s"}`}
+              name={d.configTitle}
+              description={formatDict(d.configChannels, {
+                count: draft.trap_channel_ids.length,
+                plural:
+                  draft.trap_channel_ids.length === 1
+                    ? d.pluralEmpty
+                    : d.pluralS,
+              })}
               category="security"
               status="configured"
               onClick={() => setActiveModal("config")}
@@ -247,8 +254,10 @@ export function HoneypotPanel() {
           <div className="col">
             <MiniFeatureCard
               icon={cilBan}
-              name="Punishment"
-              description={`Action: ${draft.punishment.replace(/_/g, " ")}`}
+              name={d.punishmentTitle}
+              description={formatDict(d.punishmentAction, {
+                action: draft.punishment.replace(/_/g, " "),
+              })}
               category="security"
               status="configured"
               onClick={() => setActiveModal("punishment")}
@@ -257,8 +266,19 @@ export function HoneypotPanel() {
           <div className="col">
             <MiniFeatureCard
               icon={cilShieldAlt}
-              name="Exemptions"
-              description={`Ignore bots • ${draft.exempt_role_ids.length} role${draft.exempt_role_ids.length === 1 ? "" : "s"}, ${draft.exempt_member_ids.length} member${draft.exempt_member_ids.length === 1 ? "" : "s"}`}
+              name={d.exemptionsTitle}
+              description={formatDict(d.exemptionsCardDesc, {
+                roles: draft.exempt_role_ids.length,
+                rolesPlural:
+                  draft.exempt_role_ids.length === 1
+                    ? d.pluralEmpty
+                    : d.pluralS,
+                members: draft.exempt_member_ids.length,
+                membersPlural:
+                  draft.exempt_member_ids.length === 1
+                    ? d.pluralEmpty
+                    : d.pluralS,
+              })}
               category="security"
               enabled={draft.ignore_bots}
               onToggle={(checked) => patch({ ignore_bots: checked })}
@@ -268,14 +288,14 @@ export function HoneypotPanel() {
         </div>
 
         {/* Warning Message — TinyMCE + Embed Creator copy-into-snapshot */}
-        <SectionCard level="primary" category="security" header="Warning Message">
+        <SectionCard level="primary" category="security" header={d.warningMessage}>
           <div className="d-flex flex-column gap-3 p-1">
             <div className="d-flex align-items-center justify-content-between gap-3 border rounded p-3">
-              <div className="fw-medium">Post a pinned warning</div>
+              <div className="fw-medium">{d.postPinnedWarning}</div>
               <Switch
                 checked={draft.post_pinned_warning}
                 onChange={(checked) => patch({ post_pinned_warning: checked })}
-                aria-label="Post a pinned warning"
+                aria-label={d.postPinnedWarning}
               />
             </div>
 
@@ -285,7 +305,7 @@ export function HoneypotPanel() {
                 size="sm"
                 onClick={() => setEmbedSourceMode("INLINE")}
               >
-                Edit Warning
+                {d.editWarning}
               </Button>
               <Button
                 variant={
@@ -294,7 +314,7 @@ export function HoneypotPanel() {
                 size="sm"
                 onClick={() => setEmbedSourceMode("SELECT_EXISTING")}
               >
-                Select From Draft
+                {d.selectFromDraft}
               </Button>
               <Button
                 variant={
@@ -306,25 +326,24 @@ export function HoneypotPanel() {
                   setCreatorKey((k) => k + 1);
                 }}
               >
-                Create New
+                {d.createNew}
               </Button>
             </div>
 
             {embedSourceMode === "SELECT_EXISTING" ? (
               <div className="d-flex flex-column gap-2">
                 <p className="small text-body-secondary mb-0">
-                  Copy an Embed Library draft into this honeypot warning. Editing
-                  the warning afterward does not change the library draft.
+                  {d.copyDraftHelp}
                 </p>
                 <CFormInput
                   value={draftSearch}
                   onChange={(e) => setDraftSearch(e.target.value)}
-                  placeholder="Search drafts…"
-                  aria-label="Search Embed Library drafts"
+                  placeholder={d.searchDrafts}
+                  aria-label={d.searchDraftsAria}
                 />
                 <CFormSelect
                   value=""
-                  aria-label="Select Embed Library draft"
+                  aria-label={d.selectDraftAria}
                   onChange={(event) => {
                     const id = event.target.value;
                     if (!id) return;
@@ -332,7 +351,7 @@ export function HoneypotPanel() {
                     if (message) applyEmbedCopy(message);
                   }}
                 >
-                  <option value="">Select a draft to copy…</option>
+                  <option value="">{d.selectDraft}</option>
                   {filteredDrafts.map((message) => (
                     <option key={message.id} value={message.id}>
                       {message.name}
@@ -360,7 +379,7 @@ export function HoneypotPanel() {
                 editor={
                   <div className="d-flex flex-column gap-3">
                     <div>
-                      <CFormLabel>Content</CFormLabel>
+                      <CFormLabel>{d.content}</CFormLabel>
                       <RichMessageEditor
                         key={`honeypot-content-${editorSeed}`}
                         value={draft.warning_content}
@@ -372,20 +391,22 @@ export function HoneypotPanel() {
                           })
                         }
                         height={180}
-                        placeholder="Message above the warning embed…"
+                        placeholder={d.contentPlaceholder}
                       />
                       <p className="mt-1 mb-0 small text-body-secondary">
-                        {draft.warning_content.length}/2000 characters
+                        {formatDict(d.charCount, {
+                          count: draft.warning_content.length,
+                        })}
                       </p>
                     </div>
                     <div>
-                      <CFormLabel>Embed Description</CFormLabel>
+                      <CFormLabel>{d.embedDescription}</CFormLabel>
                       <RichMessageEditor
                         key={`honeypot-desc-${editorSeed}`}
                         value={String(embed.description ?? "")}
                         onChange={patchEmbedDescription}
                         height={180}
-                        placeholder="Embed description…"
+                        placeholder={d.embedDescriptionPlaceholder}
                       />
                     </div>
                     <EmbedEditor
@@ -416,7 +437,7 @@ export function HoneypotPanel() {
       {/* Configuration modal */}
       <FeatureConfigurationModal
         visible={activeModal === "config"}
-        title="Configuration"
+        title={d.configTitle}
         category="security"
         icon={cilSettings}
         saving={saving}
@@ -426,19 +447,18 @@ export function HoneypotPanel() {
       >
         <div className="d-flex flex-column gap-3">
           <CAlert color="secondary" className="mb-0 py-2 small">
-            Enable or disable the honeypot from the Configuration card toggle.
+            {d.configToggleHint}
           </CAlert>
           <div>
-            <CFormLabel>Trap Channels</CFormLabel>
+            <CFormLabel>{d.trapChannels}</CFormLabel>
             <CAlert color="warning" className="py-2 small">
-              Selecting an existing channel turns it into a trap. Do not choose
-              an active conversation channel.
+              {d.trapChannelsWarn}
             </CAlert>
             <ChannelSelect
               channels={resources?.channels ?? []}
               value=""
               allowEmpty
-              emptyLabel="Add trap channel…"
+              emptyLabel={d.addTrapChannel}
               onChange={(id) => {
                 if (!id || draft.trap_channel_ids.includes(id)) return;
                 patch({ trap_channel_ids: [...draft.trap_channel_ids, id] });
@@ -461,7 +481,7 @@ export function HoneypotPanel() {
                         })
                       }
                     >
-                      Remove
+                      {d.remove}
                     </button>
                   </li>
                 );
@@ -470,7 +490,7 @@ export function HoneypotPanel() {
           </div>
           <div className="d-flex gap-2 align-items-end">
             <div className="flex-grow-1">
-              <CFormLabel>Create Honeypot Channel</CFormLabel>
+              <CFormLabel>{d.createHoneypotChannel}</CFormLabel>
               <CFormInput
                 value={newChannelName}
                 onChange={(e) => setNewChannelName(e.target.value)}
@@ -484,7 +504,7 @@ export function HoneypotPanel() {
                 )
               }
             >
-              Create
+              {d.create}
             </Button>
           </div>
         </div>
@@ -493,7 +513,7 @@ export function HoneypotPanel() {
       {/* Punishment modal */}
       <FeatureConfigurationModal
         visible={activeModal === "punishment"}
-        title="Punishment"
+        title={d.punishmentTitle}
         category="security"
         icon={cilBan}
         saving={saving}
@@ -503,7 +523,7 @@ export function HoneypotPanel() {
       >
         <div className="d-flex flex-column gap-3">
           <div>
-            <CFormLabel>Action</CFormLabel>
+            <CFormLabel>{d.action}</CFormLabel>
             <CFormSelect
               value={draft.punishment}
               onChange={(e) =>
@@ -512,35 +532,35 @@ export function HoneypotPanel() {
                 })
               }
             >
-              <option value="log_only">Log Only</option>
-              <option value="delete">Delete Trigger Message</option>
-              <option value="timeout">Timeout Member</option>
-              <option value="kick">Kick Member</option>
-              <option value="kick_purge">Kick + Purge Recent Messages</option>
-              <option value="ban">Ban Member</option>
+              <option value="log_only">{d.punishmentLogOnly}</option>
+              <option value="delete">{d.punishmentDelete}</option>
+              <option value="timeout">{d.punishmentTimeout}</option>
+              <option value="kick">{d.punishmentKick}</option>
+              <option value="kick_purge">{d.punishmentKickPurge}</option>
+              <option value="ban">{d.punishmentBan}</option>
             </CFormSelect>
           </div>
           <div>
-            <CFormLabel>Delete Message History (Hours, max 24)</CFormLabel>
+            <CFormLabel>{d.deleteHistoryHours}</CFormLabel>
             <NumberInput
               value={draft.delete_history_hours}
               defaultValue={0}
               min={0}
               max={24}
               step={1}
-              aria-label="Delete message history hours"
+              aria-label={d.deleteHistoryAria}
               onCommit={(next) => patch({ delete_history_hours: next })}
             />
           </div>
           <div>
-            <CFormLabel>Timeout Minutes</CFormLabel>
+            <CFormLabel>{d.timeoutMinutes}</CFormLabel>
             <NumberInput
               value={draft.timeout_minutes}
               defaultValue={10}
               min={1}
               max={40320}
               step={1}
-              aria-label="Timeout minutes"
+              aria-label={d.timeoutMinutesAria}
               onCommit={(next) => patch({ timeout_minutes: next })}
             />
           </div>
@@ -550,7 +570,7 @@ export function HoneypotPanel() {
       {/* Exemptions modal */}
       <FeatureConfigurationModal
         visible={activeModal === "exemptions"}
-        title="Exemptions"
+        title={d.exemptionsTitle}
         category="security"
         icon={cilShieldAlt}
         saving={saving}
@@ -560,11 +580,10 @@ export function HoneypotPanel() {
       >
         <div className="d-flex flex-column gap-3">
           <CAlert color="secondary" className="mb-0 py-2 small">
-            Toggle “Ignore bots” from the Exemptions card. Configure exempt roles
-            and members below.
+            {d.exemptionsHint}
           </CAlert>
           <div>
-            <CFormLabel>Exempt Roles</CFormLabel>
+            <CFormLabel>{d.exemptRoles}</CFormLabel>
             <RoleSelect
               roles={resources?.roles ?? []}
               value=""
@@ -575,7 +594,7 @@ export function HoneypotPanel() {
             />
           </div>
           <div>
-            <CFormLabel>Exempt Members</CFormLabel>
+            <CFormLabel>{d.exemptMembers}</CFormLabel>
             <MemberSelect
               guildId={guildId}
               values={draft.exempt_member_ids}
@@ -585,21 +604,21 @@ export function HoneypotPanel() {
         </div>
       </FeatureConfigurationModal>
 
-      <SectionCard level="secondary" header="Trigger History">
+      <SectionCard level="secondary" header={d.triggerHistory}>
         {triggers.length === 0 ? (
           <p className="mb-0 small text-body-secondary p-1">
-            No honeypot triggers yet.
+            {d.emptyTriggers}
           </p>
         ) : (
           <div className="table-responsive">
             <table className="table table-sm align-middle mb-0">
               <thead>
                 <tr>
-                  <th>When</th>
-                  <th>Member</th>
-                  <th>Channel</th>
-                  <th>Punishment</th>
-                  <th>Result</th>
+                  <th>{d.colWhen}</th>
+                  <th>{d.colMember}</th>
+                  <th>{d.colChannel}</th>
+                  <th>{d.colPunishment}</th>
+                  <th>{d.colResult}</th>
                 </tr>
               </thead>
               <tbody>
@@ -635,7 +654,7 @@ export function HoneypotPanel() {
           disabled={saving || !draft.enabled || !dirty}
           onClick={() => void saveDraft()}
         >
-          {saving ? "Saving…" : "Save Settings"}
+          {saving ? d.saving : d.saveSettings}
         </Button>
       </PageActionFooter>
     </div>

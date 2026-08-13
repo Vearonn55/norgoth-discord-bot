@@ -2,29 +2,13 @@
 
 import { Badge } from "@/components/ui/badge";
 import { formatDateTime } from "@/lib/datetime";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import {
   deriveManualReviewReasons,
   manualReviewReasonHeading,
   manualReviewReasonLabel,
 } from "@/lib/verification/manual-review-reasons";
 import type { ManualReviewDetail, ManualReviewItem } from "@/stores/manual-review-store";
-
-function statusBadge(status: ManualReviewItem["status"]) {
-  if (status === "success") return <Badge variant="success">Allowed</Badge>;
-  if (status === "manual_review")
-    return <Badge variant="warning">Manual review</Badge>;
-  return <Badge variant="danger">Denied</Badge>;
-}
-
-function displayName(item: ManualReviewItem): string {
-  return (
-    item.display_name ||
-    item.username ||
-    (item.discord_user_id.length >= 4
-      ? `User ${item.discord_user_id.slice(-4)}`
-      : `User ${item.discord_user_id}`)
-  );
-}
 
 /**
  * Read-only presentation of a verification attempt / manual review record.
@@ -39,6 +23,29 @@ export function ReviewRecord({
   detail: ManualReviewDetail;
   lang: string;
 }) {
+  const dict = useLocaleDict();
+  const d = dict.verificationPage;
+
+  function statusBadge(status: ManualReviewItem["status"]) {
+    if (status === "success") return <Badge variant="success">{d.statusAllowed}</Badge>;
+    if (status === "manual_review")
+      return <Badge variant="warning">{d.statusManualReview}</Badge>;
+    return <Badge variant="danger">{d.statusDenied}</Badge>;
+  }
+
+  function displayName(item: ManualReviewItem): string {
+    return (
+      item.display_name ||
+      item.username ||
+      formatDict(d.userFallback, {
+        id:
+          item.discord_user_id.length >= 4
+            ? item.discord_user_id.slice(-4)
+            : item.discord_user_id,
+      })
+    );
+  }
+
   const name = displayName(detail);
   const initial = name.trim().charAt(0).toUpperCase() || "?";
 
@@ -98,28 +105,26 @@ export function ReviewRecord({
 
       <div>
         <div className="small fw-semibold text-uppercase text-body-secondary mb-2">
-          Risk analysis
+          {d.riskAnalysis}
         </div>
         {hasRiskSignals ? (
           <div className="d-flex flex-wrap gap-2">
             {detail.vpn_or_proxy_detected ? (
-              <Badge variant="warning">VPN / Proxy</Badge>
+              <Badge variant="warning">{d.badgeVpn}</Badge>
             ) : null}
             {detail.shared_ip_detected ? (
-              <Badge variant="warning">Shared IP</Badge>
+              <Badge variant="warning">{d.badgeSharedIp}</Badge>
             ) : null}
             {detail.high_risk_guild_detected ? (
-              <Badge variant="warning">High Risk Server member</Badge>
+              <Badge variant="warning">{d.badgeHighRiskMember}</Badge>
             ) : null}
           </div>
         ) : (
-          <div className="small text-body-secondary">
-            No risk signals were recorded for this attempt.
-          </div>
+          <div className="small text-body-secondary">{d.noRiskSignals}</div>
         )}
         {detail.reason ? (
           <div className="small text-body-secondary mt-2">
-            Decision reason:{" "}
+            {d.decisionReason}{" "}
             <span className="fw-medium">
               {detail.reason.replaceAll("_", " ")}
             </span>
@@ -130,7 +135,7 @@ export function ReviewRecord({
       {detail.high_risk_guild_detected ? (
         <div>
           <div className="small fw-semibold text-uppercase text-body-secondary mb-2">
-            Matched High Risk Servers
+            {d.matchedHighRisk}
           </div>
           {detail.matched_high_risk_servers.length > 0 ? (
             <div className="d-flex flex-column gap-2">
@@ -151,24 +156,27 @@ export function ReviewRecord({
               ))}
             </div>
           ) : (
-            <div className="small text-body-secondary">
-              This member belongs to a configured High Risk Server.
-            </div>
+            <div className="small text-body-secondary">{d.belongsHighRisk}</div>
           )}
         </div>
       ) : null}
 
       <div className="border-top pt-3 small text-body-secondary">
-        <div>Attempted: {formatDateTime(detail.created_at, lang)}</div>
+        <div>
+          {formatDict(d.attemptedLabel, {
+            time: formatDateTime(detail.created_at, lang),
+          })}
+        </div>
         {detail.reviewed_by ? (
           <div>
-            Reviewed by <span className="font-monospace">{detail.reviewed_by}</span>
+            {d.reviewedBy}{" "}
+            <span className="font-monospace">{detail.reviewed_by}</span>
             {detail.reviewed_at
               ? ` · ${formatDateTime(detail.reviewed_at, lang)}`
               : ""}
           </div>
         ) : (
-          <div>Awaiting review.</div>
+          <div>{d.awaitingReview}</div>
         )}
       </div>
     </div>

@@ -21,6 +21,7 @@ import { RoleMultiPicker } from "@/components/ui/role-multi-picker";
 import { RichMessageEditor } from "@/components/editors/rich-message-editor";
 import { MessagePreview } from "@/components/discord/message-preview";
 import { EmbedDraftCreator } from "@/components/embed-messages/embed-draft-creator";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import {
   useAutomationStore,
@@ -44,6 +45,8 @@ const WELCOME_VARIABLES = [
 ];
 
 export function AutomationSettingsPanel({ section }: { section: Section }) {
+  const dict = useLocaleDict();
+  const d = dict.welcomeAutoRolePage;
   const { guildId, resources, loading: guildLoading, error: guildError, reload } =
     useFirstGuild();
 
@@ -96,7 +99,7 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
       <Card>
         <div className="d-flex align-items-center gap-2 text-body-secondary">
           <CSpinner size="sm" />
-          <span>Loading automation settings…</span>
+          <span>{d.loading}</span>
         </div>
       </Card>
     );
@@ -106,10 +109,10 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
     return (
       <Card>
         <div className="d-flex flex-column gap-3">
-          <Badge variant="warning">Bot required</Badge>
+          <Badge variant="warning">{d.botRequired}</Badge>
           <p className="mb-0 text-body-secondary">{guildError}</p>
           <Button variant="secondary" onClick={() => void reload()}>
-            Retry
+            {d.retry}
           </Button>
         </div>
       </Card>
@@ -141,11 +144,11 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
 
   const previewSubstitute = (text: string) =>
     text
-      .replaceAll("{user}", "@Member")
-      .replaceAll("{username}", "Member")
-      .replaceAll("{server}", resources?.guild_name ?? "Server")
+      .replaceAll("{user}", `@${d.previewMember}`)
+      .replaceAll("{username}", d.previewMember)
+      .replaceAll("{server}", resources?.guild_name ?? d.previewServer)
       .replaceAll("{member_count}", "1,234")
-      .replaceAll("{inviter}", "@Inviter")
+      .replaceAll("{inviter}", `@${d.previewInviter}`)
       .replaceAll("{inviter_count}", "42");
 
   return (
@@ -154,27 +157,26 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
         <div className="d-flex align-items-center gap-2">
           <Badge variant="success">{resources.guild_name}</Badge>
           <span className="small text-body-secondary">
-            Guild ID: {resources.guild_id}
+            {formatDict(d.guildId, { id: resources.guild_id })}
           </span>
         </div>
       )}
 
       {section === "welcome" && (
         <div className="row g-4">
-          {/* Welcome card */}
           <div className="col-12 col-xl-6">
             <Card className="h-100">
               <div className="d-flex flex-column gap-3 h-100">
                 <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
-                  <h2 className="h5 mb-0">Welcome Message</h2>
+                  <h2 className="h5 mb-0">{d.welcomeTitle}</h2>
                   <Badge variant={config.welcome_enabled ? "success" : "neutral"}>
-                    {config.welcome_enabled ? "On" : "Off"}
+                    {config.welcome_enabled ? d.on : d.off}
                   </Badge>
                 </div>
 
                 <ToggleRow
-                  label="Welcome messages"
-                  description="Announce joins in a channel."
+                  label={d.welcomeToggle}
+                  description={d.welcomeToggleDesc}
                   checked={config.welcome_enabled}
                   onChange={(checked) =>
                     updateConfig((current) => ({
@@ -186,13 +188,12 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
 
                 {welcomeMisconfigured ? (
                   <CAlert color="warning" className="mb-0 py-2">
-                    Enabled but no channel selected — nothing will send until you
-                    pick one and save.
+                    {d.welcomeMisconfigured}
                   </CAlert>
                 ) : null}
 
                 <SelectRow
-                  label="Welcome channel"
+                  label={d.welcomeChannel}
                   value={config.welcome_channel_id ?? ""}
                   onChange={(value) =>
                     updateConfig((current) => ({
@@ -204,19 +205,20 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
                     value: channel.id,
                     label: `#${channel.name}`,
                   }))}
-                  placeholder="Select a channel"
+                  placeholder={d.selectChannel}
                 />
 
                 <MessageComposer
                   section="welcome"
-                  label="Welcome message"
-                  placeholder="Welcome to {server}, {user}!"
+                  label={d.welcomeMessage}
+                  placeholder={d.welcomePlaceholder}
                   config={config}
                   updateConfig={updateConfig}
                   editorSeed={editorSeed}
                   embedMessages={embedMessages}
                   previewSubstitute={previewSubstitute}
                   onCreateNew={() => setCreatorFor("welcome")}
+                  copy={d}
                 />
 
                 {welcomeStatus ? (
@@ -224,9 +226,10 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
                     color={welcomeStatus.ok ? "success" : "danger"}
                     className="mb-0 py-2"
                   >
-                    Last attempt: {welcomeStatus.ok ? "delivered" : "failed"}
-                    {" — "}
-                    {welcomeStatus.reason}
+                    {formatDict(d.lastAttempt, {
+                      result: welcomeStatus.ok ? d.delivered : d.failed,
+                      reason: welcomeStatus.reason,
+                    })}
                   </CAlert>
                 ) : null}
 
@@ -240,8 +243,8 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
                       disabled={saving && savingSection === "welcome"}
                     >
                       {saving && savingSection === "welcome"
-                        ? "Saving…"
-                        : "Save Welcome"}
+                        ? d.saving
+                        : d.saveWelcome}
                     </Button>
                     <Button
                       variant="secondary"
@@ -249,12 +252,12 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
                       onClick={() => void sendTestWelcome(guildId)}
                       disabled={testing || !config.welcome_channel_id}
                     >
-                      {testing ? "Saving & sending…" : "Test Message"}
+                      {testing ? d.savingSending : d.testMessage}
                     </Button>
                     {welcomeDirty ? (
-                      <span className="small text-warning">Unsaved changes</span>
+                      <span className="small text-warning">{d.unsavedChanges}</span>
                     ) : welcomeSavedAt ? (
-                      <span className="small text-success">Saved</span>
+                      <span className="small text-success">{d.saved}</span>
                     ) : null}
                     {welcomeError ? (
                       <span className="small text-danger">{welcomeError}</span>
@@ -271,20 +274,19 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
             </Card>
           </div>
 
-          {/* Leave card */}
           <div className="col-12 col-xl-6">
             <Card className="h-100">
               <div className="d-flex flex-column gap-3 h-100">
                 <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
-                  <h2 className="h5 mb-0">Leave Message</h2>
+                  <h2 className="h5 mb-0">{d.leaveTitle}</h2>
                   <Badge variant={config.leave_enabled ? "success" : "neutral"}>
-                    {config.leave_enabled ? "On" : "Off"}
+                    {config.leave_enabled ? d.on : d.off}
                   </Badge>
                 </div>
 
                 <ToggleRow
-                  label="Leave messages"
-                  description="Announce when members leave."
+                  label={d.leaveToggle}
+                  description={d.leaveToggleDesc}
                   checked={config.leave_enabled}
                   onChange={(checked) =>
                     updateConfig((current) => ({
@@ -296,12 +298,12 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
 
                 {leaveMisconfigured ? (
                   <CAlert color="warning" className="mb-0 py-2">
-                    Enabled but no leave/welcome channel selected.
+                    {d.leaveMisconfigured}
                   </CAlert>
                 ) : null}
 
                 <SelectRow
-                  label="Leave channel"
+                  label={d.leaveChannel}
                   value={config.leave_channel_id ?? ""}
                   onChange={(value) =>
                     updateConfig((current) => ({
@@ -313,19 +315,20 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
                     value: channel.id,
                     label: `#${channel.name}`,
                   }))}
-                  placeholder="Same as welcome channel"
+                  placeholder={d.sameAsWelcome}
                 />
 
                 <MessageComposer
                   section="leave"
-                  label="Leave message"
-                  placeholder="{username} left {server}."
+                  label={d.leaveMessage}
+                  placeholder={d.leavePlaceholder}
                   config={config}
                   updateConfig={updateConfig}
                   editorSeed={editorSeed}
                   embedMessages={embedMessages}
                   previewSubstitute={previewSubstitute}
                   onCreateNew={() => setCreatorFor("leave")}
+                  copy={d}
                 />
 
                 <div className="mt-auto">
@@ -338,8 +341,8 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
                       disabled={saving && savingSection === "leave"}
                     >
                       {saving && savingSection === "leave"
-                        ? "Saving…"
-                        : "Save Leave"}
+                        ? d.saving
+                        : d.saveLeave}
                     </Button>
                     <Button
                       variant="secondary"
@@ -350,12 +353,12 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
                         (!config.leave_channel_id && !config.welcome_channel_id)
                       }
                     >
-                      {leaveTesting ? "Saving & sending…" : "Test Message"}
+                      {leaveTesting ? d.savingSending : d.testMessage}
                     </Button>
                     {leaveDirty ? (
-                      <span className="small text-warning">Unsaved changes</span>
+                      <span className="small text-warning">{d.unsavedChanges}</span>
                     ) : leaveSavedAt ? (
-                      <span className="small text-success">Saved</span>
+                      <span className="small text-success">{d.saved}</span>
                     ) : null}
                     {leaveError ? (
                       <span className="small text-danger">{leaveError}</span>
@@ -384,7 +387,7 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
           alignment="center"
         >
           <CModalHeader>
-            <CModalTitle>Create embed draft</CModalTitle>
+            <CModalTitle>{d.createEmbedDraft}</CModalTitle>
           </CModalHeader>
           <CModalBody>
             <EmbedDraftCreator
@@ -393,7 +396,7 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
               mode="create"
               compact
               onCancel={() => setCreatorFor(null)}
-              cancelLabel="Cancel"
+              cancelLabel={d.cancel}
               onCreated={(created) => {
                 const target = creatorFor;
                 setCreatorFor(null);
@@ -424,11 +427,9 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
               <div className="d-flex flex-column gap-3">
                 <div className="d-flex flex-wrap align-items-start justify-content-between gap-3">
                   <div className="min-w-0">
-                    <h2 className="h5 mb-1">Auto-role on join</h2>
+                    <h2 className="h5 mb-1">{d.autoRoleTitle}</h2>
                     <p className="mb-0 small text-body-secondary">
-                      Grant one or more roles to every new member. Enable both
-                      this switch and the Auto Role module. The bot role must
-                      sit above these roles in Discord (Manage Roles).
+                      {d.autoRoleDesc}
                     </p>
                   </div>
                   <div className="d-flex align-items-center gap-2">
@@ -437,7 +438,7 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
                         config.auto_role_enabled ? "success" : "neutral"
                       }
                     >
-                      {config.auto_role_enabled ? "Enabled" : "Disabled"}
+                      {config.auto_role_enabled ? d.enabled : d.disabled}
                     </Badge>
                     <Switch
                       checked={config.auto_role_enabled}
@@ -447,7 +448,7 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
                           auto_role_enabled: checked,
                         }))
                       }
-                      aria-label="Auto-role on join"
+                      aria-label={d.autoRoleAria}
                     />
                   </div>
                 </div>
@@ -468,7 +469,7 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
                       auto_role_id: ids[0] ?? null,
                     }))
                   }
-                  searchPlaceholder="Search roles to grant…"
+                  searchPlaceholder={d.searchRoles}
                 />
 
                 {autoroleStatus ? (
@@ -478,8 +479,8 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
                   >
                     <strong>
                       {autoroleStatus.ok
-                        ? "Last assignment succeeded"
-                        : "Last assignment issue"}
+                        ? d.lastAssignmentOk
+                        : d.lastAssignmentIssue}
                     </strong>
                     : {autoroleStatus.reason}
                     {autoroleStatus.member_name
@@ -498,10 +499,8 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
           <CCol md={8} xl={6}>
             <Card>
               <div className="d-flex flex-column gap-2">
-                <h2 className="h6 mb-0">Moderation log channel</h2>
-                <p className="mb-0 small text-body-secondary">
-                  Kick, ban, timeout, and purge actions post embeds here.
-                </p>
+                <h2 className="h6 mb-0">{d.modLogTitle}</h2>
+                <p className="mb-0 small text-body-secondary">{d.modLogDesc}</p>
                 <CFormSelect
                   value={config.mod_log_channel_id ?? ""}
                   onChange={(event) =>
@@ -511,7 +510,7 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
                     }))
                   }
                 >
-                  <option value="">Select a channel</option>
+                  <option value="">{d.selectChannel}</option>
                   {channels.map((channel) => (
                     <option key={channel.id} value={channel.id}>
                       #{channel.name}
@@ -531,17 +530,19 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
             onClick={() => void save(guildId)}
             disabled={saving}
           >
-            {saving ? "Saving…" : "Save Settings"}
+            {saving ? d.saving : d.saveSettings}
           </Button>
 
           {dirty ? (
             <CAlert color="warning" className="mb-0 py-2">
-              Unsaved changes — settings use the last saved values.
+              {d.unsavedBanner}
             </CAlert>
           ) : null}
 
           {savedAt && !dirty ? (
-            <span className="small text-success">Saved at {savedAt}</span>
+            <span className="small text-success">
+              {formatDict(d.savedAt, { time: savedAt })}
+            </span>
           ) : null}
         </div>
       ) : null}
@@ -565,6 +566,7 @@ function MessageComposer({
   embedMessages,
   previewSubstitute,
   onCreateNew,
+  copy,
 }: {
   section: "welcome" | "leave";
   label: string;
@@ -575,6 +577,15 @@ function MessageComposer({
   embedMessages: EmbedMessage[];
   previewSubstitute: (text: string) => string;
   onCreateNew: () => void;
+  copy: {
+    plainText: string;
+    embedDraft: string;
+    selectEmbedDraft: string;
+    createNewEmbed: string;
+    embedMissing: string;
+    preview: string;
+    selectEmbedPreview: string;
+  };
 }) {
   const source: MessageSource =
     section === "welcome" ? config.welcome_source : config.leave_source;
@@ -616,14 +627,14 @@ function MessageComposer({
               size="sm"
               onClick={() => setSource("text")}
             >
-              Plain text
+              {copy.plainText}
             </Button>
             <Button
               variant={source === "embed" ? "primary" : "secondary"}
               size="sm"
               onClick={() => setSource("embed")}
             >
-              Embed draft
+              {copy.embedDraft}
             </Button>
           </div>
         </div>
@@ -643,7 +654,7 @@ function MessageComposer({
               value={embedId ?? ""}
               onChange={(e) => setEmbedId(e.target.value || null)}
             >
-              <option value="">Select an embed draft…</option>
+              <option value="">{copy.selectEmbedDraft}</option>
               {embedMessages.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name}
@@ -652,14 +663,11 @@ function MessageComposer({
             </CFormSelect>
             <div>
               <Button variant="secondary" size="sm" onClick={onCreateNew}>
-                Create new embed
+                {copy.createNewEmbed}
               </Button>
             </div>
             {embedId && !selected ? (
-              <p className="small text-warning mb-0">
-                The selected embed draft no longer exists. Pick another or
-                create a new one.
-              </p>
+              <p className="small text-warning mb-0">{copy.embedMissing}</p>
             ) : null}
           </div>
         )}
@@ -667,7 +675,7 @@ function MessageComposer({
 
       <div>
         <div className="small text-uppercase fw-semibold text-body-secondary mb-2">
-          Preview
+          {copy.preview}
         </div>
         {source === "text" ? (
           <MessagePreview content={previewSubstitute(message)} mode="text" />
@@ -681,7 +689,7 @@ function MessageComposer({
           />
         ) : (
           <p className="small text-body-secondary mb-0">
-            Select an embed draft to preview it here.
+            {copy.selectEmbedPreview}
           </p>
         )}
       </div>

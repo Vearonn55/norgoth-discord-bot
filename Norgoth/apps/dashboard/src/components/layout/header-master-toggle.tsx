@@ -2,6 +2,7 @@
 
 import { CSpinner } from "@coreui/react";
 import { Switch } from "@/components/ui/switch";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 
 type HeaderMasterToggleProps = {
   enabled: boolean;
@@ -24,6 +25,8 @@ export function HeaderMasterToggle({
   label,
   showLabel = true,
 }: HeaderMasterToggleProps) {
+  const dict = useLocaleDict();
+
   return (
     <div className="d-flex align-items-center gap-2 flex-shrink-0">
       {showLabel && label ? (
@@ -36,14 +39,18 @@ export function HeaderMasterToggle({
           color: enabled ? "var(--cui-success)" : "var(--cui-secondary)",
         }}
       >
-        {enabled ? "Enabled" : "Disabled"}
+        {enabled ? dict.common.enabled : dict.common.disabled}
       </span>
       <Switch
         size="lg"
         checked={enabled}
         disabled={loading}
         onChange={onChange}
-        aria-label={label ? `Toggle ${label}` : "Toggle feature"}
+        aria-label={
+          label
+            ? formatDict(dict.common.toggleNamed, { name: label })
+            : dict.common.toggleFeature
+        }
       />
     </div>
   );

@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Icon } from "@/components/ui/icon";
 import { ReviewRecord } from "@/components/verification/review-transcript";
 import { useManualReviewStore } from "@/stores/manual-review-store";
+import { useLocaleDict } from "@/lib/locale-dict";
 
 /**
  * Read-only transcript of a single review record, reachable via the deep link
@@ -20,6 +21,8 @@ import { useManualReviewStore } from "@/stores/manual-review-store";
 export default function ReviewTranscriptPage() {
   const params = useParams();
   const searchParams = useSearchParams();
+  const dict = useLocaleDict();
+  const v = dict.verificationPage;
   const lang = String(params?.lang || "en");
   const reviewId = String(params?.reviewId || "");
   const guildId = searchParams.get("g") ?? "";
@@ -38,17 +41,17 @@ export default function ReviewTranscriptPage() {
   return (
     <div className="d-flex flex-column gap-4">
       <PageHeader
-        title="Review Record"
+        title={v.reviewRecordTitle}
         icon={<Icon icon={cilTask} size="xl" />}
         category="community"
-        description="Read-only transcript of a manual verification decision."
+        description={v.reviewRecordDescription}
         actions={
           <Link
             href={`/${lang}/community/manual-verification`}
             className="btn btn-secondary btn-sm d-inline-flex align-items-center gap-2"
           >
             <Icon icon={cilArrowLeft} height={14} />
-            Back to queue
+            {v.backToQueue}
           </Link>
         }
       />
@@ -56,12 +59,12 @@ export default function ReviewTranscriptPage() {
       <Card>
         {!guildId ? (
           <CAlert color="warning" className="mb-0">
-            This link is missing its server reference and cannot be opened.
+            {v.missingGuildLink}
           </CAlert>
         ) : detailLoading ? (
           <div className="d-flex align-items-center gap-2 text-body-secondary">
             <CSpinner size="sm" />
-            Loading…
+            {dict.common.loading}
           </div>
         ) : detailError ? (
           <CAlert color="warning" className="mb-0">

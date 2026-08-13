@@ -18,8 +18,11 @@ import { useFirstGuild } from "@/stores/guild-store";
 import { useRaidStore, type RaidConfig } from "@/stores/raid-store";
 import { Icon } from "@/components/ui/icon";
 import { cilShieldAlt } from "@coreui/icons";
+import { useLocaleDict } from "@/lib/locale-dict";
 
 export function RaidProtectionPanel() {
+  const dict = useLocaleDict();
+  const d = dict.raidPage;
   const { guildId, resources, loading: guildLoading } = useFirstGuild();
   const config = useRaidStore((s) => s.config);
   const incidents = useRaidStore((s) => s.incidents);
@@ -44,13 +47,13 @@ export function RaidProtectionPanel() {
   if (guildLoading || loading || !draft) {
     return (
       <div className="d-flex align-items-center gap-2">
-        <CSpinner size="sm" /> Loading raid protection…
+        <CSpinner size="sm" /> {d.loading}
       </div>
     );
   }
 
   if (!guildId) {
-    return <p className="text-body-secondary">Select a server first.</p>;
+    return <p className="text-body-secondary">{d.selectServer}</p>;
   }
 
   function patch(partial: Partial<RaidConfig>) {
@@ -71,10 +74,10 @@ export function RaidProtectionPanel() {
   return (
     <div className="d-flex flex-column gap-4">
       <PageHeader
-        title="Raid Protection"
+        title={d.title}
         category="security"
         icon={<Icon icon={cilShieldAlt} size="xl" />}
-        description="Detect rapid joins and young-account floods, then respond automatically when configured."
+        description={d.description}
         infoKey="raidProtection"
         masterToggle={{
           enabled: draft.enabled,
@@ -87,16 +90,15 @@ export function RaidProtectionPanel() {
 
       {draft.active_incident ? (
         <div className="alert alert-warning mb-0">
-          Active raid response in progress. Automatic defenses remain engaged
-          until the response window ends.
+          {d.activeIncident}
         </div>
       ) : null}
 
       <MutedSection enabled={draft.enabled} className="d-flex flex-column gap-4">
-      <SectionCard level="primary" category="security" header="Raid Detection">
+      <SectionCard level="primary" category="security" header={d.detectionHeader}>
         <div className="d-flex flex-column gap-3 p-1">
           <div>
-            <CFormLabel>Alert Channel</CFormLabel>
+            <CFormLabel>{d.alertChannel}</CFormLabel>
             <ChannelSelect
               channels={resources?.channels ?? []}
               value={draft.alert_channel_id ?? ""}
@@ -105,7 +107,7 @@ export function RaidProtectionPanel() {
           </div>
           <div style={{ maxWidth: 420 }}>
             <div className="d-flex align-items-center justify-content-between">
-              <CFormLabel className="mb-0">Joins Per Minute</CFormLabel>
+              <CFormLabel className="mb-0">{d.joinsPerMinute}</CFormLabel>
               <span className="fw-semibold">{draft.joins_per_minute}</span>
             </div>
             <Slider
@@ -113,12 +115,12 @@ export function RaidProtectionPanel() {
               max={100}
               value={draft.joins_per_minute}
               onChange={(value) => patch({ joins_per_minute: value })}
-              aria-label="Joins per minute"
+              aria-label={d.joinsPerMinuteAria}
             />
           </div>
           <div style={{ maxWidth: 420 }}>
             <div className="d-flex align-items-center justify-content-between">
-              <CFormLabel className="mb-0">Young Account Age (days)</CFormLabel>
+              <CFormLabel className="mb-0">{d.youngAccountAge}</CFormLabel>
               <span className="fw-semibold">
                 {draft.young_account_age_days}
               </span>
@@ -128,12 +130,12 @@ export function RaidProtectionPanel() {
               max={90}
               value={draft.young_account_age_days}
               onChange={(value) => patch({ young_account_age_days: value })}
-              aria-label="Young account age in days"
+              aria-label={d.youngAccountAgeAria}
             />
           </div>
           <div style={{ maxWidth: 420 }}>
             <div className="d-flex align-items-center justify-content-between">
-              <CFormLabel className="mb-0">Young Account Ratio (%)</CFormLabel>
+              <CFormLabel className="mb-0">{d.youngAccountRatio}</CFormLabel>
               <span className="fw-semibold">{draft.young_account_ratio}</span>
             </div>
             <Slider
@@ -141,61 +143,60 @@ export function RaidProtectionPanel() {
               max={100}
               value={draft.young_account_ratio}
               onChange={(value) => patch({ young_account_ratio: value })}
-              aria-label="Young account ratio percent"
+              aria-label={d.youngAccountRatioAria}
             />
           </div>
           <div>
-            <CFormLabel>Response Duration (minutes)</CFormLabel>
+            <CFormLabel>{d.responseDuration}</CFormLabel>
             <NumberInput
               value={draft.response_duration_minutes}
               defaultValue={5}
               min={1}
               max={1440}
               step={1}
-              aria-label="Response duration in minutes"
+              aria-label={d.responseDurationAria}
               onCommit={(next) => patch({ response_duration_minutes: next })}
             />
           </div>
         </div>
       </SectionCard>
 
-      <SectionCard level="primary" category="security" header="Automatic Response">
+      <SectionCard level="primary" category="security" header={d.responseHeader}>
         <div className="d-flex flex-column gap-3 p-1">
           <div className="d-flex align-items-center justify-content-between gap-3 border rounded p-3">
             <div>
-              <div className="fw-medium">Respond Automatically</div>
+              <div className="fw-medium">{d.respondAutomatically}</div>
               <p className="mb-0 mt-1 small text-body-secondary">
-                When enabled, NorBot applies the responses below the moment a
-                raid is detected.
+                {d.respondAutomaticallyHelp}
               </p>
             </div>
             <Switch
               checked={draft.respond_automatically}
               disabled={saving}
               onChange={(checked) => patch({ respond_automatically: checked })}
-              aria-label="Respond automatically"
+              aria-label={d.respondAutomaticallyAria}
             />
           </div>
           <ResponseSwitch
-            label="Pause Invites"
+            label={d.pauseInvites}
             checked={draft.pause_invites}
             disabled={!draft.respond_automatically}
             onChange={(checked) => patch({ pause_invites: checked })}
           />
           <ResponseSwitch
-            label="Force Verification (raise Discord verification level)"
+            label={d.forceVerification}
             checked={draft.force_verification}
             disabled={!draft.respond_automatically}
             onChange={(checked) => patch({ force_verification: checked })}
           />
           <ResponseSwitch
-            label="Kick Young Accounts"
+            label={d.kickYoungAccounts}
             checked={draft.kick_young_accounts}
             disabled={!draft.respond_automatically}
             onChange={(checked) => patch({ kick_young_accounts: checked })}
           />
           <ResponseSwitch
-            label="Pause Invite Crediting"
+            label={d.pauseInviteCrediting}
             checked={draft.pause_invite_crediting}
             disabled={!draft.respond_automatically}
             onChange={(checked) => patch({ pause_invite_crediting: checked })}
@@ -204,21 +205,21 @@ export function RaidProtectionPanel() {
       </SectionCard>
       </MutedSection>
 
-      <SectionCard level="secondary" header="Incident History">
+      <SectionCard level="secondary" header={d.incidentHistory}>
         {incidents.length === 0 ? (
           <p className="mb-0 small text-body-secondary p-1">
-            No raid incidents recorded yet.
+            {d.emptyIncidents}
           </p>
         ) : (
           <div className="table-responsive">
             <table className="table table-sm align-middle mb-0">
               <thead>
                 <tr>
-                  <th>Started</th>
-                  <th>Status</th>
-                  <th>Joins</th>
-                  <th>Young %</th>
-                  <th>Peak / min</th>
+                  <th>{d.colStarted}</th>
+                  <th>{d.colStatus}</th>
+                  <th>{d.colJoins}</th>
+                  <th>{d.colYoungPct}</th>
+                  <th>{d.colPeakPerMin}</th>
                 </tr>
               </thead>
               <tbody>
@@ -251,7 +252,7 @@ export function RaidProtectionPanel() {
           disabled={saving || !draft.enabled || !dirty}
           onClick={() => void save(guildId, draft)}
         >
-          {saving ? "Saving…" : "Save Settings"}
+          {saving ? d.saving : d.saveSettings}
         </Button>
       </PageActionFooter>
     </div>

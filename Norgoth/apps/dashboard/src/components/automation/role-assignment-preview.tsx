@@ -2,7 +2,6 @@
 
 import { CSpinner } from "@coreui/react";
 import {
-  ROLE_MENU_INTERACTION_LABELS,
   ROLE_MENU_STYLE_SWATCHES,
   type RoleMenuInteraction,
   type RoleMenuStyle,
@@ -10,6 +9,7 @@ import {
 import { emojiPreviewSrc } from "@/lib/discord/emoji-data";
 import { MessagePreview } from "@/components/discord/message-preview";
 import type { DiscordEmbedPayload } from "@/lib/discord/message-payload";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import type { RoleMenu } from "@/stores/automation-store";
 
 type RoleAssignmentPreviewProps = {
@@ -48,28 +48,35 @@ export function RoleAssignmentPreview({
   embedLoading,
   embedMissing,
 }: RoleAssignmentPreviewProps) {
+  const dict = useLocaleDict();
+  const d = dict.roleMenusPage;
   const interaction = (menu.interaction ??
     "buttons") as RoleMenuInteraction;
   const isEmbedBound = menu.binding_type === "embed_message";
 
+  const interactionLabels: Record<RoleMenuInteraction, string> = {
+    buttons: d.interactionButtons,
+    select: d.interactionSelect,
+    reactions: d.interactionReactions,
+  };
+
   return (
     <div className="norgoth-role-assignment-preview border rounded p-3">
       <div className="small text-uppercase fw-semibold text-body-secondary mb-2">
-        Member preview · {ROLE_MENU_INTERACTION_LABELS[interaction]}
+        {formatDict(d.memberPreview, {
+          interaction: interactionLabels[interaction],
+        })}
       </div>
 
       {isEmbedBound ? (
         embedLoading ? (
           <div className="d-flex align-items-center gap-2 text-body-secondary small py-4">
-            <CSpinner size="sm" /> Loading embed draft…
+            <CSpinner size="sm" /> {d.loadingEmbedDraft}
           </div>
         ) : embedMissing ? (
           <div className="border rounded p-3 small text-warning mb-2">
-            <div className="fw-semibold">Embed Draft Missing</div>
-            <div className="text-body-secondary">
-              The bound Embed Message no longer exists. Re-select an Embed
-              Message to restore the preview.
-            </div>
+            <div className="fw-semibold">{d.embedDraftMissingTitle}</div>
+            <div className="text-body-secondary">{d.embedDraftMissingBody}</div>
           </div>
         ) : (
           <div className="mb-2">
@@ -88,10 +95,10 @@ export function RoleAssignmentPreview({
           style={{ background: "#313338", color: "#dbdee1" }}
         >
           <div className="fw-semibold text-white mb-1">
-            {menu.title || "Untitled menu"}
+            {menu.title || d.untitledMenuPreview}
           </div>
           <div className="small" style={{ color: "#b5bac1" }}>
-            {menu.description || "Choose a role from the controls below."}
+            {menu.description || d.chooseRoleBelow}
           </div>
         </div>
       )}
@@ -104,7 +111,7 @@ export function RoleAssignmentPreview({
           className="small text-uppercase fw-semibold mb-2"
           style={{ color: "#949ba4" }}
         >
-          Role controls
+          {d.roleControls}
         </div>
 
         {interaction === "select" ? (
@@ -113,7 +120,7 @@ export function RoleAssignmentPreview({
             style={{ background: "#1e1f22", border: "1px solid #3f4147" }}
           >
             <span className="small" style={{ color: "#949ba4" }}>
-              Choose a role…
+              {d.chooseARole}
             </span>
             <span aria-hidden>▾</span>
           </div>
@@ -131,7 +138,7 @@ export function RoleAssignmentPreview({
                 style={{ borderTop: "1px solid #3f4147" }}
               >
                 <EmojiGlyph value={entry.emoji} />
-                <span>{entry.label || "Option"}</span>
+                <span>{entry.label || d.optionFallback}</span>
               </div>
             ))}
           </div>
@@ -141,7 +148,7 @@ export function RoleAssignmentPreview({
           <div className="d-flex flex-wrap gap-2">
             {menu.roles.length === 0 ? (
               <span className="small" style={{ color: "#949ba4" }}>
-                Add roles to preview buttons.
+                {d.addRolesPreviewButtons}
               </span>
             ) : (
               menu.roles.map((entry) => {
@@ -160,7 +167,7 @@ export function RoleAssignmentPreview({
                     }}
                   >
                     <EmojiGlyph value={entry.emoji} />
-                    {entry.label || "Button"}
+                    {entry.label || d.buttonFallback}
                   </span>
                 );
               })
@@ -172,7 +179,7 @@ export function RoleAssignmentPreview({
           <div className="d-flex flex-wrap gap-2 align-items-center">
             {menu.roles.length === 0 ? (
               <span className="small" style={{ color: "#949ba4" }}>
-                Add roles and emoji to preview reactions.
+                {d.addRolesPreviewReactions}
               </span>
             ) : (
               menu.roles.map((entry) => (
@@ -192,9 +199,7 @@ export function RoleAssignmentPreview({
           </div>
         ) : null}
       </div>
-      <p className="mb-0 mt-2 small text-body-secondary">
-        Preview only — shows what members will roughly see in Discord.
-      </p>
+      <p className="mb-0 mt-2 small text-body-secondary">{d.previewOnly}</p>
     </div>
   );
 }

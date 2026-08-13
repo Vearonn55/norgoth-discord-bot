@@ -8,6 +8,7 @@ import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { FeatureConfigurationModal } from "@/components/ui/feature-modal";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { formatDateTime } from "@/lib/datetime";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import {
   useVerificationListsStore,
   type HighRiskGuildEntry,
@@ -16,6 +17,8 @@ import {
 const PAGE_SIZE = 8;
 
 export function HighRiskServersSection({ guildId }: { guildId: string }) {
+  const dict = useLocaleDict();
+  const d = dict.verificationPage;
   const params = useParams();
   const lang = String(params?.lang || "en");
 
@@ -55,7 +58,7 @@ export function HighRiskServersSection({ guildId }: { guildId: string }) {
   const columns: DataTableColumn<HighRiskGuildEntry>[] = [
     {
       key: "id",
-      header: "Discord Server ID",
+      header: d.colServerId,
       cell: (row) => (
         <span className="font-monospace small">
           {row.high_risk_discord_guild_id}
@@ -64,14 +67,14 @@ export function HighRiskServersSection({ guildId }: { guildId: string }) {
     },
     {
       key: "reason",
-      header: "Note",
+      header: d.colNote,
       cell: (row) => (
         <span className="small text-body-secondary">{row.reason || "—"}</span>
       ),
     },
     {
       key: "created",
-      header: "Added",
+      header: d.colAdded,
       cell: (row) => (
         <span className="small text-body-secondary">
           {formatDateTime(row.created_at, lang)}
@@ -88,7 +91,7 @@ export function HighRiskServersSection({ guildId }: { guildId: string }) {
           size="sm"
           onClick={() => setPendingRemove(row)}
         >
-          Remove
+          {d.remove}
         </Button>
       ),
     },
@@ -97,7 +100,7 @@ export function HighRiskServersSection({ guildId }: { guildId: string }) {
   async function submitAdd() {
     const trimmed = targetId.trim();
     if (!/^[0-9]{1,20}$/.test(trimmed)) {
-      setFormError("Enter a valid Discord server ID (numeric snowflake).");
+      setFormError(d.invalidServerId);
       return;
     }
     setSaving(true);
@@ -105,7 +108,7 @@ export function HighRiskServersSection({ guildId }: { guildId: string }) {
     const result = await add(guildId, trimmed, reason.trim());
     setSaving(false);
     if (!result.ok) {
-      setFormError(result.error ?? "Could not add the server.");
+      setFormError(result.error ?? d.couldNotAddServer);
       return;
     }
     setTargetId("");
@@ -125,12 +128,10 @@ export function HighRiskServersSection({ guildId }: { guildId: string }) {
     <div className="d-flex flex-column gap-3">
       <div className="d-flex align-items-start justify-content-between gap-3 flex-wrap">
         <p className="mb-0 small text-body-secondary" style={{ maxWidth: 520 }}>
-          If a verifying member belongs to any of these Discord servers, their
-          verification is routed to Manual Review instead of being auto-approved
-          (unless a stronger deny rule applies or the user is whitelisted).
+          {d.highRiskIntro}
         </p>
         <Button variant="primary" size="sm" onClick={() => setAddOpen(true)}>
-          Add Server
+          {d.addServer}
         </Button>
       </div>
 
@@ -146,7 +147,7 @@ export function HighRiskServersSection({ guildId }: { guildId: string }) {
             onClick={() => void load(guildId)}
             disabled={loading}
           >
-            {loading ? "Retrying…" : "Retry"}
+            {loading ? d.retrying : d.retry}
           </Button>
         </CAlert>
       ) : null}
@@ -160,33 +161,33 @@ export function HighRiskServersSection({ guildId }: { guildId: string }) {
           setSearch(value);
           setPage(1);
         }}
-        searchPlaceholder="Search by server ID or note…"
+        searchPlaceholder={d.searchHighRisk}
         page={page}
         pageSize={PAGE_SIZE}
         onPageChange={setPage}
         emptyMessage={
           error
-            ? "Could not load high-risk servers."
+            ? d.emptyHighRiskError
             : loading
-              ? "Loading…"
-              : "No high-risk servers configured."
+              ? d.loading
+              : d.emptyHighRisk
         }
       />
 
       <FeatureConfigurationModal
         visible={addOpen}
         onClose={() => setAddOpen(false)}
-        title="Add High Risk Server"
-        description="Members of this server will be routed to Manual Review during verification."
+        title={d.addHighRiskTitle}
+        description={d.addHighRiskDesc}
         category="community"
         onSave={submitAdd}
         saving={saving}
         error={formError}
-        saveLabel="Add Server"
+        saveLabel={d.addServer}
       >
         <div className="d-flex flex-column gap-3">
           <div>
-            <CFormLabel>Discord Server ID</CFormLabel>
+            <CFormLabel>{d.colServerId}</CFormLabel>
             <CFormInput
               value={targetId}
               onChange={(e) => setTargetId(e.target.value)}
@@ -195,13 +196,13 @@ export function HighRiskServersSection({ guildId }: { guildId: string }) {
             />
           </div>
           <div>
-            <CFormLabel>Note (optional)</CFormLabel>
+            <CFormLabel>{d.noteOptional}</CFormLabel>
             <CFormTextarea
               rows={2}
               value={reason}
               maxLength={200}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="Why is this server high-risk?"
+              placeholder={d.highRiskNotePlaceholder}
             />
           </div>
         </div>
@@ -209,13 +210,15 @@ export function HighRiskServersSection({ guildId }: { guildId: string }) {
 
       <ConfirmDialog
         visible={pendingRemove !== null}
-        title="Remove high-risk server"
+        title={d.removeHighRiskTitle}
         message={
           pendingRemove
-            ? `Remove server ${pendingRemove.high_risk_discord_guild_id} from the high-risk list?`
+            ? formatDict(d.removeHighRiskMessage, {
+                id: pendingRemove.high_risk_discord_guild_id,
+              })
             : ""
         }
-        confirmLabel="Remove"
+        confirmLabel={d.remove}
         destructive
         busy={removing}
         onConfirm={confirmRemove}

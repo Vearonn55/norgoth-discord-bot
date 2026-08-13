@@ -20,10 +20,13 @@ import {
 } from "@/lib/analytics/engagement";
 import { useDashboardStore } from "@/stores/dashboard-store";
 import { useGuildStore } from "@/stores/guild-store";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 
 const RANGES: EngagementRange[] = [7, 30, 90];
 
 export function EngagementChart() {
+  const dict = useLocaleDict();
+  const d = dict.dashboard;
   const guildId = useGuildStore((s) => s.guildId);
   const memberCount = useGuildStore((s) => s.resources?.member_count ?? null);
   const engagement = useDashboardStore((s) => s.engagement);
@@ -67,11 +70,11 @@ export function EngagementChart() {
     <SectionCard level="primary" category="analytics" className="h-100">
       <CategoryHeader
         category="analytics"
-        title="Community engagement"
-        description="Messages, active authors, joins, and voice from live bot telemetry."
+        title={d.engagementTitle}
+        description={d.engagementDescription}
         as="h3"
         actions={
-          <CButtonGroup size="sm" aria-label="Engagement range">
+          <CButtonGroup size="sm" aria-label={d.engagementRangeAria}>
             {RANGES.map((range) => (
               <CButton
                 key={range}
@@ -88,17 +91,14 @@ export function EngagementChart() {
       />
 
       {!guildId ? (
-        <p className="mb-0 small text-body-secondary">
-          Connect the bot to a guild to collect engagement data.
-        </p>
+        <p className="mb-0 small text-body-secondary">{d.engagementNoGuild}</p>
       ) : engagementLoading && !engagement ? (
-        <p className="mb-0 small text-body-secondary">Loading engagement…</p>
+        <p className="mb-0 small text-body-secondary">{d.engagementLoading}</p>
       ) : engagement?.insufficient_history ? (
         <div className="norgoth-empty-state py-4 text-center">
-          <p className="mb-1 fw-semibold">No engagement history yet</p>
+          <p className="mb-1 fw-semibold">{d.engagementNoHistoryTitle}</p>
           <p className="mb-0 small text-body-secondary">
-            Buckets fill as members chat, join, leave, and use voice. Check back
-            after the bot has been online with traffic.
+            {d.engagementNoHistoryBody}
           </p>
         </div>
       ) : (
@@ -106,7 +106,7 @@ export function EngagementChart() {
           <div className="d-flex flex-wrap align-items-end gap-3 mb-3">
             <div>
               <div className="small text-body-secondary text-uppercase fw-semibold">
-                Engagement score
+                {d.engagementScore}
               </div>
               <div className="display-6 fw-semibold lh-1 text-white">
                 {metrics ? Math.round(metrics.score) : "—"}
@@ -118,19 +118,37 @@ export function EngagementChart() {
                   scoreDelta >= 0 ? "text-success" : "text-danger"
                 }`}
               >
-                {scoreDelta >= 0 ? "+" : ""}
-                {scoreDelta.toFixed(1)}% vs prior {engagementRange}d
+                {formatDict(d.engagementVsPrior, {
+                  delta: `${scoreDelta >= 0 ? "+" : ""}${scoreDelta.toFixed(1)}`,
+                  days: engagementRange,
+                })}
               </span>
             ) : (
               <span className="small text-body-secondary">
-                Prior period unavailable for comparison
+                {d.engagementPriorUnavailable}
               </span>
             )}
             <div className="ms-auto d-flex flex-wrap gap-3 small text-body-secondary">
-              <span>{engagement?.totals.messages ?? 0} msgs</span>
-              <span>{engagement?.totals.unique_authors ?? 0} authors</span>
-              <span>{engagement?.totals.joins ?? 0} joins</span>
-              <span>{engagement?.totals.voice_uniques ?? 0} voice</span>
+              <span>
+                {formatDict(d.engagementMsgs, {
+                  count: engagement?.totals.messages ?? 0,
+                })}
+              </span>
+              <span>
+                {formatDict(d.engagementAuthors, {
+                  count: engagement?.totals.unique_authors ?? 0,
+                })}
+              </span>
+              <span>
+                {formatDict(d.engagementJoins, {
+                  count: engagement?.totals.joins ?? 0,
+                })}
+              </span>
+              <span>
+                {formatDict(d.engagementVoice, {
+                  count: engagement?.totals.voice_uniques ?? 0,
+                })}
+              </span>
             </div>
           </div>
 
@@ -166,7 +184,7 @@ export function EngagementChart() {
                 <Area
                   type="monotone"
                   dataKey="messages"
-                  name="Messages"
+                  name={d.chartMessages}
                   stroke="#6ea8fe"
                   fill="url(#engMsg)"
                   strokeWidth={2}
@@ -174,7 +192,7 @@ export function EngagementChart() {
                 <Area
                   type="monotone"
                   dataKey="authors"
-                  name="Authors"
+                  name={d.chartAuthors}
                   stroke="#3dd68c"
                   fill="transparent"
                   strokeWidth={2}

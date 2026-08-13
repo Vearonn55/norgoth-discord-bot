@@ -17,21 +17,25 @@ export default async function GuildConfigurationPage({
 
   if (!hasLocale(lang)) notFound();
 
-  await getDictionary(lang);
+  const dict = await getDictionary(lang);
+  const copy = dict.settingsPage;
+  const memberVerificationTitle = dict.featureInfo.memberVerification.title;
 
   return (
     <div className="d-flex flex-column gap-4">
-        <PageHeader
-          title="Guild Configuration"
-          description="Member verification policy: channels, roles, account-age minimum, VPN and shared-IP protection."
-          actions={
-            <Button asChild variant="secondary">
-              <Link href={`/${lang}/community/onboarding`}>Member Verification</Link>
-            </Button>
-          }
-        />
+      <PageHeader
+        title={copy.guildConfigurationTitle}
+        description={copy.guildConfigurationDescription}
+        actions={
+          <Button asChild variant="secondary">
+            <Link href={`/${lang}/community/onboarding`}>
+              {memberVerificationTitle}
+            </Link>
+          </Button>
+        }
+      />
 
-        <VerificationSettingsForm />
-      </div>
+      <VerificationSettingsForm />
+    </div>
   );
 }

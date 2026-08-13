@@ -15,7 +15,6 @@ import {
   cilRss,
   cilStar,
 } from "@coreui/icons";
-import { useParams } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +30,7 @@ import { Slider } from "@/components/ui/slider";
 import { NumberInput } from "@/components/ui/number-input";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import { feedEmojiFromPicker, feedEmojiToPicker } from "@/lib/feed-emoji";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import {
   COUNTDOWN_PLACEHOLDER,
   formatCountdown,
@@ -44,13 +44,10 @@ import {
 import { FeedChannelsSetupWizard } from "@/components/community/feed-channels-setup-wizard";
 import {
   DEFAULT_FEED_CONFIG,
-  FEED_WINDOW_LABELS,
   type FeedConfig,
   type FeedWindowKey,
   useFeedChannelsStore,
 } from "@/stores/feed-channels-store";
-import en from "@/dictionaries/en.json";
-import tr from "@/dictionaries/tr.json";
 
 const WINDOW_ICONS: Record<FeedWindowKey, string[]> = {
   daily: cilMediaPlay,
@@ -63,20 +60,11 @@ function clampDailyHours(value: number): number {
   return Math.max(1, Math.min(12, Math.round(value)));
 }
 
-const NOT_CONFIGURED: Record<string, string> = {
-  en: "Not Configured",
-  tr: "Yapılandırılmadı",
-};
-
-const CADENCE_COPY = {
-  en: en.feedChannels,
-  tr: tr.feedChannels,
-} as const;
-
 export function FeedChannelsPanel() {
-  const params = useParams();
-  const lang = typeof params?.lang === "string" ? params.lang : "en";
-  const notConfiguredLabel = NOT_CONFIGURED[lang] ?? NOT_CONFIGURED.en;
+  const dict = useLocaleDict();
+  const d = dict.feedChannelsPage;
+  const cadenceCopy = dict.feedChannels;
+  const notConfiguredLabel = d.notConfigured;
 
   const { guildId, resources, loading: guildLoading, error: guildError } =
     useFirstGuild();
@@ -108,8 +96,6 @@ export function FeedChannelsPanel() {
   const [countdownMs, setCountdownMs] = useState(0);
   const [countdownReady, setCountdownReady] = useState(false);
   const intervalDraftRef = useRef(intervalDraft);
-  const cadenceCopy = CADENCE_COPY[lang === "tr" ? "tr" : "en"];
-
   useEffect(() => {
     intervalDraftRef.current = intervalDraft;
   }, [intervalDraft]);
@@ -206,6 +192,13 @@ export function FeedChannelsPanel() {
     [config, status?.windows]
   );
 
+  const windowLabels: Record<FeedWindowKey, string> = {
+    daily: d.windowDaily,
+    weekly: d.windowWeekly,
+    monthly: d.windowMonthly,
+    all_time: d.windowAllTime,
+  };
+
   const dailyConfigured = Boolean(config?.windows?.daily?.channel_id);
   const needsSetup = feedNeedsSetup(config);
 
@@ -247,7 +240,7 @@ export function FeedChannelsPanel() {
       <Card>
         <div className="d-flex align-items-center gap-2 text-body-secondary">
           <CSpinner size="sm" />
-          Loading Top Trending…
+          {d.loading}
         </div>
       </Card>
     );
@@ -257,7 +250,7 @@ export function FeedChannelsPanel() {
     return (
       <Card>
         <CAlert color="warning" className="mb-0">
-          {guildError ?? "Bot is offline or not in any server yet."}
+          {guildError ?? d.botOffline}
         </CAlert>
       </Card>
     );
@@ -267,10 +260,10 @@ export function FeedChannelsPanel() {
     return (
       <div className="d-flex flex-column gap-4">
         <PageHeader
-          title="Top Trending"
+          title={d.title}
           icon={<Icon icon={cilRss} size="xl" />}
           category="community"
-          description="Rank messages by net upvotes and mirror top posts into Daily, Weekly, Monthly, and All-Time Top Trending channels."
+          description={d.description}
           infoKey="feedChannels"
         />
         <FeedChannelsSetupWizard
@@ -287,16 +280,16 @@ export function FeedChannelsPanel() {
   return (
     <div className="d-flex flex-column gap-4">
       <PageHeader
-        title="Top Trending"
+        title={d.title}
         icon={<Icon icon={cilRss} size="xl" />}
         category="community"
-        description="Rank messages by net upvotes and mirror top posts into Daily, Weekly, Monthly, and All-Time Top Trending channels (UTC)."
+        description={d.descriptionUtc}
         infoKey="feedChannels"
         masterToggle={{
           enabled: config.enabled,
           onChange: (checked) => void setEnabled(guildId, checked),
           loading: busy,
-          label: "Top Trending",
+          label: d.title,
         }}
       />
 
@@ -304,14 +297,14 @@ export function FeedChannelsPanel() {
         <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
           <div className="d-flex flex-wrap align-items-center gap-2">
             <Badge variant="info">
-              {status?.tracked_messages ?? 0} tracked
+              {formatDict(d.tracked, { count: status?.tracked_messages ?? 0 })}
             </Badge>
             <Badge variant="neutral">
-              {status?.votes_total ?? 0} votes
+              {formatDict(d.votes, { count: status?.votes_total ?? 0 })}
             </Badge>
             {status?.top_message ? (
               <span className="small text-body-secondary">
-                Top net: {status.top_message.net_score}
+                {formatDict(d.topNet, { score: status.top_message.net_score })}
               </span>
             ) : null}
           </div>
@@ -325,7 +318,7 @@ export function FeedChannelsPanel() {
                 setSettingsOpen(true);
               }}
             >
-              Global settings
+              {d.globalSettings}
             </Button>
             <Button
               variant="secondary"
@@ -333,7 +326,7 @@ export function FeedChannelsPanel() {
               disabled={busy}
               onClick={() => void repair(guildId)}
             >
-              {busy ? "Repairing…" : "Repair"}
+              {busy ? d.repairing : (dict.featureInfo.feedChannels.repair ?? d.repair)}
             </Button>
           </div>
         </div>
@@ -359,21 +352,21 @@ export function FeedChannelsPanel() {
             <div key={card.key} className="col">
             <MiniFeatureCard
               icon={WINDOW_ICONS[card.key]}
-              name={card.label}
+              name={windowLabels[card.key]}
               category="community"
               description={
                 card.configured
                   ? channels.find((c) => c.id === card.channel_id)?.name
                     ? `#${channels.find((c) => c.id === card.channel_id)?.name}`
-                    : `Channel ${card.channel_id}`
-                  : "Choose a destination channel"
+                    : formatDict(d.channelFallback, { id: card.channel_id })
+                  : d.chooseDestination
               }
               status={card.configured ? (card.enabled ? "enabled" : "disabled") : "neutral"}
               statusLabel={
                 card.configured
                   ? card.enabled
-                    ? "Enabled"
-                    : "Disabled"
+                    ? d.enabled
+                    : d.disabled
                   : notConfiguredLabel
               }
               enabled={card.configured ? card.enabled : undefined}
@@ -409,7 +402,7 @@ export function FeedChannelsPanel() {
               </div>
               <div
                 className="text-end"
-                title="Time until the next automatic Discord feed synchronization"
+                title={d.countdownTitle}
               >
                 <div className="small text-body-secondary">
                   {cadenceCopy.nextRefresh}
@@ -482,19 +475,18 @@ export function FeedChannelsPanel() {
         <Card>
           <div className="d-flex flex-column gap-3">
             <div>
-              <h2 className="h6 mb-1 fw-semibold">Feed Category</h2>
+              <h2 className="h6 mb-1 fw-semibold">{d.feedCategoryTitle}</h2>
               <p className="mb-0 small text-body-secondary">
-                Discord category under which Daily, Weekly, Monthly, and All-Time
-                Top Trending channels are created or moved.
+                {d.feedCategoryDesc}
               </p>
             </div>
             <div>
-              <CFormLabel htmlFor="feed-category-select">Select category</CFormLabel>
+              <CFormLabel htmlFor="feed-category-select">{d.selectCategory}</CFormLabel>
               <CFormSelect
                 id="feed-category-select"
                 value={config.feed_category_id ?? ""}
                 disabled={busy}
-                aria-label="Feed category"
+                aria-label={d.feedCategoryAria}
                 onChange={(event) => {
                   const value = event.target.value || null;
                   void save(guildId, {
@@ -503,10 +495,12 @@ export function FeedChannelsPanel() {
                   });
                 }}
               >
-                <option value="">No category (top level)</option>
+                <option value="">{d.noCategory}</option>
                 {categoryMissing && config.feed_category_id ? (
                   <option value={config.feed_category_id}>
-                    Unavailable (id {config.feed_category_id})
+                    {formatDict(d.unavailableCategory, {
+                      id: config.feed_category_id,
+                    })}
                   </option>
                 ) : null}
                 {categories.map((category) => (
@@ -518,8 +512,7 @@ export function FeedChannelsPanel() {
             </div>
             {categoryMissing ? (
               <CAlert color="warning" className="mb-0 py-2">
-                The previously selected category no longer exists in this server.
-                Pick a replacement or clear the selection.
+                {d.categoryMissingWarn}
               </CAlert>
             ) : null}
           </div>
@@ -530,10 +523,12 @@ export function FeedChannelsPanel() {
         visible={Boolean(editingWindow)}
         title={
           editingWindow
-            ? `${FEED_WINDOW_LABELS[editingWindow.key]} feed`
-            : "Feed window"
+            ? formatDict(d.windowModalTitle, {
+                window: windowLabels[editingWindow.key],
+              })
+            : d.windowModalFallback
         }
-        description="UTC calendar window. Rank slots are edited in place in the destination channel."
+        description={d.windowModalDesc}
         category="community"
         icon={editingWindow ? WINDOW_ICONS[editingWindow.key] : cilRss}
         onClose={() => setEditingWindow(null)}
@@ -549,26 +544,26 @@ export function FeedChannelsPanel() {
       >
         <div className="d-flex flex-column gap-3">
           <div>
-            <CFormLabel>Feed channel</CFormLabel>
+            <CFormLabel>{d.feedChannel}</CFormLabel>
             <ChannelSelect
               channels={channels}
               value={windowDraft.channel_id}
               onChange={(value) =>
-                setWindowDraft((d) => ({
-                  ...d,
+                setWindowDraft((draft) => ({
+                  ...draft,
                   channel_id: value,
-                  enabled: value ? d.enabled || true : false,
+                  enabled: value ? draft.enabled || true : false,
                 }))
               }
-              emptyLabel="Select channel…"
+              emptyLabel={d.selectChannel}
             />
           </div>
           <CFormCheck
-            label="Enabled"
+            label={d.enabled}
             checked={windowDraft.enabled && Boolean(windowDraft.channel_id)}
             disabled={!windowDraft.channel_id}
             onChange={(e) =>
-              setWindowDraft((d) => ({ ...d, enabled: e.target.checked }))
+              setWindowDraft((draft) => ({ ...draft, enabled: e.target.checked }))
             }
           />
         </div>
@@ -576,8 +571,8 @@ export function FeedChannelsPanel() {
 
       <FeatureConfigurationModal
         visible={settingsOpen && Boolean(settingsDraft)}
-        title="Top Trending settings"
-        description="Emojis, source channels, and ranking thresholds apply to all windows."
+        title={d.settingsTitle}
+        description={d.settingsDesc}
         category="community"
         icon={cilRss}
         onClose={() => setSettingsOpen(false)}
@@ -591,109 +586,109 @@ export function FeedChannelsPanel() {
         {settingsDraft ? (
           <div className="d-flex flex-column gap-3">
             <div>
-              <CFormLabel>Upvote emoji</CFormLabel>
+              <CFormLabel>{d.upvoteEmoji}</CFormLabel>
               <DiscordEmojiPicker
                 value={feedEmojiToPicker(settingsDraft.upvote_emoji)}
                 guildEmojis={guildEmojis}
                 onChange={(value) => {
                   const emoji = feedEmojiFromPicker(value);
                   if (!emoji) return;
-                  setSettingsDraft((d) =>
-                    d ? { ...d, upvote_emoji: emoji } : d
+                  setSettingsDraft((draft) =>
+                    draft ? { ...draft, upvote_emoji: emoji } : draft
                   );
                 }}
               />
             </div>
             <div>
-              <CFormLabel>Downvote emoji</CFormLabel>
+              <CFormLabel>{d.downvoteEmoji}</CFormLabel>
               <DiscordEmojiPicker
                 value={feedEmojiToPicker(settingsDraft.downvote_emoji)}
                 guildEmojis={guildEmojis}
                 onChange={(value) => {
                   const emoji = feedEmojiFromPicker(value);
                   if (!emoji) return;
-                  setSettingsDraft((d) =>
-                    d ? { ...d, downvote_emoji: emoji } : d
+                  setSettingsDraft((draft) =>
+                    draft ? { ...draft, downvote_emoji: emoji } : draft
                   );
                 }}
               />
             </div>
             <div>
-              <CFormLabel>Source channels</CFormLabel>
+              <CFormLabel>{d.sourceChannels}</CFormLabel>
               <GuildChannelMultiSelect
                 channels={channels}
                 selectedIds={settingsDraft.source_channel_ids}
                 onChange={(ids) =>
-                  setSettingsDraft((d) =>
-                    d ? { ...d, source_channel_ids: ids } : d
+                  setSettingsDraft((draft) =>
+                    draft ? { ...draft, source_channel_ids: ids } : draft
                   )
                 }
               />
             </div>
             <div>
-              <CFormLabel>Excluded channels</CFormLabel>
+              <CFormLabel>{d.excludedChannels}</CFormLabel>
               <GuildChannelMultiSelect
                 channels={channels}
                 selectedIds={settingsDraft.excluded_channel_ids}
                 onChange={(ids) =>
-                  setSettingsDraft((d) =>
-                    d ? { ...d, excluded_channel_ids: ids } : d
+                  setSettingsDraft((draft) =>
+                    draft ? { ...draft, excluded_channel_ids: ids } : draft
                   )
                 }
               />
             </div>
             <div className="row g-3">
               <div className="col-md-6">
-                <CFormLabel>Minimum net upvotes</CFormLabel>
+                <CFormLabel>{d.minNetUpvotes}</CFormLabel>
                 <NumberInput
                   value={settingsDraft.min_net_score}
                   defaultValue={DEFAULT_FEED_CONFIG.min_net_score}
                   min={0}
                   max={10000}
                   step={1}
-                  aria-label="Minimum net upvotes"
+                  aria-label={d.minNetUpvotes}
                   onCommit={(next) =>
-                    setSettingsDraft((d) =>
-                      d ? { ...d, min_net_score: next } : d
+                    setSettingsDraft((draft) =>
+                      draft ? { ...draft, min_net_score: next } : draft
                     )
                   }
                 />
               </div>
               <div className="col-md-6">
-                <CFormLabel>Display limit</CFormLabel>
+                <CFormLabel>{d.displayLimit}</CFormLabel>
                 <NumberInput
                   value={settingsDraft.display_limit}
                   defaultValue={DEFAULT_FEED_CONFIG.display_limit}
                   min={1}
                   max={25}
                   step={1}
-                  aria-label="Display limit"
+                  aria-label={d.displayLimit}
                   onCommit={(next) =>
-                    setSettingsDraft((d) =>
-                      d ? { ...d, display_limit: next } : d
+                    setSettingsDraft((draft) =>
+                      draft ? { ...draft, display_limit: next } : draft
                     )
                   }
                 />
               </div>
             </div>
             <div>
-              <CFormLabel htmlFor="feed-settings-category">Feed category</CFormLabel>
+              <CFormLabel htmlFor="feed-settings-category">{d.feedCategory}</CFormLabel>
               <CFormSelect
                 id="feed-settings-category"
                 value={settingsDraft.feed_category_id ?? ""}
-                aria-label="Feed category"
+                aria-label={d.feedCategoryAria}
                 onChange={(event) =>
-                  setSettingsDraft((d) =>
-                    d
+                  setSettingsDraft((draft) =>
+                    draft
                       ? {
-                          ...d,
+                          ...draft,
                           feed_category_id: event.target.value || null,
                         }
-                      : d
+                      : draft
                   )
                 }
               >
-                <option value="">No category (top level)</option>
+                <option value="">{d.noCategory}</option>
                 {categories.map((category) => (
                   <option key={category.id} value={category.id}>
                     {category.name}
@@ -702,29 +697,29 @@ export function FeedChannelsPanel() {
               </CFormSelect>
             </div>
             <CFormCheck
-              label="Exclude bots"
+              label={d.excludeBots}
               checked={settingsDraft.exclude_bots}
               onChange={(e) =>
-                setSettingsDraft((d) =>
-                  d ? { ...d, exclude_bots: e.target.checked } : d
+                setSettingsDraft((draft) =>
+                  draft ? { ...draft, exclude_bots: e.target.checked } : draft
                 )
               }
             />
             <CFormCheck
-              label="Exclude webhooks"
+              label={d.excludeWebhooks}
               checked={settingsDraft.exclude_webhooks}
               onChange={(e) =>
-                setSettingsDraft((d) =>
-                  d ? { ...d, exclude_webhooks: e.target.checked } : d
+                setSettingsDraft((draft) =>
+                  draft ? { ...draft, exclude_webhooks: e.target.checked } : draft
                 )
               }
             />
             <CFormCheck
-              label="Exclude threads"
+              label={d.excludeThreads}
               checked={settingsDraft.exclude_threads}
               onChange={(e) =>
-                setSettingsDraft((d) =>
-                  d ? { ...d, exclude_threads: e.target.checked } : d
+                setSettingsDraft((draft) =>
+                  draft ? { ...draft, exclude_threads: e.target.checked } : draft
                 )
               }
             />

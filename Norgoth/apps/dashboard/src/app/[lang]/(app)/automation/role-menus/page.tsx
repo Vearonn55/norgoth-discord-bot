@@ -12,19 +12,20 @@ export default async function RoleMenusPage({
 
   if (!hasLocale(lang)) notFound();
 
-  await getDictionary(lang);
+  const dict = await getDictionary(lang);
+  const info = dict.featureInfo.selfAssignableRoles;
 
   return (
     <div className="d-flex flex-column gap-4">
-        <PageHeader
-          title="Self-Assignable Roles"
-          icon={<Icon icon={cilTags} size="xl" />}
-          category="roles"
-          description="Publish embeds with toggle buttons so members can pick their own roles."
-          infoKey="selfAssignableRoles"
-        />
+      <PageHeader
+        title={info.title}
+        icon={<Icon icon={cilTags} size="xl" />}
+        category="roles"
+        description={info.description}
+        infoKey="selfAssignableRoles"
+      />
 
-        <RoleMenusPanel />
-      </div>
+      <RoleMenusPanel />
+    </div>
   );
 }

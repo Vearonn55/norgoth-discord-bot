@@ -8,6 +8,7 @@ import { AssignmentModeSelect } from "@/components/automation/assignment-mode-se
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import type { GuildEmojiItem } from "@/lib/discord/emoji-data";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import type { RoleMenuEntry } from "@/stores/automation-store";
 import type { GuildRole } from "@/stores/guild-store";
 import { roleColorStyles } from "@/lib/discord/role-color";
@@ -27,26 +28,25 @@ export function DropdownRoleEditor({
   onUpdate,
   onRemove,
 }: DropdownRoleEditorProps) {
+  const dict = useLocaleDict();
+  const d = dict.roleMenusPage;
+
   if (entries.length === 0) {
     return (
-      <p className="mb-0 small text-body-secondary">
-        Add roles above. Each becomes an option in the dropdown list.
-      </p>
+      <p className="mb-0 small text-body-secondary">{d.dropdownEmpty}</p>
     );
   }
 
   return (
     <div className="d-flex flex-column gap-3">
       <div>
-        <h4 className="h6 fw-semibold mb-1">Dropdown List options</h4>
-        <p className="mb-0 small text-body-secondary">
-          Members will pick one option from the list. Placeholder and multi-select
-          limits are fixed by Discord publish defaults for now.
-        </p>
+        <h4 className="h6 fw-semibold mb-1">{d.dropdownSettings}</h4>
+        <p className="mb-0 small text-body-secondary">{d.dropdownSettingsDesc}</p>
       </div>
       {entries.map((entry) => {
         const role = rolesById.get(entry.role_id);
         const tint = roleColorStyles(role?.color);
+        const name = role?.name ?? entry.label;
         return (
           <div
             key={entry.role_id}
@@ -60,12 +60,12 @@ export function DropdownRoleEditor({
             <div className="row g-3 align-items-start">
               <div className="col-md-3">
                 <DiscordRoleBadge
-                  name={role?.name ?? entry.label}
+                  name={name}
                   color={role?.color}
                 />
               </div>
               <div className="col-md-3">
-                <CFormLabel className="small">Option label</CFormLabel>
+                <CFormLabel className="small">{d.optionLabel}</CFormLabel>
                 <CFormInput
                   value={entry.label}
                   onChange={(e) =>
@@ -75,7 +75,7 @@ export function DropdownRoleEditor({
                 />
               </div>
               <div className="col-md-3">
-                <CFormLabel className="small">Option emoji</CFormLabel>
+                <CFormLabel className="small">{d.optionEmoji}</CFormLabel>
                 <DiscordEmojiPicker
                   value={entry.emoji ?? ""}
                   onChange={(emoji) => onUpdate(entry.role_id, { emoji })}
@@ -93,7 +93,7 @@ export function DropdownRoleEditor({
                   variant="danger"
                   size="sm"
                   onClick={() => onRemove(entry.role_id)}
-                  aria-label={`Remove ${role?.name ?? entry.label}`}
+                  aria-label={formatDict(d.removeAria, { name })}
                 >
                   <Icon icon={cilTrash} />
                 </Button>

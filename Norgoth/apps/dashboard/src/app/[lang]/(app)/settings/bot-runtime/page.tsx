@@ -10,6 +10,16 @@ import { apiUrl } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
 import { getDictionary, hasLocale } from "../../../dictionaries";
 
+function formatCopy(
+  template: string,
+  values: Record<string, string | number>,
+): string {
+  return Object.entries(values).reduce(
+    (text, [key, value]) => text.replaceAll(`{${key}}`, String(value)),
+    template,
+  );
+}
+
 type BotGuild = {
   id: string;
   name: string;
@@ -51,7 +61,9 @@ export default async function BotRuntimeSettingsPage({
 
   if (!hasLocale(lang)) notFound();
 
-  await getDictionary(lang);
+  const dict = await getDictionary(lang);
+  const copy = dict.settingsPage;
+  const common = dict.common;
   const health = await getBotHealth();
 
   const connected = health?.connected ?? false;
@@ -60,17 +72,16 @@ export default async function BotRuntimeSettingsPage({
   const intents = status.intents ?? {};
 
   return (
-
     <>
-    <DashboardAutoRefresh />
+      <DashboardAutoRefresh />
 
       <div className="d-flex flex-column gap-4">
         <PageHeader
-          title="Bot Runtime"
-          description="Live connection state of NorBot: gateway status, latency, intents, and connected servers."
+          title={copy.botRuntimeTitle}
+          description={copy.botRuntimeDescription}
           actions={
             <Button asChild variant="secondary">
-              <Link href={`/${lang}/settings`}>Back to Settings</Link>
+              <Link href={`/${lang}/settings`}>{copy.backToSettings}</Link>
             </Button>
           }
         />
@@ -78,14 +89,14 @@ export default async function BotRuntimeSettingsPage({
         <CRow className="g-3">
           <CCol md={6} xl={3}>
             <MetricCard
-              label="Gateway"
-              value={connected ? "Connected" : "Offline"}
+              label={copy.gateway}
+              value={connected ? common.connected : common.offline}
               tone={connected ? "success" : "danger"}
             />
           </CCol>
           <CCol md={6} xl={3}>
             <MetricCard
-              label="Latency"
+              label={copy.latency}
               value={
                 status.latency_ms != null ? `${status.latency_ms} ms` : "—"
               }
@@ -94,14 +105,14 @@ export default async function BotRuntimeSettingsPage({
           </CCol>
           <CCol md={6} xl={3}>
             <MetricCard
-              label="Servers"
+              label={copy.servers}
               value={String(guilds.length)}
               tone="success"
             />
           </CCol>
           <CCol md={6} xl={3}>
             <MetricCard
-              label="Last Heartbeat"
+              label={copy.lastHeartbeat}
               value={formatDateTime(health?.heartbeat_at, lang)}
               tone="neutral"
             />
@@ -110,14 +121,8 @@ export default async function BotRuntimeSettingsPage({
 
         {!connected && (
           <CAlert color="warning">
-            <h2 className="h5 mb-2 fw-semibold">Bot is offline</h2>
-            <p className="mb-0 small">
-              Set <code>DISCORD_BOT_TOKEN</code> in <code>Norgoth/.env</code>,
-              then start the bot with{" "}
-              <code>cd Norgoth/apps/bot && .venv/bin/python main.py</code>.
-              Invite it to your server with Manage Roles, Kick, Ban, Moderate
-              Members, Send Messages, and Manage Messages permissions.
-            </p>
+            <h2 className="h5 mb-2 fw-semibold">{copy.botOfflineTitle}</h2>
+            <p className="mb-0 small">{copy.botOfflineBody}</p>
           </CAlert>
         )}
 
@@ -127,21 +132,22 @@ export default async function BotRuntimeSettingsPage({
               <div className="d-flex flex-column gap-4">
                 <div className="d-flex align-items-center justify-content-between gap-3">
                   <div>
-                    <h2 className="h5 mb-0 fw-semibold">Connected Servers</h2>
+                    <h2 className="h5 mb-0 fw-semibold">
+                      {copy.connectedServers}
+                    </h2>
                     <p className="mt-1 mb-0 small text-body-secondary">
-                      Guilds the bot is currently a member of.
+                      {copy.connectedServersHelp}
                     </p>
                   </div>
 
                   <Badge variant={connected ? "success" : "danger"}>
-                    {connected ? "Online" : "Offline"}
+                    {connected ? common.online : common.offline}
                   </Badge>
                 </div>
 
                 {guilds.length === 0 ? (
                   <CAlert color="secondary" className="mb-0">
-                    No servers yet. Once the bot is online and invited, servers
-                    appear here automatically.
+                    {copy.noServersYet}
                   </CAlert>
                 ) : (
                   <div className="d-flex flex-column gap-3">
@@ -156,7 +162,9 @@ export default async function BotRuntimeSettingsPage({
                           </div>
 
                           <Badge variant="success">
-                            {guild.member_count ?? "?"} members
+                            {formatCopy(copy.membersCount, {
+                              count: guild.member_count ?? "?",
+                            })}
                           </Badge>
                         </div>
                       </div>
@@ -171,27 +179,31 @@ export default async function BotRuntimeSettingsPage({
             <Card>
               <div className="d-flex flex-column gap-3">
                 <div>
-                  <h2 className="h5 mb-0 fw-semibold">Identity & Intents</h2>
+                  <h2 className="h5 mb-0 fw-semibold">
+                    {copy.identityIntents}
+                  </h2>
                   <p className="mt-1 mb-0 small text-body-secondary">
-                    Gateway identity and privileged intent flags.
+                    {copy.identityIntentsHelp}
                   </p>
                 </div>
 
                 <StatusRow
-                  label="Bot User"
+                  label={copy.botUser}
                   value={status.user_name ?? "—"}
                   tone="info"
                 />
                 <StatusRow
-                  label="Application ID"
+                  label={copy.applicationId}
                   value={status.application_id ?? "—"}
                   tone="neutral"
                 />
                 {Object.entries(intents).map(([name, enabled]) => (
                   <StatusRow
                     key={name}
-                    label={`Intent: ${name}`}
-                    value={enabled ? "Enabled" : "Disabled"}
+                    label={formatCopy(copy.intentLabel, { name })}
+                    value={
+                      enabled ? copy.intentEnabled : copy.intentDisabled
+                    }
                     tone={enabled ? "success" : "warning"}
                   />
                 ))}
@@ -227,9 +239,7 @@ function MetricCard({
   return (
     <Card>
       <div className="small text-body-secondary">{label}</div>
-      <div className={`mt-3 fs-3 fw-semibold ${valueClass}`}>
-        {value}
-      </div>
+      <div className={`mt-3 fs-3 fw-semibold ${valueClass}`}>{value}</div>
     </Card>
   );
 }

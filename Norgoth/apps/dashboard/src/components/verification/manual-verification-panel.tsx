@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { CAlert, CSpinner } from "@coreui/react";
 import { Card } from "@/components/ui/card";
@@ -10,6 +10,7 @@ import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { ManualReviewModal } from "@/components/verification/manual-review-modal";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import { formatDateTime } from "@/lib/datetime";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import {
   deriveManualReviewReasons,
   manualReviewReasonShortLabel,
@@ -20,24 +21,25 @@ import {
   type ManualReviewStatusFilter,
 } from "@/stores/manual-review-store";
 
-const STATUS_FILTERS: { id: ManualReviewStatusFilter; label: string }[] = [
-  { id: "manual_review", label: "Pending review" },
-  { id: "success", label: "Approved" },
-  { id: "failed", label: "Denied" },
-  { id: "all", label: "All" },
-];
-
-function memberName(item: ManualReviewItem): string {
+function memberName(
+  item: ManualReviewItem,
+  userFallback: string,
+): string {
   return (
     item.display_name ||
     item.username ||
-    (item.discord_user_id.length >= 4
-      ? `User ${item.discord_user_id.slice(-4)}`
-      : `User ${item.discord_user_id}`)
+    formatDict(userFallback, {
+      id:
+        item.discord_user_id.length >= 4
+          ? item.discord_user_id.slice(-4)
+          : item.discord_user_id,
+    })
   );
 }
 
 export function ManualVerificationPanel() {
+  const dict = useLocaleDict();
+  const d = dict.verificationPage;
   const params = useParams();
   const lang = String(params?.lang || "en");
   const { guildId, loading: guildLoading, error: guildError } = useFirstGuild();
@@ -58,6 +60,22 @@ export function ManualVerificationPanel() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
 
+  const statusFilters = useMemo(
+    () =>
+      [
+        { id: "manual_review" as const, label: d.manualFilterPending },
+        { id: "success" as const, label: d.manualFilterApproved },
+        { id: "failed" as const, label: d.manualFilterDenied },
+        { id: "all" as const, label: d.manualFilterAll },
+      ] satisfies { id: ManualReviewStatusFilter; label: string }[],
+    [
+      d.manualFilterPending,
+      d.manualFilterApproved,
+      d.manualFilterDenied,
+      d.manualFilterAll,
+    ],
+  );
+
   // Debounced reload whenever the guild, page, search, or status changes.
   useEffect(() => {
     if (!guildId) return;
@@ -73,7 +91,7 @@ export function ManualVerificationPanel() {
   const columns: DataTableColumn<ManualReviewItem>[] = [
     {
       key: "member",
-      header: "Member",
+      header: d.colMember,
       cell: (row) => (
         <div className="d-flex align-items-center gap-2">
           {row.avatar_url ? (
@@ -88,7 +106,9 @@ export function ManualVerificationPanel() {
             />
           ) : null}
           <div className="min-w-0">
-            <div className="text-truncate">{memberName(row)}</div>
+            <div className="text-truncate">
+              {memberName(row, d.userFallback)}
+            </div>
             <div className="font-monospace text-body-secondary" style={{ fontSize: 11 }}>
               {row.discord_user_id}
             </div>
@@ -98,19 +118,19 @@ export function ManualVerificationPanel() {
     },
     {
       key: "status",
-      header: "Status",
+      header: d.colStatus,
       cell: (row) =>
         row.status === "success" ? (
-          <Badge variant="success">Allowed</Badge>
+          <Badge variant="success">{d.statusAllowed}</Badge>
         ) : row.status === "manual_review" ? (
-          <Badge variant="warning">Pending</Badge>
+          <Badge variant="warning">{d.statusPending}</Badge>
         ) : (
-          <Badge variant="danger">Denied</Badge>
+          <Badge variant="danger">{d.statusDenied}</Badge>
         ),
     },
     {
       key: "triggers",
-      header: "Triggers",
+      header: d.colTriggers,
       cell: (row) => {
         const codes = deriveManualReviewReasons(row);
         if (codes.length === 0) {
@@ -129,7 +149,7 @@ export function ManualVerificationPanel() {
     },
     {
       key: "created",
-      header: "Attempted",
+      header: d.colAttempted,
       cell: (row) => (
         <span className="small text-body-secondary">
           {formatDateTime(row.created_at, lang)}
@@ -142,7 +162,7 @@ export function ManualVerificationPanel() {
       className: "text-end",
       cell: (row) => (
         <Button variant="secondary" size="sm" onClick={() => openReview(row)}>
-          Review
+          {d.review}
         </Button>
       ),
     },
@@ -153,7 +173,7 @@ export function ManualVerificationPanel() {
       <Card>
         <div className="d-flex align-items-center gap-2 text-body-secondary">
           <CSpinner size="sm" />
-          Loading…
+          {d.loading}
         </div>
       </Card>
     );
@@ -163,7 +183,7 @@ export function ManualVerificationPanel() {
     return (
       <Card>
         <CAlert color="warning" className="mb-0">
-          {guildError ?? "Bot is offline or not in any server yet."}
+          {guildError ?? d.botOffline}
         </CAlert>
       </Card>
     );
@@ -174,7 +194,7 @@ export function ManualVerificationPanel() {
       <Card>
         <div className="d-flex flex-column gap-3">
           <div className="d-flex flex-wrap align-items-center gap-2">
-            {STATUS_FILTERS.map((filter) => (
+            {statusFilters.map((filter) => (
               <Button
                 key={filter.id}
                 variant={statusFilter === filter.id ? "primary" : "secondary"}
@@ -193,7 +213,7 @@ export function ManualVerificationPanel() {
           ) : loading && items.length === 0 ? (
             <div className="d-flex align-items-center gap-2 text-body-secondary">
               <CSpinner size="sm" />
-              Loading…
+              {d.loading}
             </div>
           ) : (
             <DataTable
@@ -207,11 +227,11 @@ export function ManualVerificationPanel() {
               onPageChange={setPage}
               search={query}
               onSearchChange={setQuery}
-              searchPlaceholder="Search by username or user ID…"
+              searchPlaceholder={d.searchManual}
               emptyMessage={
                 statusFilter === "manual_review"
-                  ? "No members are awaiting review. You're all caught up."
-                  : "No verification attempts match these filters."
+                  ? d.emptyPending
+                  : d.emptyFiltered
               }
             />
           )}

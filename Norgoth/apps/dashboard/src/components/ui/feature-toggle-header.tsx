@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { Switch } from "@/components/ui/switch";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 
 type FeatureToggleHeaderProps = {
   title: string;
@@ -29,6 +30,7 @@ export function FeatureToggleHeader({
   aside,
   headingLevel = "h2",
 }: FeatureToggleHeaderProps) {
+  const dict = useLocaleDict();
   const Heading = headingLevel;
   return (
     <div className="d-flex align-items-start justify-content-between gap-3">
@@ -44,7 +46,7 @@ export function FeatureToggleHeader({
           className="small"
           style={{ color: enabled ? "var(--cui-success)" : "var(--cui-secondary)" }}
         >
-          {enabled ? "Enabled" : "Disabled"}
+          {enabled ? dict.common.enabled : dict.common.disabled}
         </span>
         <Switch
           id={id}
@@ -52,7 +54,7 @@ export function FeatureToggleHeader({
           checked={enabled}
           disabled={disabled}
           onChange={onChange}
-          aria-label={`Toggle ${title}`}
+          aria-label={formatDict(dict.common.toggleNamed, { name: title })}
         />
       </div>
     </div>

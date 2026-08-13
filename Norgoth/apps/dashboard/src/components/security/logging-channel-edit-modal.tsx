@@ -14,6 +14,7 @@ import {
   sanitizeChannelName,
   splitEmojiName,
 } from "@/lib/logging";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import {
   useLoggingConfigStore,
   type LoggingCatalog,
@@ -46,17 +47,20 @@ export function LoggingChannelEditModal({
   onClose,
   onSaved,
 }: Props) {
+  const dict = useLocaleDict();
+  const d = dict.discordLogsPage;
   const busy = useLoggingConfigStore((s) => s.busy);
   const error = useLoggingConfigStore((s) => s.error);
   const updateChannel = useLoggingConfigStore((s) => s.updateChannel);
   const deleteDiscordChannel = useLoggingConfigStore(
-    (s) => s.deleteDiscordChannel
+    (s) => s.deleteDiscordChannel,
   );
 
   const categoryGroup = useMemo(
     () =>
-      (catalog?.groups ?? []).find((group) => group.key === channel.key) ?? null,
-    [catalog, channel.key]
+      (catalog?.groups ?? []).find((group) => group.key === channel.key) ??
+      null,
+    [catalog, channel.key],
   );
 
   const categoryLabel = categoryGroup?.label ?? channel.key;
@@ -68,7 +72,6 @@ export function LoggingChannelEditModal({
   const [colorHex, setColorHex] = useState(colorToHex(channel.default_color));
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  // Events currently routed to this channel, keyed by event_type.
   const assignedByType = useMemo(() => {
     const map = new Map<string, LoggingEventConfig>();
     for (const event of events) {
@@ -120,7 +123,7 @@ export function LoggingChannelEditModal({
         name: composeChannelName(emoji, name),
         default_color: hexToColor(colorHex),
       },
-      channelEvents
+      channelEvents,
     );
     if (saved) onSaved();
   }
@@ -137,8 +140,10 @@ export function LoggingChannelEditModal({
     <>
       <FeatureConfigurationModal
         visible={visible}
-        title={`Configure ${categoryLabel}`}
-        description={`Destination channel and which ${categoryLabel.toLowerCase()} events are logged. Other categories are unchanged.`}
+        title={formatDict(d.modalTitle, { label: categoryLabel })}
+        description={formatDict(d.modalDescription, {
+          label: categoryLabel.toLowerCase(),
+        })}
         category="security"
         icon="cilList"
         size="lg"
@@ -146,11 +151,11 @@ export function LoggingChannelEditModal({
         onSave={handleSave}
         saving={busy}
         error={error}
-        saveLabel="Save"
+        saveLabel={d.save}
         footer={
           <>
             <Button variant="secondary" onClick={onClose} disabled={busy}>
-              Cancel
+              {d.cancel}
             </Button>
             {hasDiscordChannel ? (
               <Button
@@ -159,7 +164,7 @@ export function LoggingChannelEditModal({
                 disabled={busy}
                 className="me-auto"
               >
-                Delete Log Channel
+                {d.deleteLogChannel}
               </Button>
             ) : null}
             <Button
@@ -167,7 +172,7 @@ export function LoggingChannelEditModal({
               onClick={() => void handleSave()}
               disabled={busy || !categoryGroup}
             >
-              {busy ? "Saving…" : "Save"}
+              {busy ? d.saving : d.save}
             </Button>
           </>
         }
@@ -175,15 +180,15 @@ export function LoggingChannelEditModal({
         <div className="d-flex flex-column gap-4">
           <div className="d-flex flex-wrap align-items-end gap-3">
             <div>
-              <CFormLabel className="small">Icon (optional)</CFormLabel>
+              <CFormLabel className="small">{d.iconOptional}</CFormLabel>
               <DiscordEmojiPicker
                 value={emoji}
                 onChange={setEmoji}
-                placeholder="Icon"
+                placeholder={d.iconPlaceholder}
               />
             </div>
             <div className="flex-grow-1" style={{ minWidth: 200 }}>
-              <CFormLabel className="small">Channel name</CFormLabel>
+              <CFormLabel className="small">{d.channelName}</CFormLabel>
               <CFormInput
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -191,7 +196,7 @@ export function LoggingChannelEditModal({
               />
             </div>
             <div>
-              <CFormLabel className="small">Default colour</CFormLabel>
+              <CFormLabel className="small">{d.defaultColour}</CFormLabel>
               <EmbedColorPicker value={colorHex} onChange={setColorHex} />
             </div>
           </div>
@@ -199,7 +204,7 @@ export function LoggingChannelEditModal({
           {categoryGroup ? (
             <div className="border rounded p-3 d-flex flex-column gap-2">
               <div className="fw-semibold small text-uppercase text-body-secondary">
-                {categoryGroup.label} events
+                {formatDict(d.eventsHeading, { label: categoryGroup.label })}
               </div>
               {categoryGroup.events.map((def) => {
                 const draft = drafts[def.event_type];
@@ -223,7 +228,7 @@ export function LoggingChannelEditModal({
                       <div className="d-flex align-items-center gap-2 ms-auto">
                         <CFormCheck
                           id={`ovr-${def.event_type}`}
-                          label="Custom colour"
+                          label={d.customColour}
                           checked={draft.override}
                           onChange={(e) =>
                             patchDraft(def.event_type, {
@@ -247,7 +252,7 @@ export function LoggingChannelEditModal({
             </div>
           ) : (
             <p className="mb-0 small text-body-secondary">
-              No catalog events found for this category.
+              {d.noCatalogEvents}
             </p>
           )}
         </div>
@@ -255,9 +260,9 @@ export function LoggingChannelEditModal({
 
       <ConfirmDialog
         visible={confirmDelete}
-        title="Delete log channel?"
-        message="This deletes the Discord channel for this category and disables it. Event settings are kept so you can provision a new channel later."
-        confirmLabel="Delete Log Channel"
+        title={d.deleteChannelTitle}
+        message={d.deleteChannelMessage}
+        confirmLabel={d.deleteLogChannel}
         destructive
         busy={busy}
         onConfirm={() => {

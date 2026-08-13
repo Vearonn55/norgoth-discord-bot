@@ -21,10 +21,13 @@ import {
 import { Icon } from "@/components/ui/icon";
 import { SectionCard } from "@/components/ui/section-card";
 import { formatDateTime } from "@/lib/datetime";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import { useInvitesStore } from "@/stores/invites-store";
 
 export function InvitesPanel() {
+  const dict = useLocaleDict();
+  const d = dict.invitesPage;
   const params = useParams();
   const lang = String(params?.lang || "en");
   const { guildId, loading, error, reload } = useFirstGuild();
@@ -98,7 +101,7 @@ export function InvitesPanel() {
       <Card>
         <div className="d-flex align-items-center gap-2 text-body-secondary">
           <CSpinner size="sm" />
-          Loading invite tracking…
+          {d.loading}
         </div>
       </Card>
     );
@@ -108,11 +111,11 @@ export function InvitesPanel() {
     return (
       <Card>
         <div className="d-flex flex-column gap-3">
-          <Badge variant="warning">Bot required</Badge>
+          <Badge variant="warning">{d.botRequired}</Badge>
           <p className="mb-0 small text-body-secondary">{error}</p>
           <div>
             <Button variant="secondary" onClick={() => void reload()}>
-              Retry
+              {d.retry}
             </Button>
           </div>
         </div>
@@ -130,8 +133,8 @@ export function InvitesPanel() {
 
       <CategoryHeader
         category="invitations"
-        title="Invite trends"
-        description="Joins, rejoins, and leaves aggregated from recent invite attribution."
+        title={d.trendsTitle}
+        description={d.trendsDesc}
         as="h2"
         actions={
           <DateRangePicker value={dateRange} onChange={setDateRange} />
@@ -143,11 +146,11 @@ export function InvitesPanel() {
           data={inviteTrend}
           xKey="date"
           series={[
-            { key: "joins", label: "First joins", color: "#3dd68c" },
-            { key: "rejoins", label: "Rejoins", color: "#fbbf24" },
-            { key: "leaves", label: "Leaves", color: "#ff6b7a" },
+            { key: "joins", label: d.seriesJoins, color: "#3dd68c" },
+            { key: "rejoins", label: d.seriesRejoins, color: "#fbbf24" },
+            { key: "leaves", label: d.seriesLeaves, color: "#ff6b7a" },
           ]}
-          emptyMessage="No join events in this date range yet."
+          emptyMessage={d.emptyTrend}
         />
       </SectionCard>
 
@@ -163,9 +166,9 @@ export function InvitesPanel() {
                 className="text-body-secondary mt-1"
               />
               <div>
-                <h2 className="h5 mb-0 fw-semibold">Invite Leaderboard</h2>
+                <h2 className="h5 mb-0 fw-semibold">{d.leaderboardTitle}</h2>
                 <p className="mt-1 mb-0 small text-body-secondary">
-                  Net invites = joins − members who left.
+                  {d.leaderboardDesc}
                 </p>
               </div>
             </div>
@@ -174,15 +177,14 @@ export function InvitesPanel() {
               size="sm"
               onClick={() => void load(guildId)}
             >
-              Refresh
+              {d.refresh}
             </Button>
           </div>
         }
       >
         {leaderboard.length === 0 ? (
           <CAlert color="secondary" className="mb-0">
-            No invite data yet. Attribution starts as members join while the bot
-            is online.
+            {d.emptyLeaderboard}
           </CAlert>
         ) : (
           <DataTable
@@ -195,38 +197,40 @@ export function InvitesPanel() {
               },
               {
                 key: "name",
-                header: "Member",
+                header: d.colMember,
                 cell: (row) => row.name,
               },
               {
                 key: "net",
-                header: "Net",
+                header: d.colNet,
                 cell: (row) => (
-                  <Badge variant="success">{row.net} invites</Badge>
+                  <Badge variant="success">
+                    {formatDict(d.netInvites, { count: row.net })}
+                  </Badge>
                 ),
               },
               {
                 key: "joins",
-                header: "Joins",
+                header: d.colJoins,
                 cell: (row) => row.joins,
               },
               {
                 key: "leaves",
-                header: "Left",
+                header: d.colLeft,
                 cell: (row) => row.leaves,
               },
               {
                 key: "rejoins",
-                header: "Rejoins",
+                header: d.colRejoins,
                 cell: (row) => row.rejoins,
               },
             ]}
             rows={filteredLeaderboard}
             rowKey={(row) => row.inviter_id}
-            emptyMessage="No matching inviters."
+            emptyMessage={d.emptyMatchingInviters}
             search={leaderboardSearch}
             onSearchChange={setLeaderboardSearch}
-            searchPlaceholder="Search inviters…"
+            searchPlaceholder={d.searchInviters}
             page={leaderboardPage}
             pageSize={10}
             onPageChange={setLeaderboardPage}
@@ -245,9 +249,9 @@ export function InvitesPanel() {
               className="text-body-secondary mt-1"
             />
             <div>
-              <h2 className="h5 mb-0 fw-semibold">Recent Joins</h2>
+              <h2 className="h5 mb-0 fw-semibold">{d.recentTitle}</h2>
               <p className="mt-1 mb-0 small text-body-secondary">
-                Latest joins with invite attribution.
+                {d.recentDesc}
               </p>
             </div>
           </div>
@@ -255,26 +259,26 @@ export function InvitesPanel() {
       >
         {recent.length === 0 ? (
           <CAlert color="secondary" className="mb-0">
-            No joins recorded yet.
+            {d.emptyRecent}
           </CAlert>
         ) : (
           <DataTable
             columns={[
               {
                 key: "member",
-                header: "Member",
+                header: d.colMember,
                 cell: (row) => row.member_name,
               },
               {
                 key: "inviter",
-                header: "Invited by",
+                header: d.colInvitedBy,
                 cell: (row) =>
                   row.inviter_name ??
-                  (row.code === "vanity" ? "vanity URL" : "unknown"),
+                  (row.code === "vanity" ? d.vanityUrl : d.unknown),
               },
               {
                 key: "code",
-                header: "Code",
+                header: d.colCode,
                 cell: (row) =>
                   row.code && row.code !== "vanity" ? (
                     <Badge variant="neutral">{row.code}</Badge>
@@ -284,23 +288,23 @@ export function InvitesPanel() {
               },
               {
                 key: "flags",
-                header: "Flags",
+                header: d.colFlags,
                 cell: (row) => (
                   <span className="d-flex flex-wrap gap-2">
                     {!row.rejoin ? (
-                      <Badge variant="success">First join</Badge>
+                      <Badge variant="success">{d.flagFirstJoin}</Badge>
                     ) : (
-                      <Badge variant="warning">Rejoin</Badge>
+                      <Badge variant="warning">{d.flagRejoin}</Badge>
                     )}
                     {row.left_at ? (
-                      <Badge variant="danger">Left</Badge>
+                      <Badge variant="danger">{d.flagLeft}</Badge>
                     ) : null}
                   </span>
                 ),
               },
               {
                 key: "when",
-                header: "Joined",
+                header: d.colJoined,
                 className: "text-nowrap",
                 cell: (row) => formatDateTime(row.joined_at, lang),
               },
@@ -309,17 +313,17 @@ export function InvitesPanel() {
             rowKey={(row) =>
               `${row.joined_at}-${row.member_name}-${row.code ?? ""}`
             }
-            emptyMessage="No matching joins."
+            emptyMessage={d.emptyMatchingJoins}
             search={recentSearch}
             onSearchChange={setRecentSearch}
-            searchPlaceholder="Search joins…"
+            searchPlaceholder={d.searchJoins}
             page={recentPage}
             pageSize={10}
             onPageChange={setRecentPage}
             toolbar={
               <div className="d-flex align-items-center gap-2 small text-body-secondary">
                 <Icon icon={cilPeople} />
-                {filteredRecent.length} in range
+                {formatDict(d.inRange, { count: filteredRecent.length })}
               </div>
             }
           />

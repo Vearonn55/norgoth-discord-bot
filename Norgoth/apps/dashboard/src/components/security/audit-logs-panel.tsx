@@ -14,6 +14,8 @@ import {
   type DateRangeValue,
 } from "@/components/ui/date-range-filter";
 import { formatDateTime } from "@/lib/datetime";
+import { useFeatureInfo } from "@/lib/feature-info";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import { create } from "zustand";
 import { useModerationLogsStore } from "@/stores/moderation-logs-store";
@@ -32,12 +34,6 @@ type AuditRow = {
   fields: Record<string, string>;
 };
 
-const SOURCE_FILTERS: { value: AuditSource | "all"; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "moderation", label: "Moderation" },
-  { value: "event", label: "Server Events" },
-];
-
 const CATEGORY_VARIANTS: Record<
   string,
   "success" | "info" | "warning" | "neutral" | "danger"
@@ -49,8 +45,6 @@ const CATEGORY_VARIANTS: Record<
   channel: "neutral",
 };
 
-// Local UI-only store for the merged view's filters (keeps the two source
-// stores focused on their own data).
 type AuditFilterState = {
   source: AuditSource | "all";
   search: string;
@@ -76,6 +70,9 @@ const useAuditFilterStore = create<AuditFilterState>((set) => ({
 export function AuditLogsPanel() {
   const params = useParams();
   const lang = String(params?.lang || "en");
+  const dict = useLocaleDict();
+  const d = dict.auditLogsPage;
+  const info = useFeatureInfo("auditLogs");
   const { guildId, loading: guildLoading, error: guildError } = useFirstGuild();
 
   const modEntries = useModerationLogsStore((s) => s.entries);
@@ -95,6 +92,16 @@ export function AuditLogsPanel() {
   const setPage = useAuditFilterStore((s) => s.setPage);
   const setDateRange = useAuditFilterStore((s) => s.setDateRange);
 
+  const sourceFilters = useMemo(
+    () =>
+      [
+        { value: "all" as const, label: d.filterAll },
+        { value: "moderation" as const, label: d.filterModeration },
+        { value: "event" as const, label: d.filterServerEvents },
+      ] as const,
+    [d.filterAll, d.filterModeration, d.filterServerEvents],
+  );
+
   useEffect(() => {
     if (!guildId) return;
     void loadModeration(guildId);
@@ -107,13 +114,17 @@ export function AuditLogsPanel() {
       source: "moderation",
       category: "moderation",
       action: entry.action,
-      summary: `${entry.moderator_name} used /${entry.action} on ${entry.target}`,
+      summary: formatDict(d.moderationSummary, {
+        moderator: entry.moderator_name,
+        action: entry.action,
+        target: entry.target,
+      }),
       actor: entry.moderator_name,
       created_at: entry.created_at,
       fields: {
-        Target: entry.target,
-        Reason: entry.reason || "—",
-        ...(entry.detail ? { Detail: entry.detail } : {}),
+        [d.fieldTarget]: entry.target,
+        [d.fieldReason]: entry.reason || "—",
+        ...(entry.detail ? { [d.fieldDetail]: entry.detail } : {}),
       },
     }));
 
@@ -130,9 +141,9 @@ export function AuditLogsPanel() {
 
     return [...moderation, ...events].sort(
       (a, b) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
     );
-  }, [modEntries, eventEntries]);
+  }, [modEntries, eventEntries, d]);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -158,7 +169,7 @@ export function AuditLogsPanel() {
       <Card>
         <div className="d-flex align-items-center gap-2 text-body-secondary">
           <CSpinner size="sm" />
-          Loading audit logs…
+          {d.loading}
         </div>
       </Card>
     );
@@ -168,7 +179,7 @@ export function AuditLogsPanel() {
     return (
       <Card>
         <CAlert color="warning" className="mb-0">
-          {guildError ?? "Bot is offline or not in any server yet."}
+          {guildError ?? d.botOffline}
         </CAlert>
       </Card>
     );
@@ -181,15 +192,17 @@ export function AuditLogsPanel() {
       <div className="d-flex flex-column gap-3">
         <div className="d-flex flex-wrap align-items-center justify-content-between gap-3">
           <div>
-            <h2 className="h5 mb-0 fw-semibold">Audit</h2>
+            <h2 className="h5 mb-0 fw-semibold">
+              {info?.title ?? dict.featureInfo.auditLogs.title}
+            </h2>
             <p className="mt-1 mb-0 small text-body-secondary">
-              Moderation actions and server events in one timeline.
+              {info?.description}
             </p>
           </div>
 
           <div className="d-flex align-items-center gap-2 flex-wrap">
             <CButtonGroup role="group" size="sm">
-              {SOURCE_FILTERS.map((filter) => (
+              {sourceFilters.map((filter) => (
                 <Button
                   key={filter.value}
                   variant={source === filter.value ? "primary" : "secondary"}
@@ -208,7 +221,7 @@ export function AuditLogsPanel() {
                 void loadEvents(guildId);
               }}
             >
-              Refresh
+              {d.refresh}
             </Button>
           </div>
         </div>
@@ -216,42 +229,44 @@ export function AuditLogsPanel() {
         {loading ? (
           <div className="d-flex align-items-center gap-2 text-body-secondary">
             <CSpinner size="sm" />
-            Loading…
+            {d.loadingShort}
           </div>
         ) : (
           <DataTable
             columns={[
               {
                 key: "source",
-                header: "Source",
+                header: d.colSource,
                 cell: (row) => (
                   <Badge
                     variant={CATEGORY_VARIANTS[row.category] ?? "neutral"}
                   >
-                    {row.source === "moderation" ? "Moderation" : row.category}
+                    {row.source === "moderation"
+                      ? d.filterModeration
+                      : row.category}
                   </Badge>
                 ),
               },
-              { key: "action", header: "Action", cell: (row) => row.action },
+              { key: "action", header: d.colAction, cell: (row) => row.action },
               {
                 key: "summary",
-                header: "Details",
+                header: d.colDetails,
                 cell: (row) => row.summary,
               },
-              { key: "actor", header: "Actor", cell: (row) => row.actor },
+              { key: "actor", header: d.colActor, cell: (row) => row.actor },
               {
                 key: "when",
-                header: "When",
+                header: d.colWhen,
                 className: "text-nowrap",
                 cell: (row) => formatDateTime(row.created_at, lang),
               },
             ]}
             rows={filtered}
             rowKey={(row) => row.id}
-            emptyMessage="No audit events recorded yet."
+            emptyMessage={d.empty}
             search={search}
             onSearchChange={setSearch}
-            searchPlaceholder="Search actions, actors, details…"
+            searchPlaceholder={d.searchPlaceholder}
             page={page}
             pageSize={12}
             onPageChange={setPage}
@@ -259,7 +274,7 @@ export function AuditLogsPanel() {
               <div className="d-flex flex-column gap-2">
                 <div>
                   <span className="small fw-semibold text-body-secondary">
-                    Details
+                    {d.colDetails}
                   </span>
                   <div>{row.summary || "—"}</div>
                 </div>
@@ -288,10 +303,10 @@ export function AuditLogsPanel() {
                   onChange={(e) =>
                     setSource(e.target.value as AuditSource | "all")
                   }
-                  aria-label="Filter by source"
+                  aria-label={d.filterBySourceAria}
                   style={{ minWidth: 170 }}
                 >
-                  {SOURCE_FILTERS.map((filter) => (
+                  {sourceFilters.map((filter) => (
                     <option key={filter.value} value={filter.value}>
                       {filter.label}
                     </option>

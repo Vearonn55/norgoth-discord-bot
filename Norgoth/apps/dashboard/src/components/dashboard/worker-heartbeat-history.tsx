@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { apiUrl } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
+import { useLocaleDict } from "@/lib/locale-dict";
 
 type WorkersHealthResponse = {
   overall_state: string;
@@ -28,6 +29,8 @@ type HeartbeatSample = {
 export function WorkerHeartbeatHistory() {
   const params = useParams();
   const lang = String(params?.lang || "en");
+  const dict = useLocaleDict();
+  const d = dict.workerHealth;
   const [samples, setSamples] = useState<HeartbeatSample[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -41,11 +44,12 @@ export function WorkerHeartbeatHistory() {
       if (!response.ok) return;
 
       const data: WorkersHealthResponse = await response.json();
-      const oldestHeartbeat = data.workers
-        .map((w) => w.last_heartbeat)
-        .filter(Boolean)
-        .sort()
-        .at(-1) ?? null;
+      const oldestHeartbeat =
+        data.workers
+          .map((w) => w.last_heartbeat)
+          .filter(Boolean)
+          .sort()
+          .at(-1) ?? null;
 
       setSamples((prev) => {
         const next = [
@@ -108,10 +112,10 @@ export function WorkerHeartbeatHistory() {
     <div className="border rounded p-4">
       <div className="mb-4 d-flex align-items-center justify-content-between gap-3">
         <div>
-          <h2 className="h5 mb-0 fw-semibold">Worker Heartbeat History</h2>
+          <h2 className="h5 mb-0 fw-semibold">{d.historyTitle}</h2>
 
           <p className="mt-1 small text-body-secondary">
-            Recent overall health samples from the worker registry endpoint.
+            {d.historyDescription}
           </p>
         </div>
 
@@ -121,36 +125,51 @@ export function WorkerHeartbeatHistory() {
             style={{ width: 8, height: 8 }}
             aria-hidden
           />
-          <span className="small text-success">SAMPLING</span>
+          <span className="small text-success">{d.sampling}</span>
         </div>
       </div>
 
       <div className="mb-4 row g-3">
         <div className="col-12 col-md-4">
-          <HistoryStat label="Samples" value={samples.length} tone="info" />
+          <HistoryStat label={d.samples} value={samples.length} tone="info" />
         </div>
         <div className="col-12 col-md-4">
-          <HistoryStat label="Online Samples" value={summary.onlineCount} tone="success" />
+          <HistoryStat
+            label={d.onlineSamples}
+            value={summary.onlineCount}
+            tone="success"
+          />
         </div>
         <div className="col-12 col-md-4">
-          <HistoryStat label="Uptime Window" value={`${summary.uptime}%`} tone="success" />
+          <HistoryStat
+            label={d.uptimeWindow}
+            value={`${summary.uptime}%`}
+            tone="success"
+          />
         </div>
       </div>
 
       {loading ? (
         <div className="border rounded p-4 small text-body-secondary">
-          Loading heartbeat history...
+          {d.loadingHistory}
         </div>
       ) : samples.length === 0 ? (
         <div className="border rounded p-4 small text-body-secondary">
-          No heartbeat samples yet.
+          {d.noSamples}
         </div>
       ) : (
-        <div className="overflow-auto pe-2 norgoth-scrollbar" style={{ maxHeight: 420 }}>
+        <div
+          className="overflow-auto pe-2 norgoth-scrollbar"
+          style={{ maxHeight: 420 }}
+        >
           <div className="row g-3">
             {samples.map((sample) => (
               <div key={sample.id} className="col-12 col-md-6 col-xl-4">
-                <HeartbeatSampleCard sample={sample} lang={lang} />
+                <HeartbeatSampleCard
+                  sample={sample}
+                  lang={lang}
+                  lastHeartbeatLabel={d.sampleLastHeartbeat}
+                />
               </div>
             ))}
           </div>
@@ -163,9 +182,11 @@ export function WorkerHeartbeatHistory() {
 function HeartbeatSampleCard({
   sample,
   lang,
+  lastHeartbeatLabel,
 }: {
   sample: HeartbeatSample;
   lang: string;
+  lastHeartbeatLabel: string;
 }) {
   return (
     <div
@@ -183,7 +204,9 @@ function HeartbeatSampleCard({
         </span>
       </div>
 
-      <div className="small text-body-secondary text-uppercase">Last Heartbeat</div>
+      <div className="small text-body-secondary text-uppercase">
+        {lastHeartbeatLabel}
+      </div>
 
       <div className="mt-2 text-break small">
         {formatDateTime(sample.lastHeartbeat, lang)}

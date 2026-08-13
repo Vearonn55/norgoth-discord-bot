@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   CAlert,
   CFormCheck,
@@ -18,6 +18,7 @@ import { NumberInput } from "@/components/ui/number-input";
 import type { GuildCategory, GuildChannel } from "@/stores/guild-store";
 import type { GuildEmojiItem } from "@/lib/discord/emoji-data";
 import { feedEmojiFromPicker, feedEmojiToPicker } from "@/lib/feed-emoji";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import {
   DEFAULT_FEED_CONFIG,
   FEED_WINDOW_LABELS,
@@ -25,13 +26,6 @@ import {
   type FeedWindowKey,
   useFeedChannelsStore,
 } from "@/stores/feed-channels-store";
-
-const STEPS = [
-  { id: "emojis", label: "Emojis" },
-  { id: "sources", label: "Sources" },
-  { id: "windows", label: "Feeds" },
-  { id: "review", label: "Review" },
-];
 
 const WINDOW_KEYS: FeedWindowKey[] = [
   "daily",
@@ -55,9 +49,31 @@ export function FeedChannelsSetupWizard({
   guildEmojis,
   onComplete,
 }: Props) {
+  const dict = useLocaleDict();
+  const d = dict.feedChannelsPage;
   const save = useFeedChannelsStore((s) => s.save);
   const setEnabled = useFeedChannelsStore((s) => s.setEnabled);
   const busy = useFeedChannelsStore((s) => s.busy);
+
+  const steps = useMemo(
+    () => [
+      { id: "emojis", label: d.stepEmojis },
+      { id: "sources", label: d.stepSources },
+      { id: "windows", label: d.stepFeeds },
+      { id: "review", label: d.stepReview },
+    ],
+    [d.stepEmojis, d.stepSources, d.stepFeeds, d.stepReview],
+  );
+
+  const windowLabels = useMemo(
+    () => ({
+      daily: d.windowDaily,
+      weekly: d.windowWeekly,
+      monthly: d.windowMonthly,
+      all_time: d.windowAllTime,
+    }),
+    [d.windowDaily, d.windowWeekly, d.windowMonthly, d.windowAllTime],
+  );
 
   const [step, setStep] = useState(0);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -77,7 +93,10 @@ export function FeedChannelsSetupWizard({
     setDraft((current) => ({ ...current, ...partial }));
   }
 
-  function patchWindow(key: FeedWindowKey, partial: Partial<FeedConfig["windows"][FeedWindowKey]>) {
+  function patchWindow(
+    key: FeedWindowKey,
+    partial: Partial<FeedConfig["windows"][FeedWindowKey]>,
+  ) {
     setDraft((current) => ({
       ...current,
       windows: {
@@ -91,12 +110,12 @@ export function FeedChannelsSetupWizard({
     setLocalError(null);
     const saved = await save(guildId, { ...draft, enabled: false });
     if (!saved) {
-      setLocalError("Could not save Top Trending configuration.");
+      setLocalError(d.saveFailed);
       return;
     }
     const enabled = await setEnabled(guildId, true);
     if (!enabled) {
-      setLocalError("Configuration saved, but enabling Top Trending failed.");
+      setLocalError(d.enableFailed);
       return;
     }
     onComplete();
@@ -106,14 +125,11 @@ export function FeedChannelsSetupWizard({
     <Card>
       <div className="d-flex flex-column gap-4">
         <div>
-          <h2 className="h5 mb-1">Set up Top Trending</h2>
-          <p className="mb-0 text-body-secondary">
-            Configure upvote/downvote emojis, source channels, and destination
-            feeds for Daily, Weekly, Monthly, and All-Time windows (UTC).
-          </p>
+          <h2 className="h5 mb-1">{d.setupTitle}</h2>
+          <p className="mb-0 text-body-secondary">{d.setupDescription}</p>
         </div>
 
-        <Stepper steps={STEPS} current={step} />
+        <Stepper steps={steps} current={step} />
 
         {localError ? (
           <CAlert color="danger" className="mb-0 py-2">
@@ -124,7 +140,7 @@ export function FeedChannelsSetupWizard({
         {step === 0 ? (
           <div className="d-flex flex-column gap-3">
             <div>
-              <CFormLabel>Upvote emoji</CFormLabel>
+              <CFormLabel>{d.upvoteEmoji}</CFormLabel>
               <DiscordEmojiPicker
                 value={feedEmojiToPicker(draft.upvote_emoji)}
                 guildEmojis={guildEmojis}
@@ -135,7 +151,7 @@ export function FeedChannelsSetupWizard({
               />
             </div>
             <div>
-              <CFormLabel>Downvote emoji</CFormLabel>
+              <CFormLabel>{d.downvoteEmoji}</CFormLabel>
               <DiscordEmojiPicker
                 value={feedEmojiToPicker(draft.downvote_emoji)}
                 guildEmojis={guildEmojis}
@@ -151,7 +167,7 @@ export function FeedChannelsSetupWizard({
         {step === 1 ? (
           <div className="d-flex flex-column gap-3">
             <div>
-              <CFormLabel>Source channels</CFormLabel>
+              <CFormLabel>{d.sourceChannels}</CFormLabel>
               <GuildChannelMultiSelect
                 channels={textChannels}
                 selectedIds={draft.source_channel_ids}
@@ -159,15 +175,15 @@ export function FeedChannelsSetupWizard({
               />
             </div>
             <div>
-              <CFormLabel>Feed category (optional)</CFormLabel>
+              <CFormLabel>{d.feedCategoryOptional}</CFormLabel>
               <CFormSelect
                 value={draft.feed_category_id ?? ""}
-                aria-label="Feed category"
+                aria-label={d.feedCategoryAria}
                 onChange={(event) =>
                   patch({ feed_category_id: event.target.value || null })
                 }
               >
-                <option value="">No category (top level)</option>
+                <option value="">{d.noCategory}</option>
                 {categories.map((category) => (
                   <option key={category.id} value={category.id}>
                     {category.name}
@@ -180,34 +196,40 @@ export function FeedChannelsSetupWizard({
 
         {step === 2 ? (
           <div className="d-flex flex-column gap-3">
-            {WINDOW_KEYS.map((key) => (
-              <div key={key}>
-                <div className="d-flex align-items-center justify-content-between mb-2">
-                  <CFormLabel className="mb-0">
-                    {FEED_WINDOW_LABELS[key]} feed channel
-                  </CFormLabel>
-                  <Switch
-                    checked={draft.windows[key].enabled}
-                    disabled={!draft.windows[key].channel_id}
-                    onChange={(checked) =>
-                      patchWindow(key, { enabled: checked })
+            {WINDOW_KEYS.map((key) => {
+              const windowLabel =
+                windowLabels[key] ?? FEED_WINDOW_LABELS[key];
+              return (
+                <div key={key}>
+                  <div className="d-flex align-items-center justify-content-between mb-2">
+                    <CFormLabel className="mb-0">
+                      {formatDict(d.feedChannelLabel, { window: windowLabel })}
+                    </CFormLabel>
+                    <Switch
+                      checked={draft.windows[key].enabled}
+                      disabled={!draft.windows[key].channel_id}
+                      onChange={(checked) =>
+                        patchWindow(key, { enabled: checked })
+                      }
+                      aria-label={formatDict(d.enableWindowAria, {
+                        window: windowLabel,
+                      })}
+                    />
+                  </div>
+                  <ChannelSelect
+                    channels={textChannels}
+                    value={draft.windows[key].channel_id ?? ""}
+                    onChange={(value) =>
+                      patchWindow(key, {
+                        channel_id: value || null,
+                        enabled: Boolean(value),
+                      })
                     }
-                    aria-label={`Enable ${FEED_WINDOW_LABELS[key]}`}
+                    emptyLabel={d.selectFeedChannel}
                   />
                 </div>
-                <ChannelSelect
-                  channels={textChannels}
-                  value={draft.windows[key].channel_id ?? ""}
-                  onChange={(value) =>
-                    patchWindow(key, {
-                      channel_id: value || null,
-                      enabled: Boolean(value),
-                    })
-                  }
-                  emptyLabel="Select feed channel…"
-                />
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : null}
 
@@ -215,40 +237,40 @@ export function FeedChannelsSetupWizard({
           <div className="d-flex flex-column gap-3">
             <div className="row g-3">
               <div className="col-md-6">
-                <CFormLabel>Minimum net upvotes</CFormLabel>
+                <CFormLabel>{d.minNetUpvotes}</CFormLabel>
                 <NumberInput
                   value={draft.min_net_score}
                   defaultValue={DEFAULT_FEED_CONFIG.min_net_score}
                   min={0}
                   max={10000}
                   step={1}
-                  aria-label="Minimum net upvotes"
+                  aria-label={d.minNetUpvotes}
                   onCommit={(next) => patch({ min_net_score: next })}
                 />
               </div>
               <div className="col-md-6">
-                <CFormLabel>Display limit (1–25)</CFormLabel>
+                <CFormLabel>{d.displayLimit}</CFormLabel>
                 <NumberInput
                   value={draft.display_limit}
                   defaultValue={DEFAULT_FEED_CONFIG.display_limit}
                   min={1}
                   max={25}
                   step={1}
-                  aria-label="Display limit"
+                  aria-label={d.displayLimit}
                   onCommit={(next) => patch({ display_limit: next })}
                 />
               </div>
             </div>
             <CFormCheck
-              label="Exclude bots"
+              label={d.excludeBots}
               checked={draft.exclude_bots}
               onChange={(e) => patch({ exclude_bots: e.target.checked })}
             />
             <CAlert color="secondary" className="mb-0">
-              Enabling Top Trending will track messages in{" "}
-              <strong>{draft.source_channel_ids.length}</strong> source channel
-              {draft.source_channel_ids.length === 1 ? "" : "s"} and publish
-              ranked embeds to configured Top Trending channels. All windows are UTC.
+              {formatDict(d.reviewAlert, {
+                count: draft.source_channel_ids.length,
+                plural: draft.source_channel_ids.length === 1 ? "" : "s",
+              })}
             </CAlert>
           </div>
         ) : null}
@@ -262,18 +284,18 @@ export function FeedChannelsSetupWizard({
               setStep((s) => Math.max(0, s - 1));
             }}
           >
-            Back
+            {d.back}
           </Button>
-          {step < STEPS.length - 1 ? (
+          {step < steps.length - 1 ? (
             <Button
               variant="primary"
               disabled={busy}
               onClick={() => {
                 setLocalError(null);
-                setStep((s) => Math.min(STEPS.length - 1, s + 1));
+                setStep((s) => Math.min(steps.length - 1, s + 1));
               }}
             >
-              Next
+              {d.next}
             </Button>
           ) : (
             <Button
@@ -281,7 +303,7 @@ export function FeedChannelsSetupWizard({
               disabled={busy}
               onClick={() => void finish()}
             >
-              {busy ? "Saving…" : "Enable Top Trending"}
+              {busy ? d.saving : d.enableTopTrending}
             </Button>
           )}
         </div>

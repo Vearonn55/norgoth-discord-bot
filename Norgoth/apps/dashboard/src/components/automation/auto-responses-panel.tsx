@@ -14,19 +14,16 @@ import { Switch } from "@/components/ui/switch";
 import { NumberInput } from "@/components/ui/number-input";
 import { DataTable } from "@/components/ui/data-table";
 import { RichMessageEditor } from "@/components/editors/rich-message-editor";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import {
   useAutoResponsesStore,
   type MatchType,
 } from "@/stores/automation-store";
 
-const MATCH_LABELS: Record<MatchType, string> = {
-  exact: "is exactly",
-  contains: "contains",
-  starts_with: "starts with",
-};
-
 export function AutoResponsesPanel() {
+  const dict = useLocaleDict();
+  const d = dict.autoResponsesPage;
   const { guildId, resources, loading, error, reload } = useFirstGuild();
 
   const rules = useAutoResponsesStore((s) => s.rules);
@@ -42,6 +39,15 @@ export function AutoResponsesPanel() {
   const load = useAutoResponsesStore((s) => s.load);
   const persist = useAutoResponsesStore((s) => s.persist);
   const addRule = useAutoResponsesStore((s) => s.addRule);
+
+  const matchLabels: Record<MatchType, string> = useMemo(
+    () => ({
+      exact: d.matchLabelExact,
+      contains: d.matchLabelContains,
+      starts_with: d.matchLabelStartsWith,
+    }),
+    [d.matchLabelExact, d.matchLabelContains, d.matchLabelStartsWith],
+  );
 
   useEffect(() => {
     if (!guildId) return;
@@ -77,7 +83,7 @@ export function AutoResponsesPanel() {
       <Card>
         <div className="d-flex align-items-center gap-2 text-body-secondary">
           <CSpinner size="sm" />
-          Loading auto-responses…
+          {d.loading}
         </div>
       </Card>
     );
@@ -87,10 +93,10 @@ export function AutoResponsesPanel() {
     return (
       <Card>
         <div className="d-flex flex-column gap-3">
-          <Badge variant="warning">Bot required</Badge>
+          <Badge variant="warning">{d.botRequired}</Badge>
           <p className="small text-body-secondary">{error}</p>
           <Button variant="secondary" onClick={() => void reload()}>
-            Retry
+            {d.retry}
           </Button>
         </div>
       </Card>
@@ -102,16 +108,13 @@ export function AutoResponsesPanel() {
       <Card>
         <div className="d-flex flex-column gap-3">
           <div>
-            <h2 className="h5 mb-0 fw-semibold">New Response Rule</h2>
-            <p className="mt-1 small text-body-secondary">
-              When a message matches the trigger, the bot replies in the same
-              channel. Variables: {"{user}"}, {"{username}"}, {"{server}"}.
-            </p>
+            <h2 className="h5 mb-0 fw-semibold">{d.newRuleTitle}</h2>
+            <p className="mt-1 small text-body-secondary">{d.newRuleDesc}</p>
           </div>
 
           <div className="row g-3">
             <div>
-              <CFormLabel>Match type</CFormLabel>
+              <CFormLabel>{d.matchType}</CFormLabel>
               <CFormSelect
                 value={draft.match_type}
                 onChange={(event) =>
@@ -121,14 +124,14 @@ export function AutoResponsesPanel() {
                   }))
                 }
               >
-                <option value="contains">Message contains</option>
-                <option value="exact">Message is exactly</option>
-                <option value="starts_with">Message starts with</option>
+                <option value="contains">{d.matchContains}</option>
+                <option value="exact">{d.matchExact}</option>
+                <option value="starts_with">{d.matchStartsWith}</option>
               </CFormSelect>
             </div>
 
             <div className="col-md-8">
-              <CFormLabel>Trigger text</CFormLabel>
+              <CFormLabel>{d.triggerText}</CFormLabel>
               <CFormInput
                 value={draft.trigger}
                 onChange={(event) =>
@@ -138,13 +141,13 @@ export function AutoResponsesPanel() {
                   }))
                 }
                 maxLength={200}
-                placeholder="e.g. how do I verify"
+                placeholder={d.triggerPlaceholder}
               />
             </div>
           </div>
 
           <div>
-            <CFormLabel>Response</CFormLabel>
+            <CFormLabel>{d.response}</CFormLabel>
             <RichMessageEditor
               key={`auto-response-${draft.trigger}-${rules.length}`}
               value={draft.response}
@@ -156,16 +159,16 @@ export function AutoResponsesPanel() {
               }
               variables={["{user}", "{username}", "{server}"]}
               height={180}
-              placeholder="e.g. Hi {user}, head to #verification to get started!"
+              placeholder={d.responsePlaceholder}
             />
             <p className="mt-1 mb-0 small text-body-secondary">
-              {draft.response.length}/1500 characters
+              {formatDict(d.charCount, { count: draft.response.length })}
             </p>
           </div>
 
           <div className="row g-3">
             <div>
-              <CFormLabel>Restrict to channel (optional)</CFormLabel>
+              <CFormLabel>{d.restrictChannel}</CFormLabel>
               <CFormSelect
                 value={draft.channel_id ?? ""}
                 onChange={(event) =>
@@ -175,7 +178,7 @@ export function AutoResponsesPanel() {
                   }))
                 }
               >
-                <option value="">Any channel</option>
+                <option value="">{d.anyChannel}</option>
                 {channels.map((channel) => (
                   <option key={channel.id} value={channel.id}>
                     #{channel.name}
@@ -185,14 +188,14 @@ export function AutoResponsesPanel() {
             </div>
 
             <div>
-              <CFormLabel>Cooldown (seconds)</CFormLabel>
+              <CFormLabel>{d.cooldown}</CFormLabel>
               <NumberInput
                 value={draft.cooldown_seconds}
                 defaultValue={0}
                 min={0}
                 max={3600}
                 step={1}
-                aria-label="Cooldown seconds"
+                aria-label={d.cooldownAria}
                 onCommit={(next) =>
                   setDraft((current) => ({
                     ...current,
@@ -209,7 +212,7 @@ export function AutoResponsesPanel() {
               onClick={() => void addRule(guildId)}
               disabled={saving}
             >
-              {saving ? "Saving…" : "Add Rule"}
+              {saving ? d.saving : d.addRule}
             </Button>
 
             {feedback ? (
@@ -229,10 +232,9 @@ export function AutoResponsesPanel() {
         <div className="d-flex flex-column gap-3">
           <div className="d-flex align-items-center justify-content-between gap-3">
             <div>
-              <h2 className="h5 mb-0 fw-semibold">Active Rules</h2>
+              <h2 className="h5 mb-0 fw-semibold">{d.activeRules}</h2>
               <p className="mt-1 small text-body-secondary">
-                {rules.length} / 50 rules. Only the first matching rule fires
-                per message.
+                {formatDict(d.rulesCount, { count: rules.length })}
               </p>
             </div>
 
@@ -241,20 +243,20 @@ export function AutoResponsesPanel() {
               size="sm"
               onClick={() => void load(guildId)}
             >
-              Refresh
+              {d.refresh}
             </Button>
           </div>
 
           {rules.length === 0 ? (
             <p className="border rounded p-5 small text-body-secondary">
-              No response rules yet. Add one above.
+              {d.emptyRules}
             </p>
           ) : (
             <DataTable
               columns={[
                 {
                   key: "enabled",
-                  header: "On",
+                  header: d.colOn,
                   className: "w-20",
                   cell: (row) => (
                     <Switch
@@ -269,22 +271,27 @@ export function AutoResponsesPanel() {
                           )
                         )
                       }
-                      aria-label={`Enable rule ${row.trigger}`}
+                      aria-label={formatDict(d.enableRuleAria, {
+                        trigger: row.trigger,
+                      })}
                     />
                   ),
                 },
                 {
                   key: "trigger",
-                  header: "Trigger",
+                  header: d.colTrigger,
                   cell: (row) => (
                     <span>
-                      Message {MATCH_LABELS[row.match_type]} “{row.trigger}”
+                      {formatDict(d.triggerSummary, {
+                        match: matchLabels[row.match_type],
+                        trigger: row.trigger,
+                      })}
                     </span>
                   ),
                 },
                 {
                   key: "response",
-                  header: "Response",
+                  header: d.colResponse,
                   cell: (row) => (
                     <span className="line-clamp-2 text-body-secondary">
                       {row.response}
@@ -293,15 +300,15 @@ export function AutoResponsesPanel() {
                 },
                 {
                   key: "channel",
-                  header: "Channel",
+                  header: d.colChannel,
                   cell: (row) =>
                     row.channel_id
                       ? `#${channelNames.get(row.channel_id) ?? row.channel_id}`
-                      : "Any",
+                      : d.any,
                 },
                 {
                   key: "cooldown",
-                  header: "Cooldown",
+                  header: d.colCooldown,
                   cell: (row) =>
                     row.cooldown_seconds > 0
                       ? `${row.cooldown_seconds}s`
@@ -322,17 +329,17 @@ export function AutoResponsesPanel() {
                         )
                       }
                     >
-                      Delete
+                      {d.delete}
                     </Button>
                   ),
                 },
               ]}
               rows={filteredRules}
               rowKey={(row) => row.id}
-              emptyMessage="No matching rules."
+              emptyMessage={d.emptyMatching}
               search={search}
               onSearchChange={setSearch}
-              searchPlaceholder="Search rules…"
+              searchPlaceholder={d.searchPlaceholder}
               page={page}
               pageSize={10}
               onPageChange={setPage}

@@ -7,11 +7,14 @@ import { useDashboardStore } from "@/stores/dashboard-store";
 import { SectionCard } from "@/components/ui/section-card";
 import { Button } from "@/components/ui/button";
 import { formatDateTime } from "@/lib/datetime";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 
 /** Compact dashboard activity summary — no nested scroll feed. */
 export function ActivitySummary() {
   const params = useParams();
   const lang = String(params?.lang || "en");
+  const dict = useLocaleDict();
+  const d = dict.dashboard;
   const activities = useDashboardStore((s) => s.activities);
   const loading = useDashboardStore((s) => s.loading);
   const loadActivity = useDashboardStore((s) => s.loadActivity);
@@ -36,18 +39,15 @@ export function ActivitySummary() {
     <SectionCard level="primary" category="operations" className="h-100">
       <div className="d-flex flex-column gap-3 p-1">
         <div>
-          <h2 className="h5 mb-1">Recent Activity</h2>
-          <p className="mb-0 small text-body-secondary">
-            Compact campaign delivery summary. Detailed cross-system history
-            lives in the Audit Logs.
-          </p>
+          <h2 className="h5 mb-1">{d.activityTitle}</h2>
+          <p className="mb-0 small text-body-secondary">{d.activityDescription}</p>
         </div>
 
         <div className="row g-2">
           <div className="col-4">
             <div className="border rounded p-2 text-center">
               <div className="fw-semibold">{loading ? "…" : summary.count}</div>
-              <div className="small text-body-secondary">Events</div>
+              <div className="small text-body-secondary">{d.activityEvents}</div>
             </div>
           </div>
           <div className="col-4">
@@ -55,7 +55,7 @@ export function ActivitySummary() {
               <div className="fw-semibold text-success">
                 {loading ? "…" : summary.sent}
               </div>
-              <div className="small text-body-secondary">Sent</div>
+              <div className="small text-body-secondary">{d.activitySent}</div>
             </div>
           </div>
           <div className="col-4">
@@ -63,19 +63,21 @@ export function ActivitySummary() {
               <div className="fw-semibold text-danger">
                 {loading ? "…" : summary.failed}
               </div>
-              <div className="small text-body-secondary">Failed</div>
+              <div className="small text-body-secondary">{d.activityFailed}</div>
             </div>
           </div>
         </div>
 
         <p className="mb-0 small text-body-secondary">
           {summary.latestAt
-            ? `Latest: ${formatDateTime(summary.latestAt, lang)}`
-            : "No recent campaign events yet."}
+            ? formatDict(d.activityLatest, {
+                time: formatDateTime(summary.latestAt, lang),
+              })
+            : d.activityNoEvents}
         </p>
 
         <Button asChild variant="primary">
-          <Link href={`/${lang}/audit/discord-logs`}>Open Discord Logs</Link>
+          <Link href={`/${lang}/audit/discord-logs`}>{d.activityOpenLogs}</Link>
         </Button>
       </div>
     </SectionCard>

@@ -12,15 +12,16 @@ export default async function TicketsPage({
 
   if (!hasLocale(lang)) notFound();
 
-  await getDictionary(lang);
+  const dict = await getDictionary(lang);
+  const info = dict.featureInfo.tickets;
 
   return (
     <div className="d-flex flex-column gap-4">
       <PageHeader
-        title="Support Tickets"
+        title={info.title}
         icon={<Icon icon={cilEnvelopeClosed} size="xl" />}
         category="support"
-        description="Private support channels opened from a panel button, with transcripts saved when tickets are closed."
+        description={info.description}
         infoKey="tickets"
       />
 

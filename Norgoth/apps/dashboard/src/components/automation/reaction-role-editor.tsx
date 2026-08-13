@@ -7,6 +7,7 @@ import { AssignmentModeSelect } from "@/components/automation/assignment-mode-se
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import type { GuildEmojiItem } from "@/lib/discord/emoji-data";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import type { RoleMenuEntry } from "@/stores/automation-store";
 import type { GuildRole } from "@/stores/guild-store";
 import { roleColorStyles } from "@/lib/discord/role-color";
@@ -27,27 +28,26 @@ export function ReactionRoleEditor({
   onUpdate,
   onRemove,
 }: ReactionRoleEditorProps) {
+  const dict = useLocaleDict();
+  const d = dict.roleMenusPage;
+
   if (entries.length === 0) {
     return (
-      <p className="mb-0 small text-body-secondary">
-        Add roles above. Each needs an emoji reaction members can click.
-      </p>
+      <p className="mb-0 small text-body-secondary">{d.reactionEmpty}</p>
     );
   }
 
   return (
     <div className="d-flex flex-column gap-3">
       <div>
-        <h4 className="h6 fw-semibold mb-1">Emoji reaction settings</h4>
-        <p className="mb-0 small text-body-secondary">
-          After publishing, the bot adds these reactions to the message. Each
-          emoji must be unique for this menu.
-        </p>
+        <h4 className="h6 fw-semibold mb-1">{d.reactionSettings}</h4>
+        <p className="mb-0 small text-body-secondary">{d.reactionSettingsDesc}</p>
       </div>
       {entries.map((entry) => {
         const role = rolesById.get(entry.role_id);
         const tint = roleColorStyles(role?.color);
         const missingEmoji = !(entry.emoji ?? "").trim();
+        const name = role?.name ?? entry.label;
         return (
           <div
             key={entry.role_id}
@@ -61,12 +61,12 @@ export function ReactionRoleEditor({
             <div className="row g-3 align-items-start">
               <div className="col-md-3">
                 <DiscordRoleBadge
-                  name={role?.name ?? entry.label}
+                  name={name}
                   color={role?.color}
                 />
               </div>
               <div className="col-md-5">
-                <div className="small mb-1 fw-semibold">Reaction emoji</div>
+                <div className="small mb-1 fw-semibold">{d.reactionEmoji}</div>
                 <DiscordEmojiPicker
                   value={entry.emoji ?? ""}
                   onChange={(emoji) => onUpdate(entry.role_id, { emoji })}
@@ -75,7 +75,7 @@ export function ReactionRoleEditor({
                 />
                 {missingEmoji ? (
                   <p className="mb-0 mt-1 small text-warning">
-                    Choose an emoji before publishing.
+                    {d.chooseEmojiBeforePublish}
                   </p>
                 ) : null}
               </div>
@@ -90,7 +90,7 @@ export function ReactionRoleEditor({
                   variant="danger"
                   size="sm"
                   onClick={() => onRemove(entry.role_id)}
-                  aria-label={`Remove ${role?.name ?? entry.label}`}
+                  aria-label={formatDict(d.removeAria, { name })}
                 >
                   <Icon icon={cilTrash} />
                 </Button>

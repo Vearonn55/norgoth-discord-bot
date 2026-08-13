@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { TranscriptConversation } from "@/components/tickets/transcript-conversation";
 import { apiUrl } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 
 type SharedTranscript = {
   token: string;
@@ -26,13 +27,15 @@ export default function TicketTranscriptPage() {
   const params = useParams();
   const lang = String(params?.lang || "en");
   const token = String(params?.token || "");
+  const dict = useLocaleDict();
+  const d = dict.transcriptPortalPage;
   const [data, setData] = useState<SharedTranscript | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!token) {
-      setError("Missing transcript token.");
+      setError(d.missingToken);
       setLoading(false);
       return;
     }
@@ -46,7 +49,7 @@ export default function TicketTranscriptPage() {
       try {
         const response = await fetch(
           apiUrl(`/tickets/transcript/${encodeURIComponent(token)}`),
-          { cache: "no-store" }
+          { cache: "no-store" },
         );
         const body = await response.json().catch(() => null);
 
@@ -56,8 +59,8 @@ export default function TicketTranscriptPage() {
               String(
                 body?.detail ||
                   body?.error?.message ||
-                  `Could not load transcript (HTTP ${response.status})`
-              )
+                  formatDict(d.loadFailed, { status: response.status }),
+              ),
             );
           }
           return;
@@ -68,7 +71,7 @@ export default function TicketTranscriptPage() {
         }
       } catch {
         if (!cancelled) {
-          setError("Could not reach the API.");
+          setError(d.apiUnreachable);
         }
       } finally {
         if (!cancelled) {
@@ -81,14 +84,14 @@ export default function TicketTranscriptPage() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [token, d]);
 
   if (loading) {
     return (
       <Card>
         <div className="d-flex align-items-center gap-2 text-body-secondary">
           <CSpinner size="sm" />
-          Loading transcript…
+          {d.loading}
         </div>
       </Card>
     );
@@ -98,7 +101,7 @@ export default function TicketTranscriptPage() {
     return (
       <Card>
         <div className="d-flex flex-column gap-2">
-          <Badge variant="warning">Transcript unavailable</Badge>
+          <Badge variant="warning">{d.unavailable}</Badge>
           <CAlert color="warning" className="mb-0">
             {error}
           </CAlert>
@@ -109,45 +112,48 @@ export default function TicketTranscriptPage() {
 
   const metaItems: { label: string; value: string }[] = [
     {
-      label: "Ticket",
+      label: d.metaTicket,
       value: `#${data.ticket_number ?? "—"}`,
     },
     {
-      label: "Server",
+      label: d.metaServer,
       value: data.guild_name || "—",
     },
     {
-      label: "Channel",
-      value: data.channel_name || "ticket",
+      label: d.metaChannel,
+      value: data.channel_name || d.channelFallback,
     },
   ];
   if (data.panel_name) {
-    metaItems.push({ label: "Panel", value: data.panel_name });
+    metaItems.push({ label: d.metaPanel, value: data.panel_name });
   }
   metaItems.push(
-    { label: "Created by", value: data.opener_name || "unknown" },
-    { label: "Opened at", value: formatDateTime(data.opened_at, lang) },
-    { label: "Closed at", value: formatDateTime(data.closed_at, lang) },
-    { label: "Closed by", value: data.closed_by || "—" },
-    { label: "Status", value: "Closed" }
+    {
+      label: d.metaCreatedBy,
+      value: data.opener_name || d.unknown,
+    },
+    { label: d.metaOpenedAt, value: formatDateTime(data.opened_at, lang) },
+    { label: d.metaClosedAt, value: formatDateTime(data.closed_at, lang) },
+    { label: d.metaClosedBy, value: data.closed_by || "—" },
+    { label: d.metaStatus, value: d.closed },
   );
 
   return (
     <div className="d-flex flex-column gap-4">
       <div className="d-flex flex-column gap-2">
-        <h1 className="h3 mb-0 fw-semibold">Ticket Transcript</h1>
-        <p className="mb-0 small text-body-secondary">
-          A readable record of the closed support conversation.
-        </p>
+        <h1 className="h3 mb-0 fw-semibold">{d.title}</h1>
+        <p className="mb-0 small text-body-secondary">{d.subtitle}</p>
       </div>
 
       <Card>
         <div className="d-flex flex-column gap-3">
           <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
             <h2 className="h5 mb-0 fw-semibold">
-              Ticket #{data.ticket_number ?? "—"}
+              {formatDict(d.ticketHeading, {
+                number: data.ticket_number ?? "—",
+              })}
             </h2>
-            <Badge variant="neutral">Closed</Badge>
+            <Badge variant="neutral">{d.closed}</Badge>
           </div>
           <div className="row g-2">
             {metaItems.map((item) => (
@@ -162,7 +168,7 @@ export default function TicketTranscriptPage() {
 
       <Card>
         <div className="d-flex flex-column gap-3">
-          <h2 className="h6 mb-0 fw-semibold">Conversation</h2>
+          <h2 className="h6 mb-0 fw-semibold">{d.conversation}</h2>
           <TranscriptConversation transcript={data.transcript} />
         </div>
       </Card>

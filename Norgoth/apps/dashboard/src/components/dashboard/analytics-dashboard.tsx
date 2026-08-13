@@ -21,6 +21,7 @@ import {
   type EngagementRange,
 } from "@/lib/analytics/engagement";
 import { formatDateTime } from "@/lib/datetime";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import {
   campaignDateStamp,
@@ -169,6 +170,8 @@ function campaignTrendByDay(items: Campaign[]): Record<string, string | number>[
 }
 
 export function AnalyticsDashboard({ lang }: { lang: string }) {
+  const dict = useLocaleDict();
+  const d = dict.analyticsPage;
   const campaigns = useCampaignsStore((s) => s.campaigns);
   const dateRange = useCampaignsStore((s) => s.dateRange);
   const setDateRange = useCampaignsStore((s) => s.setDateRange);
@@ -244,17 +247,17 @@ export function AnalyticsDashboard({ lang }: { lang: string }) {
 
       <div className="d-flex flex-column gap-3">
         <PageHeader
-          title="Analytics"
+          title={d.title}
           category="analytics"
-          description="Campaign delivery and community engagement from live data."
+          description={d.description}
           actions={
             <>
               <Button asChild variant="secondary">
-                <Link href={`/${lang}/campaigns/history`}>Campaign History</Link>
+                <Link href={`/${lang}/campaigns/history`}>{d.campaignHistory}</Link>
               </Button>
               <Button asChild variant="primary">
                 <Link href={`/${lang}/observability/worker-health`}>
-                  Worker Health
+                  {d.workerHealth}
                 </Link>
               </Button>
             </>
@@ -264,10 +267,9 @@ export function AnalyticsDashboard({ lang }: { lang: string }) {
         <SectionCard level="secondary">
           <div className="d-flex flex-wrap align-items-start justify-content-between gap-3">
             <div>
-              <div className="fw-semibold">Date range</div>
+              <div className="fw-semibold">{d.dateRange}</div>
               <p className="mb-0 small text-body-secondary">
-                Filters campaign aggregates. Engagement loads the nearest 7 / 30
-                / 90 day bucket.
+                {d.dateRangeHelp}
               </p>
             </div>
             <DateRangePicker value={dateRange} onChange={setDateRange} />
@@ -278,9 +280,12 @@ export function AnalyticsDashboard({ lang }: { lang: string }) {
           items={[
             {
               key: "success",
-              label: "Delivery success",
+              label: d.deliverySuccess,
               value: `${analyticsData.successRate}%`,
-              helper: `${analyticsData.sent} sent · ${analyticsData.failed} failed`,
+              helper: formatDict(d.sentFailedHelper, {
+                sent: analyticsData.sent,
+                failed: analyticsData.failed,
+              }),
               tone:
                 analyticsData.successRate >= 90
                   ? "success"
@@ -290,30 +295,36 @@ export function AnalyticsDashboard({ lang }: { lang: string }) {
             },
             {
               key: "campaigns",
-              label: "Campaigns",
+              label: d.campaigns,
               value: analyticsData.totalCampaigns,
-              helper: `${analyticsData.activeCampaigns} active`,
+              helper: formatDict(d.activeHelper, {
+                count: analyticsData.activeCampaigns,
+              }),
               tone: "info",
             },
             {
               key: "retries",
-              label: "Retries",
+              label: d.retries,
               value: analyticsData.retries,
-              helper: `${analyticsData.permanentFailed} permanent fails`,
+              helper: formatDict(d.permanentFailsHelper, {
+                count: analyticsData.permanentFailed,
+              }),
               tone: analyticsData.retries > 0 ? "warning" : "success",
             },
             {
               key: "engagement",
-              label: "Engagement score",
+              label: d.engagementScore,
               value:
                 engagementMetrics != null
                   ? Math.round(engagementMetrics.score)
                   : "—",
               helper: engagement?.insufficient_history
-                ? "No telemetry yet"
+                ? d.noTelemetryYet
                 : engagement
-                  ? `${engagement.totals.messages} msgs`
-                  : "Guild required",
+                  ? formatDict(d.msgsHelper, {
+                      count: engagement.totals.messages,
+                    })
+                  : d.guildRequired,
               tone: engagementMetrics ? "success" : "default",
             },
           ]}
@@ -321,38 +332,38 @@ export function AnalyticsDashboard({ lang }: { lang: string }) {
 
         <CategoryHeader
           category="analytics"
-          title="Important trends"
-          description="Campaign delivery by day and community message activity."
+          title={d.importantTrends}
+          description={d.importantTrendsDesc}
           as="h3"
         />
 
         <div className="row g-3">
           <div className="col-xl-6">
             <SectionCard level="primary" category="campaigns">
-              <h3 className="h6 fw-semibold mb-3">Campaign delivery</h3>
+              <h3 className="h6 fw-semibold mb-3">{d.campaignDelivery}</h3>
               <TrendChart
                 data={campaignTrend}
                 xKey="date"
                 series={[
-                  { key: "sent", label: "Sent", color: "#3dd68c" },
-                  { key: "failed", label: "Failed", color: "#ff6b7a" },
+                  { key: "sent", label: d.seriesSent, color: "#3dd68c" },
+                  { key: "failed", label: d.seriesFailed, color: "#ff6b7a" },
                 ]}
-                emptyMessage="No campaign delivery points in this range."
+                emptyMessage={d.emptyCampaignTrend}
               />
             </SectionCard>
           </div>
           <div className="col-xl-6">
             <SectionCard level="primary" category="community">
-              <h3 className="h6 fw-semibold mb-3">Community engagement</h3>
+              <h3 className="h6 fw-semibold mb-3">{d.communityEngagement}</h3>
               <TrendChart
                 data={engagementTrend}
                 xKey="date"
                 series={[
-                  { key: "messages", label: "Messages", color: "#6ea8fe" },
-                  { key: "authors", label: "Authors", color: "#3dd68c" },
-                  { key: "joins", label: "Joins", color: "#fbbf24" },
+                  { key: "messages", label: d.seriesMessages, color: "#6ea8fe" },
+                  { key: "authors", label: d.seriesAuthors, color: "#3dd68c" },
+                  { key: "joins", label: d.seriesJoins, color: "#fbbf24" },
                 ]}
-                emptyMessage="No engagement history yet — buckets fill while the bot is online."
+                emptyMessage={d.emptyEngagementTrend}
               />
             </SectionCard>
           </div>
@@ -360,52 +371,66 @@ export function AnalyticsDashboard({ lang }: { lang: string }) {
 
         <CategoryHeader
           category="community"
-          title="Community KPIs"
-          description="Derived from live engagement telemetry over the selected window."
+          title={d.communityKpis}
+          description={d.communityKpisDesc}
           as="h3"
         />
         <KpiStrip
           items={[
             {
               key: "engagement-rate",
-              label: "Engagement rate",
+              label: d.engagementRate,
               value:
                 communityKpis?.engagementRate != null
                   ? `${Math.round(communityKpis.engagementRate)}%`
                   : "—",
               helper:
                 communityKpis?.engagementRate != null
-                  ? `${communityKpis.activeMembers} active / ${memberCount ?? "?"} members`
+                  ? formatDict(d.activeMembersHelper, {
+                      active: communityKpis.activeMembers,
+                      members: memberCount ?? "?",
+                    })
                   : engagement?.insufficient_history
-                    ? "No telemetry yet"
-                    : "Member count required",
+                    ? d.noTelemetryYet
+                    : d.memberCountRequired,
               tone: communityKpis?.engagementRate != null ? "info" : "default",
             },
             {
               key: "msgs-per-member",
-              label: "Msgs / active member",
+              label: d.msgsPerActive,
               value:
                 communityKpis != null
                   ? communityKpis.messagesPerActiveMember.toFixed(1)
                   : "—",
               helper: engagement
-                ? `${engagement.totals.messages} msgs · ${communityKpis?.activeMembers ?? 0} active members`
-                : "Guild required",
+                ? formatDict(d.msgsActiveHelper, {
+                    msgs: engagement.totals.messages,
+                    active: communityKpis?.activeMembers ?? 0,
+                  })
+                : d.guildRequired,
               tone: communityKpis ? "success" : "default",
             },
             {
               key: "net-growth",
-              label: "Net growth",
+              label: d.netGrowth,
               value:
                 communityKpis != null
                   ? `${communityKpis.netGrowth >= 0 ? "+" : ""}${communityKpis.netGrowth}`
                   : "—",
               helper:
                 communityKpis?.netGrowthRate != null
-                  ? `${(communityKpis.netGrowthRate * 100).toFixed(1)}% · ${communityKpis.newMembers} new · ${engagement?.totals.leaves ?? 0} left`
+                  ? formatDict(d.netGrowthRateHelper, {
+                      rate: (communityKpis.netGrowthRate * 100).toFixed(1),
+                      new: communityKpis.newMembers,
+                      left: engagement?.totals.leaves ?? 0,
+                    })
                   : engagement
-                    ? `${engagement.totals.joins} new · ${engagement.totals.rejoins} rejoin · ${engagement.totals.leaves} leaves`
-                    : "Guild required",
+                    ? formatDict(d.joinsRejoinsLeaves, {
+                        joins: engagement.totals.joins,
+                        rejoins: engagement.totals.rejoins,
+                        leaves: engagement.totals.leaves,
+                      })
+                    : d.guildRequired,
               tone:
                 communityKpis == null
                   ? "default"
@@ -415,15 +440,17 @@ export function AnalyticsDashboard({ lang }: { lang: string }) {
             },
             {
               key: "retention",
-              label: "Retention",
+              label: d.retention,
               value:
                 communityKpis?.retentionRate != null
                   ? `${Math.round(communityKpis.retentionRate * 100)}%`
                   : "—",
               helper:
                 communityKpis?.churnRate != null
-                  ? `${(communityKpis.churnRate * 100).toFixed(1)}% churn over window`
-                  : "Population snapshot required",
+                  ? formatDict(d.churnHelper, {
+                      rate: (communityKpis.churnRate * 100).toFixed(1),
+                    })
+                  : d.populationRequired,
               tone:
                 communityKpis?.retentionRate == null
                   ? "default"
@@ -435,17 +462,17 @@ export function AnalyticsDashboard({ lang }: { lang: string }) {
             },
             {
               key: "rejoins",
-              label: "Rejoins",
+              label: d.rejoins,
               value: communityKpis != null ? communityKpis.rejoins : "—",
-              helper: "Members who left and returned",
+              helper: d.rejoinsHelp,
               tone: "default",
             },
             {
               key: "voice-uniques",
-              label: "Voice participants",
+              label: d.voiceParticipants,
               value:
                 communityKpis != null ? communityKpis.voiceUniques : "—",
-              helper: "Unique members in voice (window)",
+              helper: d.voiceHelp,
               tone: "info",
             },
           ]}
@@ -453,18 +480,18 @@ export function AnalyticsDashboard({ lang }: { lang: string }) {
 
         <CategoryHeader
           category="campaigns"
-          title="Campaign detail"
-          description="Platform delivery and recent campaigns in range."
+          title={d.campaignDetail}
+          description={d.campaignDetailDesc}
           as="h3"
         />
 
         <div className="row g-3">
           <div className="col-xl-5">
             <SectionCard level="secondary">
-              <h3 className="h6 fw-semibold mb-3">Platform delivery</h3>
+              <h3 className="h6 fw-semibold mb-3">{d.platformDelivery}</h3>
               {analyticsData.platforms.length === 0 ? (
                 <p className="mb-0 small text-body-secondary">
-                  No platform delivery data yet.
+                  {d.emptyPlatforms}
                 </p>
               ) : (
                 <div className="d-flex flex-column gap-2">
@@ -475,8 +502,11 @@ export function AnalyticsDashboard({ lang }: { lang: string }) {
                     >
                       <span className="fw-semibold">{platform.platform}</span>
                       <span className="small text-body-secondary">
-                        {platform.sent} sent · {platform.failed} failed ·{" "}
-                        {platform.successRate}%
+                        {formatDict(d.platformRow, {
+                          sent: platform.sent,
+                          failed: platform.failed,
+                          rate: platform.successRate,
+                        })}
                       </span>
                     </div>
                   ))}
@@ -486,10 +516,10 @@ export function AnalyticsDashboard({ lang }: { lang: string }) {
           </div>
           <div className="col-xl-7">
             <SectionCard level="secondary">
-              <h3 className="h6 fw-semibold mb-3">Recent campaigns</h3>
+              <h3 className="h6 fw-semibold mb-3">{d.recentCampaigns}</h3>
               {recentCampaigns.length === 0 ? (
                 <p className="mb-0 small text-body-secondary">
-                  No campaigns in this date range.
+                  {d.emptyRecentCampaigns}
                 </p>
               ) : (
                 <div className="d-flex flex-column gap-2">
@@ -500,7 +530,7 @@ export function AnalyticsDashboard({ lang }: { lang: string }) {
                       className="d-flex flex-wrap align-items-center justify-content-between gap-2 border rounded px-3 py-2 text-decoration-none"
                     >
                       <div className="fw-semibold">
-                        {campaign.title || campaign.name || "Untitled Campaign"}
+                        {campaign.title || campaign.name || d.untitledCampaign}
                       </div>
                       <div className="d-flex align-items-center gap-2 small text-body-secondary">
                         <Badge variant="neutral">

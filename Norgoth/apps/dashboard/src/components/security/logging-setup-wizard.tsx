@@ -23,6 +23,7 @@ import {
   hexToColor,
   sanitizeChannelName,
 } from "@/lib/logging";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import {
   useLoggingConfigStore,
   type LoggingCatalog,
@@ -46,13 +47,6 @@ type GroupDraft = {
     colorHex: string;
   }[];
 };
-
-const STEPS = [
-  { id: "category", label: "Category" },
-  { id: "channels", label: "Channels" },
-  { id: "events", label: "Events & Colors" },
-  { id: "review", label: "Review" },
-];
 
 function buildDraft(catalog: LoggingCatalog): GroupDraft[] {
   return catalog.groups.map((group) => {
@@ -84,27 +78,38 @@ type Props = {
 };
 
 export function LoggingSetupWizard({ guildId, channels, onComplete }: Props) {
+  const dict = useLocaleDict();
+  const d = dict.discordLogsPage;
   const catalog = useLoggingConfigStore((s) => s.catalog);
   const save = useLoggingConfigStore((s) => s.save);
   const provision = useLoggingConfigStore((s) => s.provision);
   const busy = useLoggingConfigStore((s) => s.busy);
   const error = useLoggingConfigStore((s) => s.error);
 
+  const steps = useMemo(
+    () => [
+      { id: "category", label: d.stepCategory },
+      { id: "channels", label: d.stepChannels },
+      { id: "events", label: d.stepEvents },
+      { id: "review", label: d.stepReview },
+    ],
+    [d.stepCategory, d.stepChannels, d.stepEvents, d.stepReview],
+  );
+
   const [step, setStep] = useState(0);
   const [categoryManaged, setCategoryManaged] = useState(true);
   const [categoryEmoji, setCategoryEmoji] = useState("");
   const [categoryName, setCategoryName] = useState("Norgoth Logs");
   const [groups, setGroups] = useState<GroupDraft[]>(() =>
-    catalog ? buildDraft(catalog) : []
+    catalog ? buildDraft(catalog) : [],
   );
   const [localError, setLocalError] = useState<string | null>(null);
 
   const includedGroups = useMemo(
     () => groups.filter((group) => group.included),
-    [groups]
+    [groups],
   );
 
-  // Catalog can arrive after mount; initialise the draft once it's available.
   useEffect(() => {
     if (catalog && groups.length === 0) {
       setGroups(buildDraft(catalog));
@@ -114,7 +119,7 @@ export function LoggingSetupWizard({ guildId, channels, onComplete }: Props) {
   if (!catalog) {
     return (
       <Card>
-        <p className="mb-0 text-body-secondary">Loading event catalog…</p>
+        <p className="mb-0 text-body-secondary">{d.loadingCatalog}</p>
       </Card>
     );
   }
@@ -122,15 +127,15 @@ export function LoggingSetupWizard({ guildId, channels, onComplete }: Props) {
   function patchGroup(key: string, patch: Partial<GroupDraft>) {
     setGroups((current) =>
       current.map((group) =>
-        group.key === key ? { ...group, ...patch } : group
-      )
+        group.key === key ? { ...group, ...patch } : group,
+      ),
     );
   }
 
   function patchEvent(
     groupKey: string,
     eventType: string,
-    patch: Partial<GroupDraft["events"][number]>
+    patch: Partial<GroupDraft["events"][number]>,
   ) {
     setGroups((current) =>
       current.map((group) =>
@@ -140,24 +145,24 @@ export function LoggingSetupWizard({ guildId, channels, onComplete }: Props) {
               events: group.events.map((event) =>
                 event.event_type === eventType
                   ? { ...event, ...patch }
-                  : event
+                  : event,
               ),
             }
-          : group
-      )
+          : group,
+      ),
     );
   }
 
   function validate(): string | null {
     if (includedGroups.length === 0) {
-      return "Select at least one log group.";
+      return d.selectOneGroup;
     }
     for (const group of includedGroups) {
       if (group.mode === "existing" && !group.channelId) {
-        return `Choose an existing channel for “${group.label}” or switch it to a new channel.`;
+        return formatDict(d.chooseExistingChannel, { label: group.label });
       }
       if (group.mode === "new" && !group.newName.trim()) {
-        return `Give the “${group.label}” channel a name.`;
+        return formatDict(d.giveChannelName, { label: group.label });
       }
     }
     return null;
@@ -183,8 +188,8 @@ export function LoggingSetupWizard({ guildId, channels, onComplete }: Props) {
         name:
           group.mode === "new"
             ? composeChannelName(group.newEmoji, group.newName)
-            : channels.find((c) => c.id === group.channelId)?.name ??
-              group.key,
+            : (channels.find((c) => c.id === group.channelId)?.name ??
+              group.key),
         channel_id: group.mode === "existing" ? group.channelId : null,
         norgoth_managed: group.mode === "new",
         default_color: hexToColor(group.defaultColorHex),
@@ -197,7 +202,7 @@ export function LoggingSetupWizard({ guildId, channels, onComplete }: Props) {
           channel_key: group.key,
           color: event.overrideColor ? hexToColor(event.colorHex) : null,
           enabled: event.enabled,
-        }))
+        })),
       ),
     };
 
@@ -217,13 +222,11 @@ export function LoggingSetupWizard({ guildId, channels, onComplete }: Props) {
     <Card>
       <div className="d-flex flex-column gap-4">
         <div>
-          <h2 className="h5 mb-1 fw-semibold">Logging Setup</h2>
-          <p className="mb-0 small text-body-secondary">
-            Provision log channels and route events in a few steps.
-          </p>
+          <h2 className="h5 mb-1 fw-semibold">{d.wizardTitle}</h2>
+          <p className="mb-0 small text-body-secondary">{d.wizardDescription}</p>
         </div>
 
-        <Stepper steps={STEPS} current={step} onStepClick={setStep} />
+        <Stepper steps={steps} current={step} onStepClick={setStep} />
 
         {localError || error ? (
           <CAlert color="danger" className="mb-0 py-2">
@@ -235,30 +238,29 @@ export function LoggingSetupWizard({ guildId, channels, onComplete }: Props) {
           <div className="d-flex flex-column gap-3">
             <div className="d-flex align-items-center justify-content-between gap-3 border rounded p-3">
               <div>
-                <div className="fw-medium">Create a NorBot-managed category</div>
+                <div className="fw-medium">{d.createManagedCategory}</div>
                 <p className="mb-0 mt-1 small text-body-secondary">
-                  Groups new log channels under a dedicated category that
-                  NorBot can manage and repair.
+                  {d.createManagedCategoryHelp}
                 </p>
               </div>
               <Switch
                 checked={categoryManaged}
                 onChange={setCategoryManaged}
-                aria-label="Create managed category"
+                aria-label={d.createManagedCategoryAria}
               />
             </div>
             {categoryManaged ? (
               <div className="d-flex align-items-end gap-2">
                 <div>
-                  <CFormLabel>Category icon (optional)</CFormLabel>
+                  <CFormLabel>{d.categoryIconOptional}</CFormLabel>
                   <DiscordEmojiPicker
                     value={categoryEmoji}
                     onChange={setCategoryEmoji}
-                    placeholder="Icon"
+                    placeholder={d.iconPlaceholder}
                   />
                 </div>
                 <div className="flex-grow-1">
-                  <CFormLabel>Category name</CFormLabel>
+                  <CFormLabel>{d.categoryName}</CFormLabel>
                   <CFormInput
                     value={categoryName}
                     maxLength={90}
@@ -268,8 +270,7 @@ export function LoggingSetupWizard({ guildId, channels, onComplete }: Props) {
               </div>
             ) : (
               <CAlert color="secondary" className="mb-0 py-2 small">
-                New channels will be created at the top level. Existing channels
-                keep their current location.
+                {d.topLevelAlert}
               </CAlert>
             )}
           </div>
@@ -278,7 +279,10 @@ export function LoggingSetupWizard({ guildId, channels, onComplete }: Props) {
         {step === 1 ? (
           <div className="d-flex flex-column gap-3">
             {groups.map((group) => (
-              <div key={group.key} className="border rounded p-3 d-flex flex-column gap-2">
+              <div
+                key={group.key}
+                className="border rounded p-3 d-flex flex-column gap-2"
+              >
                 <div className="d-flex align-items-center justify-content-between gap-3">
                   <CFormCheck
                     id={`group-${group.key}`}
@@ -295,7 +299,7 @@ export function LoggingSetupWizard({ guildId, channels, onComplete }: Props) {
                         size="sm"
                         onClick={() => patchGroup(group.key, { mode: "new" })}
                       >
-                        New channel
+                        {d.newChannel}
                       </Button>
                       <Button
                         variant={
@@ -306,7 +310,7 @@ export function LoggingSetupWizard({ guildId, channels, onComplete }: Props) {
                           patchGroup(group.key, { mode: "existing" })
                         }
                       >
-                        Existing
+                        {d.existingChannel}
                       </Button>
                     </div>
                   ) : null}
@@ -316,18 +320,18 @@ export function LoggingSetupWizard({ guildId, channels, onComplete }: Props) {
                     <div className="d-flex align-items-end gap-2">
                       <div>
                         <CFormLabel className="small">
-                          Icon (optional)
+                          {d.iconOptional}
                         </CFormLabel>
                         <DiscordEmojiPicker
                           value={group.newEmoji}
                           onChange={(value) =>
                             patchGroup(group.key, { newEmoji: value })
                           }
-                          placeholder="Icon"
+                          placeholder={d.iconPlaceholder}
                         />
                       </div>
                       <div className="flex-grow-1">
-                        <CFormLabel className="small">Channel name</CFormLabel>
+                        <CFormLabel className="small">{d.channelName}</CFormLabel>
                         <CFormInput
                           value={group.newName}
                           onChange={(e) =>
@@ -350,7 +354,7 @@ export function LoggingSetupWizard({ guildId, channels, onComplete }: Props) {
                         })
                       }
                     >
-                      <option value="">Select a channel…</option>
+                      <option value="">{d.selectChannel}</option>
                       {channels.map((channel) => (
                         <option key={channel.id} value={channel.id}>
                           #{channel.name}
@@ -368,23 +372,26 @@ export function LoggingSetupWizard({ guildId, channels, onComplete }: Props) {
           <div className="d-flex flex-column gap-3">
             {includedGroups.length === 0 ? (
               <CAlert color="secondary" className="mb-0">
-                No groups selected. Go back and pick at least one.
+                {d.noGroupsSelected}
               </CAlert>
             ) : (
               includedGroups.map((group) => (
-                <div key={group.key} className="border rounded p-3 d-flex flex-column gap-2">
+                <div
+                  key={group.key}
+                  className="border rounded p-3 d-flex flex-column gap-2"
+                >
                   <div className="d-flex align-items-center justify-content-between gap-2">
                     <span className="fw-semibold">{group.label}</span>
                     <div className="d-flex align-items-center gap-2">
                       <span className="small text-body-secondary">
-                        Group color
+                        {d.groupColor}
                       </span>
                       <EmbedColorPicker
                         value={group.defaultColorHex}
                         onChange={(hex) =>
                           patchGroup(group.key, { defaultColorHex: hex })
                         }
-                        label="Group color"
+                        label={d.groupColor}
                       />
                     </div>
                   </div>
@@ -407,7 +414,7 @@ export function LoggingSetupWizard({ guildId, channels, onComplete }: Props) {
                         <div className="d-flex align-items-center gap-2">
                           <CFormCheck
                             id={`ovr-${event.event_type}`}
-                            label="Custom color"
+                            label={d.customColor}
                             checked={event.overrideColor}
                             onChange={(e) =>
                               patchEvent(group.key, event.event_type, {
@@ -423,7 +430,7 @@ export function LoggingSetupWizard({ guildId, channels, onComplete }: Props) {
                                   colorHex: hex,
                                 })
                               }
-                              label="Event color"
+                              label={d.eventColor}
                             />
                           ) : null}
                         </div>
@@ -439,18 +446,21 @@ export function LoggingSetupWizard({ guildId, channels, onComplete }: Props) {
         {step === 3 ? (
           <div className="d-flex flex-column gap-3">
             <div className="border rounded p-3">
-              <div className="fw-semibold mb-1">Category</div>
+              <div className="fw-semibold mb-1">{d.stepCategory}</div>
               <div className="small text-body-secondary">
                 {categoryManaged
-                  ? `Norgoth will create “${composeCategoryName(categoryEmoji, categoryName)}”.`
-                  : "No managed category."}
+                  ? formatDict(d.willCreateCategory, {
+                      name: composeCategoryName(categoryEmoji, categoryName),
+                    })
+                  : d.noManagedCategory}
               </div>
             </div>
             <div className="border rounded p-3 d-flex flex-column gap-2">
-              <div className="fw-semibold">Channels &amp; events</div>
+              <div className="fw-semibold">{d.channelsAndEvents}</div>
               {includedGroups.map((group) => {
-                const enabledEvents = group.events.filter((e) => e.enabled)
-                  .length;
+                const enabledEvents = group.events.filter(
+                  (e) => e.enabled,
+                ).length;
                 return (
                   <div
                     key={group.key}
@@ -459,11 +469,14 @@ export function LoggingSetupWizard({ guildId, channels, onComplete }: Props) {
                     <span>
                       <Badge variant="neutral">{group.label}</Badge>{" "}
                       {group.mode === "new"
-                        ? `#${composeChannelName(group.newEmoji, group.newName)} (new)`
+                        ? `#${composeChannelName(group.newEmoji, group.newName)} ${d.newSuffix}`
                         : `#${channels.find((c) => c.id === group.channelId)?.name ?? "?"}`}
                     </span>
                     <span className="text-body-secondary">
-                      {enabledEvents} event{enabledEvents === 1 ? "" : "s"}
+                      {formatDict(
+                        enabledEvents === 1 ? d.eventCount : d.eventCountPlural,
+                        { count: enabledEvents },
+                      )}
                     </span>
                   </div>
                 );
@@ -478,9 +491,9 @@ export function LoggingSetupWizard({ guildId, channels, onComplete }: Props) {
             onClick={() => setStep((s) => Math.max(0, s - 1))}
             disabled={step === 0 || busy}
           >
-            Back
+            {d.back}
           </Button>
-          {step < STEPS.length - 1 ? (
+          {step < steps.length - 1 ? (
             <Button
               variant="primary"
               onClick={() => {
@@ -492,10 +505,10 @@ export function LoggingSetupWizard({ guildId, channels, onComplete }: Props) {
                   }
                 }
                 setLocalError(null);
-                setStep((s) => Math.min(STEPS.length - 1, s + 1));
+                setStep((s) => Math.min(steps.length - 1, s + 1));
               }}
             >
-              Next
+              {d.next}
             </Button>
           ) : (
             <Button
@@ -503,7 +516,7 @@ export function LoggingSetupWizard({ guildId, channels, onComplete }: Props) {
               onClick={() => void handleCreate()}
               disabled={busy}
             >
-              {busy ? "Creating…" : "Create logging"}
+              {busy ? d.creating : d.createLogging}
             </Button>
           )}
         </div>

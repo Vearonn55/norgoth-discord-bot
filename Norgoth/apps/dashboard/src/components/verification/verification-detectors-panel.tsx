@@ -7,14 +7,10 @@ import { MiniFeatureCard } from "@/components/ui/mini-feature-card";
 import { FeatureConfigurationModal } from "@/components/ui/feature-modal";
 import { VerificationSettingsModal } from "@/components/verification/verification-settings-modal";
 import { useFirstGuild } from "@/lib/use-first-guild";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import { useVerificationStore, type RiskAction } from "@/stores/verification-store";
 
 type DetectorKey = "vpn" | "shared_ip";
-
-const ACTION_LABELS: Record<RiskAction, string> = {
-  deny: "Deny verification",
-  manual_review: "Route to Manual Verification",
-};
 
 /**
  * Two mini feature cards (VPN/Proxy, Shared IP) shown above the Verification
@@ -23,6 +19,8 @@ const ACTION_LABELS: Record<RiskAction, string> = {
  * Disabled detectors have no effect on verification — enforced backend-side.
  */
 export function VerificationDetectorsPanel() {
+  const dict = useLocaleDict();
+  const d = dict.verificationPage;
   const { guildId } = useFirstGuild();
   const config = useVerificationStore((s) => s.config);
   const loading = useVerificationStore((s) => s.loading);
@@ -39,6 +37,11 @@ export function VerificationDetectorsPanel() {
 
   if (!guildId) return null;
 
+  const actionLabels: Record<RiskAction, string> = {
+    deny: d.actionDeny,
+    manual_review: d.actionManualReview,
+  };
+
   const detectors: Record<
     DetectorKey,
     {
@@ -50,16 +53,16 @@ export function VerificationDetectorsPanel() {
     }
   > = {
     vpn: {
-      title: "VPN / Proxy Detection",
+      title: d.vpnTitle,
       icon: cilShieldAlt,
-      baseDescription: "Flag VPN or proxy connections (proxycheck.io).",
+      baseDescription: d.vpnDesc,
       enabled: config.deny_vpn_or_proxy,
       action: config.vpn_or_proxy_action,
     },
     shared_ip: {
-      title: "Shared IP Detection",
+      title: d.sharedIpTitle,
       icon: cilPeople,
-      baseDescription: "Flag IPs already used by another verified account.",
+      baseDescription: d.sharedIpDesc,
       enabled: config.deny_shared_ip,
       action: config.shared_ip_action,
     },
@@ -74,7 +77,7 @@ export function VerificationDetectorsPanel() {
         ? { deny_vpn_or_proxy: checked }
         : { deny_shared_ip: checked };
     const result = await applyVerificationState(guildId!, patch);
-    if (!result.ok) setError(result.error ?? "Update failed.");
+    if (!result.ok) setError(result.error ?? d.updateFailed);
   }
 
   function openModal(key: DetectorKey) {
@@ -94,7 +97,7 @@ export function VerificationDetectorsPanel() {
     const result = await patchDetectors(guildId!, patch);
     setSaving(false);
     if (result.ok) setOpenKey(null);
-    else setError(result.error ?? "Save failed.");
+    else setError(result.error ?? d.saveFailed);
   }
 
   const activeDetector = openKey ? detectors[openKey] : null;
@@ -103,8 +106,8 @@ export function VerificationDetectorsPanel() {
     <div className="d-flex flex-column gap-3">
       <MiniFeatureCard
         icon={cilSettings}
-        name="Verification Settings"
-        description="Channels, roles, account-age policy, and the Discord verify panel."
+        name={d.detectorsSettingsCard}
+        description={d.detectorsSettingsDesc}
         category="community"
         onClick={() => setSettingsOpen(true)}
       />
@@ -113,7 +116,9 @@ export function VerificationDetectorsPanel() {
         {(["vpn", "shared_ip"] as DetectorKey[]).map((key) => {
           const detector = detectors[key];
           const description = detector.enabled
-            ? `${detector.baseDescription} — Action: ${ACTION_LABELS[detector.action]}`
+            ? `${detector.baseDescription}${formatDict(d.actionSuffix, {
+                action: actionLabels[detector.action],
+              })}`
             : detector.baseDescription;
           return (
             <div className="col-md-6" key={key}>
@@ -137,33 +142,30 @@ export function VerificationDetectorsPanel() {
         title={activeDetector?.title ?? ""}
         icon={activeDetector?.icon}
         category="community"
-        description="Choose what happens when this detector flags a member. Disabled detectors never affect verification."
+        description={d.detectorModalDesc}
         saving={saving}
         error={error}
         onClose={() => setOpenKey(null)}
         onSave={saveModal}
-        saveLabel="Save"
+        saveLabel={d.save}
       >
         {activeDetector ? (
           <div className="d-flex flex-column gap-3">
             <div>
-              <CFormLabel>Detection result action</CFormLabel>
+              <CFormLabel>{d.detectionResultAction}</CFormLabel>
               <CFormSelect
                 value={draftAction}
                 onChange={(event) =>
                   setDraftAction(event.target.value as RiskAction)
                 }
               >
-                <option value="deny">Deny verification</option>
-                <option value="manual_review">
-                  Route to Manual Verification
-                </option>
+                <option value="deny">{d.actionDeny}</option>
+                <option value="manual_review">{d.actionManualReview}</option>
               </CFormSelect>
               <p className="small text-body-secondary mt-1 mb-0">
-                When enabled, a match will{" "}
                 {draftAction === "deny"
-                  ? "deny verification outright."
-                  : "route the member to the Manual Verification queue."}
+                  ? d.detectorHelpDeny
+                  : d.detectorHelpManual}
               </p>
             </div>
           </div>

@@ -5,6 +5,7 @@ import { Icon } from "@/components/ui/icon";
 import { Switch } from "@/components/ui/switch";
 import type { NorgothCategory } from "@/lib/design/category";
 import { categoryAccent } from "@/lib/design/category";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 
 export type MiniFeatureStatus =
   | "enabled"
@@ -12,14 +13,6 @@ export type MiniFeatureStatus =
   | "configured"
   | "needs-attention"
   | "neutral";
-
-const STATUS_LABELS: Record<MiniFeatureStatus, string> = {
-  enabled: "Enabled",
-  disabled: "Disabled",
-  configured: "Configured",
-  "needs-attention": "Needs attention",
-  neutral: "",
-};
 
 const STATUS_COLORS: Record<MiniFeatureStatus, string> = {
   enabled: "var(--cui-success)",
@@ -81,6 +74,14 @@ export function MiniFeatureCard({
   enabledAccent,
   disabledAccent,
 }: MiniFeatureCardProps) {
+  const dict = useLocaleDict();
+  const statusLabels: Record<MiniFeatureStatus, string> = {
+    enabled: dict.common.enabled,
+    disabled: dict.common.disabled,
+    configured: dict.common.configured,
+    "needs-attention": dict.common.needsAttention,
+    neutral: "",
+  };
   const hasToggle = typeof onToggle === "function";
   const categoryColor = category ? categoryAccent(category) : undefined;
   const onAccent = enabledAccent || "var(--cui-success)";
@@ -98,7 +99,7 @@ export function MiniFeatureCard({
       : offText
     : categoryColor;
 
-  const label = statusLabel ?? STATUS_LABELS[status];
+  const label = statusLabel ?? statusLabels[status];
   const accentStyle = accent
     ? ({ ["--norgoth-section-accent" as string]: accent } as CSSProperties)
     : undefined;
@@ -157,7 +158,7 @@ export function MiniFeatureCard({
         type="button"
         onClick={onClick}
         className="norgoth-mini-card-hit"
-        aria-label={`Configure ${name}`}
+        aria-label={formatDict(dict.common.configureAria, { name })}
       >
         {body}
       </button>
@@ -168,13 +169,14 @@ export function MiniFeatureCard({
             color: enabled ? onAccent : offText,
           }}
         >
-          {statusLabel ?? (enabled ? "Enabled" : "Disabled")}
+          {statusLabel ??
+            (enabled ? dict.common.enabled : dict.common.disabled)}
         </span>
         <Switch
           checked={!!enabled}
           disabled={toggleDisabled}
           onChange={(checked) => onToggle?.(checked)}
-          aria-label={`Toggle ${name}`}
+          aria-label={formatDict(dict.common.toggleAria, { name })}
         />
       </span>
     </div>

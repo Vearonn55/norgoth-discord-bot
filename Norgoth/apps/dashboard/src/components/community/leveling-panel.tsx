@@ -32,6 +32,7 @@ import { MessagePreview } from "@/components/discord/message-preview";
 import { RichMessageEditor } from "@/components/editors/rich-message-editor";
 import { PageHeader } from "@/components/layout/page-header";
 import { MutedSection } from "@/components/ui/feature-muting";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import { useModulesStore } from "@/stores/modules-store";
 import {
@@ -48,13 +49,9 @@ import {
   xpForLevel,
 } from "@/stores/leveling-store";
 
-const ANNOUNCE_MODE_LABELS: Record<LevelingConfig["announce_mode"], string> = {
-  current: "Member's channel",
-  channel: "Fixed channel",
-  off: "Disabled",
-};
-
 export function LevelingPanel() {
+  const dict = useLocaleDict();
+  const d = dict.levelingPage;
   const params = useParams();
   const lang = typeof params?.lang === "string" ? params.lang : "en";
   const { guildId, resources, loading, error, reload } = useFirstGuild();
@@ -139,7 +136,7 @@ export function LevelingPanel() {
 
   function handleAddOrUpdateReward() {
     if (!newRewardRoleId) {
-      setFeedback("Select a role to grant before adding a reward.", true);
+      setFeedback(d.selectRoleFeedback, true);
       return;
     }
     const replacing = config.reward_roles.some(
@@ -148,8 +145,8 @@ export function LevelingPanel() {
     addReward();
     setFeedback(
       replacing
-        ? `Updated the reward for level ${newRewardLevel}.`
-        : `Added a reward at level ${newRewardLevel}.`,
+        ? formatDict(d.updatedReward, { level: newRewardLevel })
+        : formatDict(d.addedReward, { level: newRewardLevel }),
       false
     );
   }
@@ -157,10 +154,7 @@ export function LevelingPanel() {
   function handleEditReward(level: number, roleId: string) {
     setNewRewardLevel(level);
     setNewRewardRoleId(roleId);
-    setFeedback(
-      `Editing the level ${level} reward — adjust the fields and click "Add Level Reward" to save.`,
-      false
-    );
+    setFeedback(formatDict(d.editingReward, { level }), false);
   }
 
   const filteredRewards = useMemo(() => {
@@ -181,7 +175,7 @@ export function LevelingPanel() {
       <Card>
         <div className="d-flex align-items-center gap-2 text-body-secondary">
           <CSpinner size="sm" />
-          Loading leveling settings…
+          {d.loading}
         </div>
       </Card>
     );
@@ -191,11 +185,11 @@ export function LevelingPanel() {
     return (
       <Card>
         <div className="d-flex flex-column gap-3">
-          <Badge variant="warning">Bot required</Badge>
+          <Badge variant="warning">{d.botRequired}</Badge>
           <p className="mb-0 small text-body-secondary">{error}</p>
           <div>
             <Button variant="secondary" onClick={() => void reload()}>
-              Retry
+              {d.retry}
             </Button>
           </div>
         </div>
@@ -206,10 +200,10 @@ export function LevelingPanel() {
   return (
     <div className="d-flex flex-column gap-4">
       <PageHeader
-        title="Levels & Activity"
+        title={d.title}
         icon={<Icon icon={cilStar} size="xl" />}
         category="leveling"
-        description="Message and voice XP with level progression, level-up announcements, and role rewards."
+        description={d.description}
         infoKey="leveling"
         masterToggle={{
           enabled: levelingEnabled,
@@ -223,7 +217,7 @@ export function LevelingPanel() {
       <div className="row g-3">
         <div className="col-6 col-xl-3">
           <MetricWidget
-            label="Ranked Members"
+            label={d.rankedMembers}
             value={leaderboard.length}
             accent="primary"
             icon={<Icon icon={cilPeople} size="lg" />}
@@ -231,7 +225,7 @@ export function LevelingPanel() {
         </div>
         <div className="col-6 col-xl-3">
           <MetricWidget
-            label="Reward Roles"
+            label={d.rewardRoles}
             value={config.reward_roles.length}
             accent="warning"
             icon={<Icon icon={cilTags} size="lg" />}
@@ -239,17 +233,17 @@ export function LevelingPanel() {
         </div>
         <div className="col-6 col-xl-3">
           <MetricWidget
-            label="Announce Mode"
-            value={ANNOUNCE_MODE_LABELS[config.announce_mode]}
+            label={d.announceMode}
+            value={{ current: d.announceCurrent, channel: d.announceChannel, off: d.announceOff }[config.announce_mode]}
             accent={config.announce_mode === "off" ? "danger" : "success"}
             icon={<Icon icon={cilBell} size="lg" />}
           />
         </div>
         <div className="col-6 col-xl-3">
           <MetricWidget
-            label="Top Level"
+            label={d.topLevel}
             value={leaderboard[0]?.level ?? 0}
-            helper={leaderboard[0]?.name ?? "No ranked members yet"}
+            helper={leaderboard[0]?.name ?? d.noRankedMembers}
             accent="info"
             icon={<Icon icon={cilStar} size="lg" />}
           />
@@ -262,11 +256,9 @@ export function LevelingPanel() {
           <div className="d-flex align-items-start gap-3">
             <Icon icon={cilSettings} size="lg" className="text-body-secondary mt-1" />
             <div>
-              <h2 className="h5 mb-0 fw-semibold">XP Configuration</h2>
+              <h2 className="h5 mb-0 fw-semibold">{d.xpConfigTitle}</h2>
               <p className="mt-1 mb-0 small text-body-secondary">
-                Members earn XP for messages (once per minute) and, when enabled,
-                for time spent in voice. Tune the base amounts and the shared
-                multiplier below.
+                {d.xpConfigDesc}
               </p>
             </div>
           </div>
@@ -276,7 +268,7 @@ export function LevelingPanel() {
               <div className="d-flex flex-column gap-3">
                 <div>
                   <CFormLabel htmlFor="xp-per-message" className="fw-semibold">
-                    Message XP per Message
+                    {d.messageXp}
                   </CFormLabel>
                   <NumberInput
                     id="xp-per-message"
@@ -285,7 +277,7 @@ export function LevelingPanel() {
                     min={XP_PER_MESSAGE_MIN}
                     max={XP_PER_MESSAGE_MAX}
                     step={1}
-                    aria-label="Message XP per message"
+                    aria-label={d.messageXp}
                     onCommit={(next) =>
                       setConfig((current) => ({
                         ...current,
@@ -294,8 +286,10 @@ export function LevelingPanel() {
                     }
                   />
                   <p className="small text-body-secondary mt-1 mb-0">
-                    Base XP per eligible message ({XP_PER_MESSAGE_MIN}–
-                    {XP_PER_MESSAGE_MAX}).
+                    {formatDict(d.messageXpHelp, {
+                      min: XP_PER_MESSAGE_MIN,
+                      max: XP_PER_MESSAGE_MAX,
+                    })}
                   </p>
                 </div>
               </div>
@@ -308,7 +302,7 @@ export function LevelingPanel() {
                     htmlFor="voice-xp-per-minute"
                     className="fw-semibold"
                   >
-                    Voice XP per Minute
+                    {d.voiceXp}
                   </CFormLabel>
                   <NumberInput
                     id="voice-xp-per-minute"
@@ -317,7 +311,7 @@ export function LevelingPanel() {
                     min={VOICE_XP_PER_MINUTE_MIN}
                     max={VOICE_XP_PER_MINUTE_MAX}
                     step={1}
-                    aria-label="Voice XP per minute"
+                    aria-label={d.voiceXp}
                     onCommit={(next) =>
                       setConfig((current) => ({
                         ...current,
@@ -327,12 +321,11 @@ export function LevelingPanel() {
                   />
                   {voiceXpDisabled ? (
                     <p className="small text-body-tertiary mt-1 mb-0">
-                      Voice Chat XP is disabled when this value is 0.
+                      {d.voiceXpDisabledHelp}
                     </p>
                   ) : (
                     <p className="small text-body-secondary mt-1 mb-0">
-                      XP per minute in voice. Bots, AFK, deafened and
-                      server-muted members are excluded.
+                      {d.voiceXpHelp}
                     </p>
                   )}
                 </div>
@@ -340,13 +333,13 @@ export function LevelingPanel() {
             </CCol>
 
             <CCol md={4}>
-              <CFormLabel className="fw-semibold">Effective XP</CFormLabel>
+              <CFormLabel className="fw-semibold">{d.effectiveXp}</CFormLabel>
               <div className="d-flex flex-column gap-2">
                 <div className="border rounded px-3 py-3 text-center">
                   <div className="h4 mb-0 fw-semibold text-info">
                     {effectiveXp}
                   </div>
-                  <div className="small text-body-secondary">per message</div>
+                  <div className="small text-body-secondary">{d.perMessage}</div>
                 </div>
                 <div className="border rounded px-3 py-3 text-center">
                   <div
@@ -357,21 +350,21 @@ export function LevelingPanel() {
                     {effectiveVoiceXp}
                   </div>
                   <div className="small text-body-secondary">
-                    {voiceXpDisabled ? "per minute (off)" : "per minute"}
+                    {voiceXpDisabled ? d.perMinuteOff : d.perMinute}
                   </div>
                 </div>
                 <div className="border rounded px-3 py-2">
                   <div className="small text-body-secondary mb-1 fw-semibold">
-                    Level thresholds (scale {scale.toFixed(2)}x)
+                    {formatDict(d.levelThresholds, { scale: scale.toFixed(2) })}
                   </div>
                   <div className="d-flex justify-content-between small">
-                    <span className="text-body-secondary">Level 2 needs</span>
+                    <span className="text-body-secondary">{d.level2Needs}</span>
                     <span className="fw-semibold">
                       {level2Step.toLocaleString()} XP
                     </span>
                   </div>
                   <div className="d-flex justify-content-between small">
-                    <span className="text-body-secondary">Total to Level 5</span>
+                    <span className="text-body-secondary">{d.totalToLevel5}</span>
                     <span className="fw-semibold">
                       {totalToLevel5.toLocaleString()} XP
                     </span>
@@ -385,7 +378,7 @@ export function LevelingPanel() {
             <CCol md={8}>
               <div className="d-flex align-items-center justify-content-between">
                 <CFormLabel htmlFor="xp-multiplier" className="mb-0 fw-semibold">
-                  XP Multiplier
+                  {d.xpMultiplier}
                 </CFormLabel>
                 <span className="fw-semibold">
                   {config.xp_multiplier.toFixed(1)}x
@@ -404,7 +397,7 @@ export function LevelingPanel() {
                       xp_multiplier: next,
                     }))
                   }
-                  aria-label="XP multiplier"
+                  aria-label={d.xpMultiplier}
                 />
                 <div className="d-flex justify-content-between small text-body-tertiary">
                   <span>{XP_MULTIPLIER_MIN.toFixed(1)}x</span>
@@ -415,8 +408,7 @@ export function LevelingPanel() {
                 </div>
               </div>
               <p className="small text-body-secondary mt-1 mb-0">
-                Applies to both message and voice XP. It does not change the
-                once-per-minute cooldown or anti-spam eligibility.
+                {d.xpMultiplierHelp}
               </p>
             </CCol>
           </CRow>
@@ -428,7 +420,7 @@ export function LevelingPanel() {
                   htmlFor="level-threshold-scale"
                   className="mb-0 fw-semibold"
                 >
-                  Level Up Threshold Scale
+                  {d.levelThresholdScale}
                 </CFormLabel>
                 <span className="fw-semibold">{scale.toFixed(2)}x</span>
               </div>
@@ -445,7 +437,7 @@ export function LevelingPanel() {
                       level_threshold_scale: next,
                     }))
                   }
-                  aria-label="Level up threshold scale"
+                  aria-label={d.levelThresholdScale}
                 />
                 <div className="d-flex justify-content-between small text-body-tertiary">
                   <span>{LEVEL_THRESHOLD_SCALE_MIN.toFixed(2)}x</span>
@@ -460,9 +452,7 @@ export function LevelingPanel() {
                 </div>
               </div>
               <p className="small text-body-secondary mt-1 mb-0">
-                Controls how fast level requirements grow. Higher values make
-                each level take more XP. Existing XP is preserved — members&apos;
-                levels are recalculated live from the new curve.
+                {d.levelThresholdScaleHelp}
               </p>
             </CCol>
           </CRow>
@@ -475,18 +465,16 @@ export function LevelingPanel() {
           <div className="d-flex align-items-start gap-3">
             <Icon icon={cilBell} size="lg" className="text-body-secondary mt-1" />
             <div>
-              <h2 className="h5 mb-0 fw-semibold">Level-Up Message</h2>
+              <h2 className="h5 mb-0 fw-semibold">{d.levelUpMessageTitle}</h2>
               <p className="mt-1 mb-0 small text-body-secondary">
-                Sent as a Discord embed. Compose the body below — it becomes the
-                embed description. Variables: {"{user}"}, {"{username}"},{" "}
-                {"{level}"}, {"{server}"}.
+                {d.levelUpMessageDesc}
               </p>
             </div>
           </div>
 
           <CRow className="g-3">
             <CCol md={6}>
-              <CFormLabel>Level-up announcements</CFormLabel>
+              <CFormLabel>{d.levelUpAnnouncements}</CFormLabel>
               <CFormSelect
                 value={config.announce_mode}
                 onChange={(event) =>
@@ -497,15 +485,15 @@ export function LevelingPanel() {
                   }))
                 }
               >
-                <option value="current">In the member&apos;s channel</option>
-                <option value="channel">In a fixed channel</option>
-                <option value="off">Disabled</option>
+                <option value="current">{d.announceOptionCurrent}</option>
+                <option value="channel">{d.announceOptionChannel}</option>
+                <option value="off">{d.announceOptionOff}</option>
               </CFormSelect>
             </CCol>
 
             {config.announce_mode === "channel" ? (
               <CCol md={6}>
-                <CFormLabel>Announcement channel</CFormLabel>
+                <CFormLabel>{d.announcementChannel}</CFormLabel>
                 <CFormSelect
                   value={config.announce_channel_id ?? ""}
                   onChange={(event) =>
@@ -515,7 +503,7 @@ export function LevelingPanel() {
                     }))
                   }
                 >
-                  <option value="">Select a channel…</option>
+                  <option value="">{d.selectChannel}</option>
                   {channels.map((channel) => (
                     <option key={channel.id} value={channel.id}>
                       #{channel.name}
@@ -530,7 +518,7 @@ export function LevelingPanel() {
             editor={
               <div className="d-flex flex-column gap-3">
                 <div>
-                  <CFormLabel>Message (embed body)</CFormLabel>
+                  <CFormLabel>{d.messageEmbedBody}</CFormLabel>
                   <RichMessageEditor
                     value={config.level_up_message}
                     onChange={(markdown) => setLevelUpMessage(markdown)}
@@ -582,9 +570,9 @@ export function LevelingPanel() {
           <div className="d-flex align-items-start gap-3">
             <Icon icon={cilTags} size="lg" className="text-body-secondary mt-1" />
             <div>
-              <h2 className="h5 mb-0 fw-semibold">Role Rewards</h2>
+              <h2 className="h5 mb-0 fw-semibold">{d.roleRewardsTitle}</h2>
               <p className="mt-1 mb-0 small text-body-secondary">
-                Automatically grant roles when members reach a level.
+                {d.roleRewardsDesc}
               </p>
             </div>
           </div>
@@ -593,19 +581,19 @@ export function LevelingPanel() {
 
             {config.reward_roles.length === 0 ? (
               <p className="mb-0 small text-body-secondary">
-                No role rewards configured.
+                {d.emptyRewards}
               </p>
             ) : (
               <DataTable
                 columns={[
                   {
                     key: "level",
-                    header: "Level",
+                    header: d.colLevel,
                     cell: (row) => row.level,
                   },
                   {
                     key: "role",
-                    header: "Role",
+                    header: d.colRole,
                     cell: (row) => {
                       const name = roleNames.get(row.role_id) ?? row.role_id;
                       const color = roleColors.get(row.role_id);
@@ -640,7 +628,7 @@ export function LevelingPanel() {
                           size="sm"
                           onClick={() => handleEditReward(row.level, row.role_id)}
                         >
-                          Edit
+                          {d.edit}
                         </Button>
                         <Button
                           variant="ghost"
@@ -658,7 +646,7 @@ export function LevelingPanel() {
                             }))
                           }
                         >
-                          Remove
+                          {d.remove}
                         </Button>
                       </div>
                     ),
@@ -666,10 +654,10 @@ export function LevelingPanel() {
                 ]}
                 rows={filteredRewards}
                 rowKey={(row) => `${row.level}-${row.role_id}`}
-                emptyMessage="No matching rewards."
+                emptyMessage={d.emptyMatchingRewards}
                 search={rewardSearch}
                 onSearchChange={setRewardSearch}
-                searchPlaceholder="Search rewards…"
+                searchPlaceholder={d.searchRewards}
                 page={rewardPage}
                 pageSize={10}
                 onPageChange={setRewardPage}
@@ -679,7 +667,7 @@ export function LevelingPanel() {
             <div className="d-flex flex-wrap align-items-end gap-3">
               <div>
                 <CFormLabel className="small text-body-secondary">
-                  At level
+                  {d.atLevel}
                 </CFormLabel>
                 <NumberInput
                   value={newRewardLevel}
@@ -687,7 +675,7 @@ export function LevelingPanel() {
                   min={1}
                   max={1000}
                   step={1}
-                  aria-label="Reward level"
+                  aria-label={d.atLevel}
                   className="w-auto"
                   onCommit={(next) => setNewRewardLevel(next)}
                 />
@@ -695,13 +683,13 @@ export function LevelingPanel() {
 
               <div style={{ minWidth: 192 }}>
                 <CFormLabel className="small text-body-secondary">
-                  Grant role
+                  {d.grantRole}
                 </CFormLabel>
                 <CFormSelect
                   value={newRewardRoleId}
                   onChange={(event) => setNewRewardRoleId(event.target.value)}
                 >
-                  <option value="">Select a role…</option>
+                  <option value="">{d.selectRole}</option>
                   {roles.map((role) => (
                     <option key={role.id} value={role.id}>
                       @{role.name}
@@ -722,7 +710,7 @@ export function LevelingPanel() {
               onClick={() => void save()}
               disabled={saving || !levelingEnabled}
             >
-              {saving ? "Saving…" : "Save Leveling Settings"}
+              {saving ? d.saving : d.saveLeveling}
             </Button>
 
             {feedback ? (
@@ -740,19 +728,22 @@ export function LevelingPanel() {
       <Card>
         <div className="d-flex flex-wrap align-items-center justify-content-between gap-3">
           <div>
-            <h2 className="h5 mb-1 fw-semibold">Leaderboard</h2>
+            <h2 className="h5 mb-1 fw-semibold">{d.leaderboardTitle}</h2>
             <p className="mb-0 small text-body-secondary">
-              Top members by XP live on a dedicated page.{" "}
+              {d.leaderboardDesc}{" "}
               {leaderboard.length
-                ? `${leaderboard.length} ranked · top level ${leaderboard[0]?.level ?? 0}.`
-                : "Nobody has earned XP yet."}
+                ? formatDict(d.leaderboardRanked, {
+                    count: leaderboard.length,
+                    level: leaderboard[0]?.level ?? 0,
+                  })
+                : d.leaderboardNobody}
             </p>
           </div>
           <Link
             href={`/${lang}/community/leaderboard`}
             className="btn btn-outline-secondary btn-sm"
           >
-            View Leaderboard
+            {d.viewLeaderboard}
           </Link>
         </div>
       </Card>

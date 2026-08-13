@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import { LoggingSetupWizard } from "@/components/security/logging-setup-wizard";
 import { LoggingChannelEditModal } from "@/components/security/logging-channel-edit-modal";
@@ -19,7 +20,7 @@ import {
 } from "@/stores/logging-config-store";
 
 function healthVariant(
-  status: LoggingChannelHealth["status"]
+  status: LoggingChannelHealth["status"],
 ): "success" | "warning" | "danger" | "neutral" {
   switch (status) {
     case "ok":
@@ -34,6 +35,8 @@ function healthVariant(
 }
 
 export function LoggingConfigurationsPanel() {
+  const dict = useLocaleDict();
+  const d = dict.discordLogsPage;
   const { guildId, resources, loading: guildLoading, error: guildError } =
     useFirstGuild();
 
@@ -86,7 +89,7 @@ export function LoggingConfigurationsPanel() {
       <Card>
         <div className="d-flex align-items-center gap-2 text-body-secondary">
           <CSpinner size="sm" />
-          Loading logging configuration…
+          {d.loading}
         </div>
       </Card>
     );
@@ -96,13 +99,12 @@ export function LoggingConfigurationsPanel() {
     return (
       <Card>
         <CAlert color="warning" className="mb-0">
-          {guildError ?? "Bot is offline or not in any server yet."}
+          {guildError ?? d.botOffline}
         </CAlert>
       </Card>
     );
   }
 
-  // STATE A — no configuration yet: run the first-time setup wizard.
   if (!config) {
     return (
       <div className="d-flex flex-column gap-3">
@@ -117,7 +119,6 @@ export function LoggingConfigurationsPanel() {
     );
   }
 
-  // STATE B — configured.
   return (
     <div className="d-flex flex-column gap-4">
       <Card>
@@ -125,24 +126,26 @@ export function LoggingConfigurationsPanel() {
           <div className="d-flex flex-wrap align-items-start justify-content-between gap-3">
             <div>
               <div className="d-flex align-items-center gap-2">
-                <h2 className="h5 mb-0 fw-semibold">Logging Configuration</h2>
-                <Badge variant={config.status === "active" ? "success" : "warning"}>
-                  {config.status === "active" ? "Active" : "Draft"}
+                <h2 className="h5 mb-0 fw-semibold">{d.configTitle}</h2>
+                <Badge
+                  variant={config.status === "active" ? "success" : "warning"}
+                >
+                  {config.status === "active" ? d.active : d.draft}
                 </Badge>
               </div>
               <p className="mt-1 mb-0 small text-body-secondary">
                 {config.norgoth_managed_category && config.category_name
-                  ? `Category: ${config.category_name}`
-                  : "No managed category."}
+                  ? formatDict(d.categoryNamed, { name: config.category_name })
+                  : d.noManagedCategory}
               </p>
             </div>
             <div className="d-flex align-items-center gap-2">
-              <span className="small fw-semibold">Logging enabled</span>
+              <span className="small fw-semibold">{d.loggingEnabled}</span>
               <Switch
                 checked={config.enabled}
                 disabled={busy}
                 onChange={(checked) => void setEnabled(guildId, checked)}
-                aria-label="Master logging enabled"
+                aria-label={d.loggingEnabledAria}
               />
             </div>
           </div>
@@ -161,6 +164,7 @@ export function LoggingConfigurationsPanel() {
           <div className="d-flex flex-column gap-2">
             {config.channels.map((channel) => {
               const item = healthByKey.get(channel.key);
+              const eventCount = eventsByChannel.get(channel.key) ?? 0;
               return (
                 <div
                   key={channel.id ?? channel.key}
@@ -179,15 +183,17 @@ export function LoggingConfigurationsPanel() {
                       {channelDisplayName(channel)}
                     </span>
                     {channel.norgoth_managed ? (
-                      <Badge variant="info">Managed</Badge>
+                      <Badge variant="info">{d.managed}</Badge>
                     ) : (
-                      <Badge variant="neutral">Existing</Badge>
+                      <Badge variant="neutral">{d.existing}</Badge>
                     )}
                   </div>
                   <div className="d-flex align-items-center gap-2 small text-body-secondary">
                     <span>
-                      {eventsByChannel.get(channel.key) ?? 0} event
-                      {(eventsByChannel.get(channel.key) ?? 0) === 1 ? "" : "s"}
+                      {formatDict(
+                        eventCount === 1 ? d.eventCount : d.eventCountPlural,
+                        { count: eventCount },
+                      )}
                     </span>
                     {item ? (
                       <Badge variant={healthVariant(item.status)}>
@@ -200,7 +206,7 @@ export function LoggingConfigurationsPanel() {
                       onClick={() => setEditingChannel(channel)}
                       disabled={busy}
                     >
-                      Edit
+                      {d.edit}
                     </Button>
                   </div>
                 </div>
@@ -214,14 +220,14 @@ export function LoggingConfigurationsPanel() {
               onClick={() => void reconcile(guildId)}
               disabled={busy}
             >
-              {busy ? "Working…" : "Check health"}
+              {busy ? d.working : d.checkHealth}
             </Button>
             <Button
               variant="secondary"
               onClick={() => void repair(guildId)}
               disabled={busy}
             >
-              Repair missing
+              {d.repairMissing}
             </Button>
             <Button
               variant="danger"
@@ -231,7 +237,7 @@ export function LoggingConfigurationsPanel() {
               }}
               disabled={busy}
             >
-              Reset
+              {d.reset}
             </Button>
           </div>
         </div>
@@ -239,22 +245,19 @@ export function LoggingConfigurationsPanel() {
 
       <ConfirmDialog
         visible={confirmReset}
-        title="Reset logging configuration?"
+        title={d.resetTitle}
         message={
           <div className="d-flex flex-column gap-3">
-            <p className="mb-0 text-body-secondary">
-              This removes the saved logging configuration and routing. By
-              default, Discord channels are left in place.
-            </p>
+            <p className="mb-0 text-body-secondary">{d.resetMessage}</p>
             <CFormCheck
               id="delete-discord-logging"
-              label="Also delete NorBot-managed log channels and category in Discord"
+              label={d.resetDeleteDiscord}
               checked={deleteDiscord}
               onChange={(e) => setDeleteDiscord(e.target.checked)}
             />
           </div>
         }
-        confirmLabel="Reset"
+        confirmLabel={d.reset}
         destructive
         busy={busy}
         onConfirm={() => {

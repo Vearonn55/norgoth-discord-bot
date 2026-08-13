@@ -25,6 +25,7 @@ import { MutedSection } from "@/components/ui/feature-muting";
 import {
   FeatureConfigurationModal,
 } from "@/components/ui/feature-modal";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import {
   useAutomodStore,
@@ -33,19 +34,9 @@ import {
 
 type AutomodFeature = "words" | "spam" | "invites" | "exemptions";
 
-const ACTION_OPTIONS: { value: AutomodAction; label: string }[] = [
-  { value: "delete", label: "Delete message" },
-  { value: "warn", label: "Delete + warn member" },
-  { value: "timeout", label: "Delete + warn + timeout" },
-];
-
-const ACTION_LABELS: Record<AutomodAction, string> = {
-  delete: "Delete",
-  warn: "Warn",
-  timeout: "Timeout",
-};
-
 export function AutomodPanel() {
+  const dict = useLocaleDict();
+  const d = dict.autoModPage;
   const { guildId, resources, loading, error, reload } = useFirstGuild();
 
   const config = useAutomodStore((s) => s.config);
@@ -67,6 +58,18 @@ export function AutomodPanel() {
 
   const dirty = JSON.stringify(config) !== savedSnapshot;
   const [activeModal, setActiveModal] = useState<AutomodFeature | null>(null);
+
+  const actionOptions: { value: AutomodAction; label: string }[] = [
+    { value: "delete", label: d.actionDelete },
+    { value: "warn", label: d.actionWarn },
+    { value: "timeout", label: d.actionTimeout },
+  ];
+
+  const actionLabels: Record<AutomodAction, string> = {
+    delete: d.actionLabelDelete,
+    warn: d.actionLabelWarn,
+    timeout: d.actionLabelTimeout,
+  };
 
   useEffect(() => {
     if (!guildId) return;
@@ -119,7 +122,7 @@ export function AutomodPanel() {
       <Card>
         <div className="d-flex align-items-center gap-2 text-body-secondary">
           <CSpinner size="sm" />
-          <span>Loading auto-moderation settings…</span>
+          <span>{d.loading}</span>
         </div>
       </Card>
     );
@@ -129,10 +132,10 @@ export function AutomodPanel() {
     return (
       <Card>
         <div className="d-flex flex-column gap-3">
-          <Badge variant="warning">Bot required</Badge>
+          <Badge variant="warning">{d.botRequired}</Badge>
           <p className="mb-0 text-body-secondary">{error}</p>
           <Button variant="secondary" onClick={() => void reload()}>
-            Retry
+            {d.retry}
           </Button>
         </div>
       </Card>
@@ -157,10 +160,10 @@ export function AutomodPanel() {
   return (
     <div className="d-flex flex-column gap-4">
       <PageHeader
-        title="Auto-Moderation"
+        title={d.title}
         icon={<Icon icon={cilBan} size="xl" />}
         category="moderation"
-        description="Rule-based moderation: prohibited words, spam and repeated-content detection, invite-link and mass-mention blocking, with per-rule actions and exemptions."
+        description={d.description}
         infoKey="autoModeration"
         masterToggle={{
           enabled: config.enabled,
@@ -171,14 +174,13 @@ export function AutomodPanel() {
 
       {dirty && config.enabled ? (
         <CAlert color="warning" className="mb-0">
-          Unsaved changes — click Save Settings before testing rules in Discord.
+          {d.unsavedChanges}
         </CAlert>
       ) : null}
 
       {showEmptyRulesBanner ? (
         <CAlert color="info" className="mb-0">
-          Auto-mod is enabled, but the word list is empty and invite blocking
-          is off. Add words or enable invite blocking, then Save.
+          {d.emptyRulesBanner}
         </CAlert>
       ) : null}
 
@@ -188,11 +190,11 @@ export function AutomodPanel() {
       >
         <Card>
           <div>
-            <CFormLabel className="mb-2">Where auto-moderation applies</CFormLabel>
+            <CFormLabel className="mb-2">{d.scopeLabel}</CFormLabel>
             <div className="row row-cols-1 row-cols-md-3 g-2">
               <div className="col">
                 <ToggleLine
-                  label="Text channels"
+                  label={d.scopeText}
                   checked={config.moderation_scope.text}
                   onChange={(checked) =>
                     setConfig((current) => ({
@@ -207,7 +209,7 @@ export function AutomodPanel() {
               </div>
               <div className="col">
                 <ToggleLine
-                  label="Threads"
+                  label={d.scopeThreads}
                   checked={config.moderation_scope.threads}
                   onChange={(checked) =>
                     setConfig((current) => ({
@@ -222,7 +224,7 @@ export function AutomodPanel() {
               </div>
               <div className="col">
                 <ToggleLine
-                  label="Voice channel chat"
+                  label={d.scopeVoiceText}
                   checked={config.moderation_scope.voice_text}
                   onChange={(checked) =>
                     setConfig((current) => ({
@@ -243,8 +245,12 @@ export function AutomodPanel() {
           <div className="col">
             <MiniFeatureCard
               icon={cilBan}
-              name="Prohibited Words"
-              description={`${wordCount} word${wordCount === 1 ? "" : "s"} • ${ACTION_LABELS[config.word_action]}`}
+              name={d.wordsTitle}
+              description={formatDict(d.wordsCardDesc, {
+                count: wordCount,
+                plural: wordCount === 1 ? d.wordsCardDescOne : d.wordsCardDescMany,
+                action: actionLabels[config.word_action],
+              })}
               category="moderation"
               enabled={config.words_enabled}
               onToggle={(checked) =>
@@ -256,8 +262,8 @@ export function AutomodPanel() {
           <div className="col">
             <MiniFeatureCard
               icon={cilSpeedometer}
-              name="Spam Detection"
-              description="Message-rate and repeated-content detection."
+              name={d.spamTitle}
+              description={d.spamCardDesc}
               category="moderation"
               enabled={spamOn}
               onToggle={(checked) =>
@@ -277,8 +283,8 @@ export function AutomodPanel() {
           <div className="col">
             <MiniFeatureCard
               icon={cilLink}
-              name="Invite Links & Mass Mentions"
-              description="Block invites and mention floods."
+              name={d.invitesTitle}
+              description={d.invitesCardDesc}
               category="moderation"
               enabled={invitesOn}
               onToggle={(checked) =>
@@ -298,8 +304,8 @@ export function AutomodPanel() {
           <div className="col">
             <MiniFeatureCard
               icon={cilShieldAlt}
-              name="Exemptions"
-              description="Channels, roles, and staff exceptions."
+              name={d.exemptionsTitle}
+              description={d.exemptionsCardDesc}
               category="moderation"
               enabled={config.exempt_manage_messages}
               onToggle={(checked) =>
@@ -319,7 +325,9 @@ export function AutomodPanel() {
         status={
           <>
             {savedAt ? (
-              <span className="small text-success">Saved at {savedAt}</span>
+              <span className="small text-success">
+                {formatDict(d.savedAt, { time: savedAt })}
+              </span>
             ) : null}
             {saveError ? (
               <CAlert color="danger" className="mb-0 py-2">
@@ -334,15 +342,14 @@ export function AutomodPanel() {
           onClick={() => void save()}
           disabled={saving || !config.enabled || !dirty}
         >
-          {saving ? "Saving…" : "Save Settings"}
+          {saving ? d.saving : d.saveSettings}
         </Button>
       </PageActionFooter>
 
-      {/* Prohibited Words modal */}
       <FeatureConfigurationModal
         visible={activeModal === "words"}
-        title="Prohibited Words"
-        description="Exact words match whole words; use * as a wildcard (e.g. “scam*”)."
+        title={d.wordsTitle}
+        description={d.wordsDescModal}
         category="moderation"
         icon={cilBan}
         saving={saving}
@@ -361,10 +368,10 @@ export function AutomodPanel() {
                   addWord();
                 }
               }}
-              placeholder="Add a word or pattern…"
+              placeholder={d.addWordPlaceholder}
             />
             <Button variant="secondary" onClick={addWord}>
-              Add
+              {d.add}
             </Button>
           </div>
 
@@ -372,7 +379,7 @@ export function AutomodPanel() {
             columns={[
               {
                 key: "word",
-                header: "Word / pattern",
+                header: d.wordColumn,
                 cell: (row) => <code>{row.word}</code>,
               },
               {
@@ -385,25 +392,26 @@ export function AutomodPanel() {
                     size="sm"
                     onClick={() => removeWord(row.word)}
                   >
-                    Remove
+                    {d.remove}
                   </Button>
                 ),
               },
             ]}
             rows={filteredWords}
             rowKey={(row) => row.word}
-            emptyMessage="No prohibited words configured."
+            emptyMessage={d.emptyWords}
             search={wordSearch}
             onSearchChange={setWordSearch}
-            searchPlaceholder="Search words…"
+            searchPlaceholder={d.searchWords}
             page={wordPage}
             pageSize={10}
             onPageChange={setWordPage}
           />
 
           <ActionSelect
-            label="Action for prohibited words"
+            label={d.actionWords}
             value={config.word_action}
+            options={actionOptions}
             onChange={(value) =>
               setConfig((current) => ({ ...current, word_action: value }))
             }
@@ -411,11 +419,10 @@ export function AutomodPanel() {
         </div>
       </FeatureConfigurationModal>
 
-      {/* Spam Detection modal */}
       <FeatureConfigurationModal
         visible={activeModal === "spam"}
-        title="Spam Detection"
-        description="Message-rate and repeated-content detection per member."
+        title={d.spamTitle}
+        description={d.spamModalDesc}
         category="moderation"
         icon={cilSpeedometer}
         saving={saving}
@@ -425,7 +432,7 @@ export function AutomodPanel() {
       >
         <div className="d-flex flex-column gap-3">
           <ToggleLine
-            label="Message rate limit"
+            label={d.messageRateLimit}
             checked={config.spam_enabled}
             onChange={(checked) =>
               setConfig((current) => ({ ...current, spam_enabled: checked }))
@@ -436,7 +443,7 @@ export function AutomodPanel() {
             <CRow className="g-3">
               <CCol md={6}>
                 <NumberField
-                  label="Max messages"
+                  label={d.maxMessages}
                   value={config.spam_max_messages}
                   min={2}
                   max={30}
@@ -450,7 +457,7 @@ export function AutomodPanel() {
               </CCol>
               <CCol md={6}>
                 <NumberField
-                  label="Within seconds"
+                  label={d.withinSeconds}
                   value={config.spam_interval_seconds}
                   min={2}
                   max={120}
@@ -466,7 +473,7 @@ export function AutomodPanel() {
           ) : null}
 
           <ToggleLine
-            label="Repeated content detection"
+            label={d.repeatedContent}
             checked={config.duplicate_enabled}
             onChange={(checked) =>
               setConfig((current) => ({
@@ -478,7 +485,7 @@ export function AutomodPanel() {
 
           {config.duplicate_enabled ? (
             <NumberField
-              label="Identical messages before triggering"
+              label={d.identicalMessages}
               value={config.duplicate_threshold}
               min={2}
               max={10}
@@ -492,8 +499,9 @@ export function AutomodPanel() {
           ) : null}
 
           <ActionSelect
-            label="Action for spam"
+            label={d.actionSpam}
             value={config.spam_action}
+            options={actionOptions}
             onChange={(value) =>
               setConfig((current) => ({ ...current, spam_action: value }))
             }
@@ -501,10 +509,9 @@ export function AutomodPanel() {
         </div>
       </FeatureConfigurationModal>
 
-      {/* Invites & Mass Mentions modal */}
       <FeatureConfigurationModal
         visible={activeModal === "invites"}
-        title="Invite Links & Mass Mentions"
+        title={d.invitesTitle}
         category="moderation"
         icon={cilLink}
         saving={saving}
@@ -514,7 +521,7 @@ export function AutomodPanel() {
       >
         <div className="d-flex flex-column gap-3">
           <ToggleLine
-            label="Block Discord invite links"
+            label={d.blockInvites}
             checked={config.block_invites}
             onChange={(checked) =>
               setConfig((current) => ({ ...current, block_invites: checked }))
@@ -523,8 +530,9 @@ export function AutomodPanel() {
 
           {config.block_invites ? (
             <ActionSelect
-              label="Action for invite links"
+              label={d.actionInvites}
               value={config.invite_action}
+              options={actionOptions}
               onChange={(value) =>
                 setConfig((current) => ({ ...current, invite_action: value }))
               }
@@ -532,7 +540,7 @@ export function AutomodPanel() {
           ) : null}
 
           <ToggleLine
-            label="Block mass mentions"
+            label={d.blockMassMentions}
             checked={config.mass_mention_enabled}
             onChange={(checked) =>
               setConfig((current) => ({
@@ -545,7 +553,7 @@ export function AutomodPanel() {
           {config.mass_mention_enabled ? (
             <>
               <NumberField
-                label="Mention threshold (users + roles)"
+                label={d.mentionThreshold}
                 value={config.mass_mention_threshold}
                 min={2}
                 max={30}
@@ -557,8 +565,9 @@ export function AutomodPanel() {
                 }
               />
               <ActionSelect
-                label="Action for mass mentions"
+                label={d.actionMassMentions}
                 value={config.mass_mention_action}
+                options={actionOptions}
                 onChange={(value) =>
                   setConfig((current) => ({
                     ...current,
@@ -570,7 +579,7 @@ export function AutomodPanel() {
           ) : null}
 
           <NumberField
-            label="Timeout duration (minutes) for timeout actions"
+            label={d.timeoutMinutes}
             value={config.timeout_minutes}
             min={1}
             max={40320}
@@ -581,11 +590,10 @@ export function AutomodPanel() {
         </div>
       </FeatureConfigurationModal>
 
-      {/* Exemptions modal */}
       <FeatureConfigurationModal
         visible={activeModal === "exemptions"}
-        title="Exemptions"
-        description="Rules are never applied in exempt channels or to members with exempt roles."
+        title={d.exemptionsTitle}
+        description={d.exemptionsModalDesc}
         category="moderation"
         icon={cilShieldAlt}
         saving={saving}
@@ -595,7 +603,7 @@ export function AutomodPanel() {
       >
         <div className="d-flex flex-column gap-3">
           <ToggleLine
-            label="Exempt Manage Messages"
+            label={d.exemptManageMessages}
             checked={config.exempt_manage_messages}
             onChange={(checked) =>
               setConfig((current) => ({
@@ -605,12 +613,11 @@ export function AutomodPanel() {
             }
           />
           <p className="mb-0 small text-body-secondary">
-            When on (default), staff with Manage Messages are never moderated.
-            Turn off to test rules as an admin, or use a non-privileged account.
+            {d.exemptManageHelp}
           </p>
 
           <div>
-            <CFormLabel className="mb-2">Exempt channels</CFormLabel>
+            <CFormLabel className="mb-2">{d.exemptChannels}</CFormLabel>
             <div className="d-flex flex-wrap gap-2">
               {channels.map((channel) => {
                 const isSelected = config.exempt_channel_ids.includes(channel.id);
@@ -630,7 +637,7 @@ export function AutomodPanel() {
           </div>
 
           <div>
-            <CFormLabel className="mb-2">Exempt roles</CFormLabel>
+            <CFormLabel className="mb-2">{d.exemptRoles}</CFormLabel>
             <div className="d-flex flex-wrap gap-2">
               {roles.map((role) => {
                 const isSelected = config.exempt_role_ids.includes(role.id);
@@ -712,10 +719,12 @@ function NumberField({
 function ActionSelect({
   label,
   value,
+  options,
   onChange,
 }: {
   label: string;
   value: AutomodAction;
+  options: { value: AutomodAction; label: string }[];
   onChange: (value: AutomodAction) => void;
 }) {
   return (
@@ -725,7 +734,7 @@ function ActionSelect({
         value={value}
         onChange={(event) => onChange(event.target.value as AutomodAction)}
       >
-        {ACTION_OPTIONS.map((option) => (
+        {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}
           </option>
