@@ -135,33 +135,85 @@ class TwitchAdapter(ContentPlatformAdapter):
         owns = self._http is None
         client = self._client()
         try:
-            response = await client.post(
-                f"{TWITCH_API}/eventsub/subscriptions",
-                headers=await self._headers(),
-                json={
-                    "type": "stream.online",
-                    "version": "1",
-                    "condition": {"broadcaster_user_id": creator.platform_creator_id},
-                    "transport": {
-                        "method": "webhook",
-                        "callback": f"{callback}/webhooks/twitch/eventsub",
-                        "secret": secret,
-                    },
-                },
-            )
-            if response.status_code not in {200, 202}:
-                logger.warning(
-                    "Twitch EventSub subscribe failed: %s %s",
-                    response.status_code,
-                    response.text,
-                )
-                return None
-            data = (response.json().get("data") or [{}])[0]
-            return {
-                "external_subscription_id": data.get("id"),
+            headers = await self._headers()
+            transport = {
+                "method": "webhook",
+                "callback": f"{callback}/webhooks/twitch/eventsub",
                 "secret": secret,
-                "status": data.get("status"),
             }
+            subscription_ids: list[str] = []
+            primary_id: str | None = None
+            for event_type in ("stream.online", "stream.offline"):
+                response = await client.post(
+                    f"{TWITCH_API}/eventsub/subscriptions",
+                    headers=headers,
+                    json={
+                        "type": event_type,
+                        "version": "1",
+                        "condition": {
+                            "broadcaster_user_id": creator.platform_creator_id
+                        },
+                        "transport": transport,
+                    },
+                )
+                if response.status_code not in {200, 202}:
+                    logger.warning(
+                        "Twitch EventSub subscribe failed (%s): %s %s",
+                        event_type,
+                        response.status_code,
+                        response.text,
+                    )
+                    continue
+                data = (response.json().get("data") or [{}])[0]
+                sub_id = data.get("id")
+                if sub_id:
+                    subscription_ids.append(str(sub_id))
+                    if event_type == "stream.online":
+                        primary_id = str(sub_id)
+            if not subscription_ids:
+                return None
+            return {
+                "external_subscription_id": primary_id or subscription_ids[0],
+                "subscription_ids": subscription_ids,
+                "secret": secret,
+                "status": "enabled",
+            }
+        finally:
+            if owns:
+                await client.aclose()
+
+    async def unsubscribe(self, creator: ResolvedCreator) -> None:
+        """Best-effort delete of EventSub rows for this broadcaster."""
+
+        if not self.is_available():
+            return
+        owns = self._http is None
+        client = self._client()
+        try:
+            headers = await self._headers()
+            response = await client.get(
+                f"{TWITCH_API}/eventsub/subscriptions",
+                headers=headers,
+                params={"user_id": creator.platform_creator_id},
+            )
+            if response.status_code != 200:
+                return
+            for row in response.json().get("data") or []:
+                condition = row.get("condition") or {}
+                if str(condition.get("broadcaster_user_id") or "") != str(
+                    creator.platform_creator_id
+                ):
+                    continue
+                sub_id = row.get("id")
+                if not sub_id:
+                    continue
+                await client.delete(
+                    f"{TWITCH_API}/eventsub/subscriptions",
+                    headers=headers,
+                    params={"id": sub_id},
+                )
+        except Exception:  # noqa: BLE001
+            logger.exception("Twitch EventSub unsubscribe failed")
         finally:
             if owns:
                 await client.aclose()
@@ -214,12 +266,17 @@ class TwitchAdapter(ContentPlatformAdapter):
                 await client.aclose()
 
     async def enrich_event(self, event: PlatformRawEvent) -> NormalizedContentEvent:
-        event_type = (
-            ContentEventType.STREAM_STARTED
-            if event.raw.get("subscription", {}).get("type") == "stream.online"
+        sub_type = str((event.raw.get("subscription") or {}).get("type") or "")
+        if sub_type == "stream.offline" or event.event_type == ContentEventType.STREAM_ENDED:
+            event_type = ContentEventType.STREAM_ENDED
+        elif (
+            sub_type == "stream.online"
             or event.event_type == ContentEventType.STREAM_STARTED
-            else event.event_type
-        )
+        ):
+            event_type = ContentEventType.STREAM_STARTED
+        else:
+            event_type = event.event_type
+
         event_data = event.raw.get("event") or event.raw
         broadcaster_id = str(
             event_data.get("broadcaster_user_id") or event.platform_creator_id
@@ -233,7 +290,7 @@ class TwitchAdapter(ContentPlatformAdapter):
         game = None
         viewers = None
         thumb = None
-        if self.is_available():
+        if event_type == ContentEventType.STREAM_STARTED and self.is_available():
             latest = await self.fetch_latest(
                 ResolvedCreator(
                     platform=PlatformType.TWITCH,

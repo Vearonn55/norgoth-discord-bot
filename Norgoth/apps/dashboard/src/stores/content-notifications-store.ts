@@ -9,6 +9,7 @@ export type PlatformAvailability = {
   platform: ContentPlatform;
   available: boolean;
   supports_push: boolean;
+  transport?: string | null;
   reason: string | null;
   active_limit?: number;
   active_count?: number;

@@ -153,10 +153,16 @@ async def twitch_eventsub(
     if source is None:
         return {"ok": True, "ignored": True}
 
+    sub_type = str(subscription.get("type") or "")
+    event_type = (
+        ContentEventType.STREAM_ENDED
+        if sub_type == "stream.offline"
+        else ContentEventType.STREAM_STARTED
+    )
     adapter = TwitchAdapter()
     raw = PlatformRawEvent(
         platform=PlatformType.TWITCH,
-        event_type=ContentEventType.STREAM_STARTED,
+        event_type=event_type,
         external_content_id=stream_id,
         platform_creator_id=broadcaster_id,
         raw=payload,
@@ -206,9 +212,7 @@ async def kick_events(
     if event_type != "livestream.status.updated":
         return {"ok": True, "ignored": True}
 
-    if not payload.get("is_live"):
-        return {"ok": True, "ignored": "offline"}
-
+    is_live = bool(payload.get("is_live"))
     broadcaster = payload.get("broadcaster") or {}
     creator_id = str(broadcaster.get("user_id") or "")
     source = await session.scalar(
@@ -222,8 +226,14 @@ async def kick_events(
 
     raw = PlatformRawEvent(
         platform=PlatformType.KICK,
-        event_type=ContentEventType.STREAM_STARTED,
-        external_content_id=f"{creator_id}:{payload.get('started_at') or message_id}",
+        event_type=(
+            ContentEventType.STREAM_STARTED
+            if is_live
+            else ContentEventType.STREAM_ENDED
+        ),
+        external_content_id=(
+            f"{creator_id}:{payload.get('started_at') or payload.get('ended_at') or message_id}"
+        ),
         platform_creator_id=creator_id,
         raw=payload,
     )

@@ -133,7 +133,10 @@ export function AccountsPanel() {
         <div>
           <p className="mb-0 small text-body-secondary">
             Monitor creators and deliver alerts through managed Discord webhooks.
-            Admins never paste platform API keys or webhook URLs.
+            Admins never paste platform API keys or webhook URLs. No creator
+            Connect account step is required for YouTube, Twitch, Kick, or X —
+            paste a public creator URL. TikTok cannot monitor arbitrary creators
+            with official APIs.
           </p>
           <div className="mt-2 d-flex gap-2 flex-wrap">
             {PLATFORMS.map((p) => {
@@ -141,16 +144,31 @@ export function AccountsPanel() {
               const blocked = meta && !meta.available;
               const activeCount = meta?.active_count ?? 0;
               const activeLimit = meta?.active_limit ?? 0;
+              const transport =
+                meta?.transport === "poll"
+                  ? "poll"
+                  : meta?.transport === "unsupported"
+                    ? "unsupported"
+                    : meta?.supports_push
+                      ? "webhook"
+                      : "poll";
+              const titleParts = [
+                `${activeCount} of ${activeLimit} active`,
+                transport,
+                meta?.reason || undefined,
+              ].filter(Boolean);
               return (
                 <CBadge
                   key={p.id}
                   color={blocked ? "secondary" : "success"}
                   className="text-uppercase"
-                  title={`${activeCount} of ${activeLimit} active`}
+                  title={titleParts.join(" · ")}
                 >
                   {p.label}
                   {blocked ? " · blocked" : ""}
-                  {` · ${activeCount}/${activeLimit} active`}
+                  {` · ${activeCount}/${activeLimit}`}
+                  {transport === "poll" && !blocked ? " · poll" : ""}
+                  {transport === "webhook" && !blocked ? " · webhook" : ""}
                 </CBadge>
               );
             })}
@@ -158,6 +176,14 @@ export function AccountsPanel() {
               Worker {workerOnline ? "online" : "offline"}
             </CBadge>
           </div>
+          {platformMeta(platform)?.available === false &&
+          platformMeta(platform)?.reason ? (
+            <p className="small text-warning mb-0 mt-2" role="status">
+              {platform === "tiktok"
+                ? "TikTok monitoring is unavailable: official APIs only cover connected-user content, not arbitrary creators."
+                : platformMeta(platform)?.reason}
+            </p>
+          ) : null}
         </div>
         <Button
           type="button"

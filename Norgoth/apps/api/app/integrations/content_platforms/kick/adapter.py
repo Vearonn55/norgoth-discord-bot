@@ -182,6 +182,39 @@ class KickAdapter(ContentPlatformAdapter):
             if owns:
                 await client.aclose()
 
+    async def unsubscribe(self, creator: ResolvedCreator) -> None:
+        """Delete Kick event subscriptions for this broadcaster when possible."""
+
+        if not self.is_available():
+            return
+        owns = self._http is None
+        client = self._client()
+        try:
+            headers = await self._headers()
+            listed = await client.get(
+                f"{KICK_API}/events/subscriptions",
+                headers=headers,
+                params={"broadcaster_user_id": int(creator.platform_creator_id)},
+            )
+            if listed.status_code != 200:
+                return
+            data = listed.json().get("data") or []
+            if not isinstance(data, list):
+                return
+            ids = [str(row.get("id")) for row in data if row.get("id")]
+            if not ids:
+                return
+            await client.delete(
+                f"{KICK_API}/events/subscriptions",
+                headers=headers,
+                params=[("id", sub_id) for sub_id in ids],
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("Kick event unsubscribe failed")
+        finally:
+            if owns:
+                await client.aclose()
+
     async def fetch_latest(
         self,
         creator: ResolvedCreator,

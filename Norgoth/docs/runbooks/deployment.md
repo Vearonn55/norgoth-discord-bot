@@ -77,6 +77,9 @@ docker build -f Norgoth/deploy/docker/Dockerfile.api -t norbot-api:local Norgoth
 - `GET https://api.norbot.io/api/v1/health` (includes `release_sha` when set)
 - Bot/worker heartbeat routes via API
 
+Provider API credential acquisition for Content Notifications:
+[`docs/runbooks/content-notifications-credentials.md`](content-notifications-credentials.md).
+
 ## Smoke: Worker Health, Content Notifications, Top Trending
 
 After deploy (or when validating WH / CN / feed closeout), confirm:

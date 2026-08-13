@@ -97,7 +97,14 @@
     "activeCapacity": "{count} of {limit} active configurations",
     "remainingCapacity": "{remaining} remaining",
     "limitReached": "Configuration limit reached for this platform",
-    "disabledDoNotCount": "Disabled configurations do not consume active capacity."
+    "disabledDoNotCount": "Disabled configurations do not consume active capacity.",
+    "operatorCredsMissing": "NorBot operator credentials are not configured for this platform.",
+    "platformBlocked": "This platform cannot monitor arbitrary creators with official APIs.",
+    "tiktokUnsupported": "TikTok monitoring is unavailable: official APIs only cover connected-user content, not arbitrary creators.",
+    "transportWebhook": "Webhook",
+    "transportPoll": "Polling",
+    "transportUnsupported": "Unsupported",
+    "noConnectRequired": "No creator Connect account step is required; paste a public creator URL."
   },
   "feedChannels": {
     "dailySliderTitle": "Daily Feed Refresh Interval",

@@ -1,0 +1,266 @@
+"""Content Notifications provider webhook, adapter, and OAuth scaffold tests."""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from app.integrations.content_platforms.tiktok.adapter import TikTokAdapter
+from app.integrations.content_platforms.twitch.adapter import (
+    TwitchAdapter,
+    verify_twitch_signature,
+)
+from app.integrations.content_platforms.types import (
+    ContentEventType,
+    PlatformBlockedError,
+    PlatformRawEvent,
+    PlatformType,
+)
+from app.integrations.content_platforms.youtube.adapter import (
+    YouTubeAdapter,
+    parse_websub_atom,
+)
+from app.security.pkce import generate_pkce, verify_pkce
+from app.security.provider_oauth_state import (
+    InvalidProviderOAuthStateError,
+    ProviderOAuthStateService,
+)
+
+
+def test_verify_twitch_signature_valid() -> None:
+    secret = "supersecret"
+    message_id = "msg-1"
+    timestamp = "2026-08-13T00:00:00Z"
+    body = b'{"challenge":"abc"}'
+    digest = hmac.new(
+        secret.encode(),
+        message_id.encode() + timestamp.encode() + body,
+        hashlib.sha256,
+    ).hexdigest()
+    assert verify_twitch_signature(
+        secret=secret,
+        message_id=message_id,
+        timestamp=timestamp,
+        body=body,
+        signature=f"sha256={digest}",
+    )
+
+
+def test_verify_twitch_signature_rejects_tamper() -> None:
+    secret = "supersecret"
+    message_id = "msg-1"
+    timestamp = "2026-08-13T00:00:00Z"
+    body = b'{"ok":true}'
+    digest = hmac.new(
+        secret.encode(),
+        message_id.encode() + timestamp.encode() + body,
+        hashlib.sha256,
+    ).hexdigest()
+    assert not verify_twitch_signature(
+        secret=secret,
+        message_id=message_id,
+        timestamp=timestamp,
+        body=b'{"ok":false}',
+        signature=f"sha256={digest}",
+    )
+
+
+@pytest.mark.anyio
+async def test_twitch_enrich_offline_event() -> None:
+    adapter = TwitchAdapter(http_client=AsyncMock())
+    raw = PlatformRawEvent(
+        platform=PlatformType.TWITCH,
+        event_type=ContentEventType.STREAM_ENDED,
+        external_content_id="offline-1",
+        platform_creator_id="123",
+        raw={
+            "subscription": {"type": "stream.offline"},
+            "event": {
+                "broadcaster_user_id": "123",
+                "broadcaster_user_login": "demo",
+                "broadcaster_user_name": "Demo",
+                "id": "offline-1",
+            },
+        },
+    )
+    event = await adapter.enrich_event(raw)
+    assert event.event_type == ContentEventType.STREAM_ENDED
+    assert event.is_live is False
+
+
+def test_youtube_websub_atom_parse_and_duplicate_ids() -> None:
+    xml = """<?xml version="1.0"?>
+    <feed xmlns="http://www.w3.org/2005/Atom"
+          xmlns:yt="http://www.youtube.com/xml/schemas/2015">
+      <entry>
+        <yt:videoId>vid1</yt:videoId>
+        <yt:channelId>UCabcdefghijklmnopqrstuv</yt:channelId>
+        <title>One</title>
+        <published>2026-08-13T00:00:00+00:00</published>
+        <link href="https://www.youtube.com/watch?v=vid1"/>
+      </entry>
+      <entry>
+        <yt:videoId>vid1</yt:videoId>
+        <yt:channelId>UCabcdefghijklmnopqrstuv</yt:channelId>
+        <title>One again</title>
+        <published>2026-08-13T00:01:00+00:00</published>
+        <link href="https://www.youtube.com/watch?v=vid1"/>
+      </entry>
+    </feed>
+    """
+    events = parse_websub_atom(xml)
+    assert len(events) == 2
+    assert events[0].external_content_id == "vid1"
+    assert events[0].platform_creator_id == "UCabcdefghijklmnopqrstuv"
+
+
+@pytest.mark.anyio
+async def test_youtube_resolve_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("YOUTUBE_API_KEY", raising=False)
+    adapter = YouTubeAdapter()
+    assert adapter.is_available() is False
+    with pytest.raises(Exception) as exc:
+        await adapter.resolve_account("@SomeHandle")
+    assert "YOUTUBE_API_KEY" in str(exc.value)
+
+
+@pytest.mark.anyio
+async def test_youtube_resolve_handle_uses_data_api_not_scrape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("YOUTUBE_API_KEY", "test-key")
+    client = AsyncMock()
+    response = MagicMock()
+    response.status_code = 200
+    response.json.return_value = {"items": [{"id": "UCabcdefghijklmnopqrstuv"}]}
+    client.get = AsyncMock(return_value=response)
+    profile = MagicMock()
+    profile.status_code = 200
+    profile.json.return_value = {
+        "items": [
+            {
+                "snippet": {
+                    "title": "Demo",
+                    "customUrl": "@demo",
+                    "thumbnails": {"default": {"url": "https://example.com/a.png"}},
+                }
+            }
+        ]
+    }
+
+    async def get_side_effect(url, params=None, **_kwargs):
+        if "forHandle" in (params or {}):
+            return response
+        return profile
+
+    client.get = AsyncMock(side_effect=get_side_effect)
+    adapter = YouTubeAdapter(http_client=client)
+    creator = await adapter.resolve_account("@demo")
+    assert creator.platform_creator_id == "UCabcdefghijklmnopqrstuv"
+    # Never hit youtube.com HTML pages.
+    for call in client.get.await_args_list:
+        assert "googleapis.com" in call.args[0]
+
+
+@pytest.mark.anyio
+async def test_tiktok_remains_blocked() -> None:
+    adapter = TikTokAdapter()
+    assert adapter.is_available() is False
+    assert adapter.supports_push() is False
+    with pytest.raises(PlatformBlockedError):
+        await adapter.resolve_account("https://www.tiktok.com/@someone")
+
+
+def test_pkce_roundtrip() -> None:
+    pair = generate_pkce()
+    assert pair.method == "S256"
+    assert verify_pkce(verifier=pair.verifier, challenge=pair.challenge)
+    assert not verify_pkce(verifier="wrong", challenge=pair.challenge)
+
+
+def test_provider_oauth_state_binding_and_expiry() -> None:
+    service = ProviderOAuthStateService(secret="unit-test-secret", lifetime_seconds=60)
+    now = int(datetime(2026, 8, 13, tzinfo=timezone.utc).timestamp())
+    state, parsed = service.create(
+        user_id="user-1",
+        guild_id="guild-1",
+        provider="tiktok",
+        purpose="tiktok_display",
+        with_pkce=True,
+        current_time=now,
+    )
+    assert parsed.pkce_verifier
+    ok = service.verify(
+        state,
+        expected_provider="tiktok",
+        expected_user_id="user-1",
+        expected_guild_id="guild-1",
+        current_time=now + 10,
+    )
+    assert ok.provider == "tiktok"
+    with pytest.raises(InvalidProviderOAuthStateError):
+        service.verify(state, expected_provider="twitch", current_time=now + 10)
+    with pytest.raises(InvalidProviderOAuthStateError):
+        service.verify(state, expected_guild_id="other", current_time=now + 10)
+    with pytest.raises(InvalidProviderOAuthStateError):
+        service.verify(state, current_time=now + 120)
+
+
+@pytest.mark.anyio
+async def test_x_budget_exhaustion(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("X_MONTHLY_READ_BUDGET", "2")
+    store: dict[str, int] = {}
+
+    class FakeRedis:
+        async def get(self, key: str):
+            value = store.get(key)
+            return None if value is None else str(value)
+
+        async def incrby(self, key: str, amount: int):
+            store[key] = store.get(key, 0) + amount
+            return store[key]
+
+        async def expire(self, key: str, ttl: int):
+            return True
+
+        async def aclose(self):
+            return None
+
+    fake = FakeRedis()
+    with patch(
+        "app.services.content_notifications.x_budget.get_redis",
+        AsyncMock(return_value=fake),
+    ):
+        from app.services.content_notifications import x_budget
+
+        assert await x_budget.budget_exhausted() is False
+        await x_budget.record_reads(2)
+        assert await x_budget.budget_exhausted() is True
+
+
+@pytest.mark.anyio
+async def test_mark_replay_dedupe() -> None:
+    store: dict[str, str] = {}
+
+    class FakeRedis:
+        async def set(self, key, value, nx=False, ex=None):
+            if nx and key in store:
+                return False
+            store[key] = value
+            return True
+
+        async def aclose(self):
+            return None
+
+    with patch(
+        "app.services.content_notifications.queue.get_redis",
+        AsyncMock(return_value=FakeRedis()),
+    ):
+        from app.services.content_notifications.queue import mark_replay
+
+        assert await mark_replay("twitch:abc") is True
+        assert await mark_replay("twitch:abc") is False

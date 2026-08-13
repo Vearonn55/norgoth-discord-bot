@@ -59,6 +59,17 @@ class XAdapter(ContentPlatformAdapter):
         if not self.is_available():
             raise PlatformAdapterError(self.availability_reason() or "X unavailable")
 
+        from app.services.content_notifications.x_budget import (
+            budget_exhausted,
+            record_reads,
+        )
+
+        if await budget_exhausted():
+            raise PlatformAdapterError(
+                "X monthly read budget exhausted.",
+                code="quota_exhausted",
+            )
+
         username = self._extract_username(input_url)
         owns = self._http is None
         client = self._client()
@@ -68,6 +79,12 @@ class XAdapter(ContentPlatformAdapter):
                 params={"user.fields": "profile_image_url,name,username"},
                 headers=self._headers(),
             )
+            await record_reads(1)
+            if response.status_code == 429:
+                raise PlatformAdapterError(
+                    "X rate limited.",
+                    code="rate_limited",
+                )
             if response.status_code != 200:
                 raise PlatformAdapterError(
                     f"X user lookup failed: HTTP {response.status_code}",
@@ -109,6 +126,16 @@ class XAdapter(ContentPlatformAdapter):
     ) -> list[NormalizedContentEvent]:
         if not self.is_available():
             return []
+
+        from app.services.content_notifications.x_budget import (
+            budget_exhausted,
+            record_reads,
+        )
+
+        if await budget_exhausted():
+            logger.warning("X poll skipped: monthly read budget exhausted")
+            return []
+
         owns = self._http is None
         client = self._client()
         try:
@@ -121,6 +148,10 @@ class XAdapter(ContentPlatformAdapter):
                 },
                 headers=self._headers(),
             )
+            await record_reads(1)
+            if response.status_code == 429:
+                logger.warning("X timeline fetch rate limited")
+                return []
             if response.status_code != 200:
                 logger.warning(
                     "X timeline fetch failed: %s %s",

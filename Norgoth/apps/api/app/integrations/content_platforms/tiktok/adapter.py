@@ -24,8 +24,9 @@ class TikTokAdapter(ContentPlatformAdapter):
     def availability_reason(self) -> str | None:
         return (
             "TikTok does not provide an approved API for monitoring arbitrary "
-            "creator uploads. Content Posting webhooks require creator OAuth "
-            "and are not enabled for Norgoth yet."
+            "creator uploads. Display API and Content Posting webhooks require "
+            "creator Login Kit OAuth for that user's content only and are not "
+            "enabled for NorBot Content Notifications."
         )
 
     async def resolve_account(self, input_url: str) -> ResolvedCreator:

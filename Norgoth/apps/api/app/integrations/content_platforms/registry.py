@@ -36,11 +36,23 @@ def get_adapter(platform: PlatformType | str) -> ContentPlatformAdapter:
 def platform_availability() -> list[dict[str, object]]:
     rows = []
     for platform, adapter in get_adapters().items():
+        transport = "poll"
+        if platform == PlatformType.YOUTUBE:
+            transport = "websub"
+        elif platform == PlatformType.TWITCH:
+            transport = "eventsub"
+        elif platform == PlatformType.KICK:
+            transport = "kick_events"
+        elif platform == PlatformType.X:
+            transport = "poll"
+        elif platform == PlatformType.TIKTOK:
+            transport = "unsupported"
         rows.append(
             {
                 "platform": platform.value,
                 "available": adapter.is_available(),
                 "supports_push": adapter.supports_push(),
+                "transport": transport,
                 "reason": adapter.availability_reason(),
             }
         )

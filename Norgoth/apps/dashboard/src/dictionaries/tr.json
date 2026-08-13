@@ -97,7 +97,14 @@
     "activeCapacity": "{count} / {limit} aktif yapılandırma",
     "remainingCapacity": "{remaining} kaldı",
     "limitReached": "Bu platform için yapılandırma limitine ulaşıldı",
-    "disabledDoNotCount": "Devre dışı yapılandırmalar aktif kapasite tüketmez."
+    "disabledDoNotCount": "Devre dışı yapılandırmalar aktif kapasite tüketmez.",
+    "operatorCredsMissing": "Bu platform için NorBot operatör kimlik bilgileri yapılandırılmamış.",
+    "platformBlocked": "Bu platform resmi API’lerle rastgele içerik üreticilerini izleyemez.",
+    "tiktokUnsupported": "TikTok izleme kullanılamıyor: resmi API’ler yalnızca bağlı kullanıcının içeriğini kapsar, rastgele üreticileri değil.",
+    "transportWebhook": "Webhook",
+    "transportPoll": "Yoklama",
+    "transportUnsupported": "Desteklenmiyor",
+    "noConnectRequired": "İçerik üreticisi hesabı bağlama adımı gerekmez; herkese açık bir üretici URL’si yapıştırın."
   },
   "feedChannels": {
     "dailySliderTitle": "Günlük Feed Yenileme Aralığı",

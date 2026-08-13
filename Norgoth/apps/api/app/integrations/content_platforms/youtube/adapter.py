@@ -51,7 +51,20 @@ class YouTubeAdapter(ContentPlatformAdapter):
     def supports_push(self) -> bool:
         return True
 
+    def is_available(self) -> bool:
+        return bool(_youtube_api_key())
+
+    def availability_reason(self) -> str | None:
+        if self.is_available():
+            return None
+        return "YOUTUBE_API_KEY is required for official channel resolve and enrichment."
+
     async def resolve_account(self, input_url: str) -> ResolvedCreator:
+        if not self.is_available():
+            raise PlatformAdapterError(
+                self.availability_reason() or "YouTube unavailable",
+                code="platform_unavailable",
+            )
         raw = input_url.strip()
         channel_id = self._extract_channel_id(raw)
         handle = None
@@ -102,37 +115,28 @@ class YouTubeAdapter(ContentPlatformAdapter):
 
     async def _resolve_handle(self, handle: str) -> str:
         api_key = _youtube_api_key()
+        if not api_key:
+            raise PlatformAdapterError(
+                "YOUTUBE_API_KEY is required to resolve YouTube handles.",
+                code="platform_unavailable",
+            )
         owns_client = self._http is None
         client = self._client()
         try:
-            if api_key:
-                response = await client.get(
-                    "https://www.googleapis.com/youtube/v3/channels",
-                    params={
-                        "part": "id",
-                        "forHandle": handle.lstrip("@"),
-                        "key": api_key,
-                    },
-                )
-                if response.status_code == 200:
-                    items = response.json().get("items") or []
-                    if items:
-                        return items[0]["id"]
-
-            # Fallback: scrape channel id from public page (no private API).
-            page = await client.get(
-                f"https://www.youtube.com/{handle if handle.startswith('@') else '@' + handle}",
-                follow_redirects=True,
-                headers={"User-Agent": "NorgothBot/1.0"},
+            response = await client.get(
+                "https://www.googleapis.com/youtube/v3/channels",
+                params={
+                    "part": "id",
+                    "forHandle": handle.lstrip("@"),
+                    "key": api_key,
+                },
             )
-            match = re.search(r'"channelId":"(UC[\w-]{20,})"', page.text)
-            if match:
-                return match.group(1)
-            match = re.search(r"https://www\.youtube\.com/channel/(UC[\w-]{20,})", page.text)
-            if match:
-                return match.group(1)
+            if response.status_code == 200:
+                items = response.json().get("items") or []
+                if items:
+                    return items[0]["id"]
             raise PlatformAdapterError(
-                "Could not resolve YouTube handle to channel id.",
+                "Could not resolve YouTube handle via Data API.",
                 code="resolve_failed",
             )
         finally:
