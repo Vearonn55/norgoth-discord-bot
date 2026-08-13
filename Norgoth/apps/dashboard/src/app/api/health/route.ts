@@ -6,5 +6,6 @@ export function GET() {
   return NextResponse.json({
     status: "ok",
     service: "norbot-web",
+    release_sha: process.env.NORGOTH_RELEASE_SHA ?? null,
   });
 }

@@ -16,8 +16,18 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { MetricWidget } from "@/components/ui/metric-widget";
 import { apiUrl } from "@/lib/api";
-import { formatDict } from "@/lib/locale-format";
 import { getDictionary, hasLocale } from "../../dictionaries";
+
+/** Local template fill — keep this page free of client-module imports. */
+function fillTemplate(
+  template: string,
+  values: Record<string, string | number>,
+): string {
+  return Object.entries(values).reduce(
+    (text, [key, value]) => text.replaceAll(`{${key}}`, String(value)),
+    template,
+  );
+}
 
 type HomeStatus = {
   botConnected: boolean;
@@ -109,7 +119,7 @@ export default async function DashboardPage({
           icon={<Icon icon={cilSpeedometer} size="xl" />}
           description={
             status.guildName
-              ? formatDict(d.managingGuild, { name: status.guildName })
+              ? fillTemplate(d.managingGuild, { name: status.guildName })
               : d.descriptionFallback
           }
           actions={
@@ -158,7 +168,7 @@ export default async function DashboardPage({
                   status.queuePaused ? dict.common.paused : dict.common.running
                 }
                 accent={status.queuePaused ? "warning" : "success"}
-                helper={formatDict(d.queueHelper, {
+                helper={fillTemplate(d.queueHelper, {
                   count: status.queuedCount,
                 })}
                 icon={<Icon icon={cilSend} size="lg" />}
