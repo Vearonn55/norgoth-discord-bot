@@ -11,7 +11,11 @@ FEED_WINDOWS: tuple[FeedWindow, ...] = ("daily", "weekly", "monthly", "all_time"
 
 DAILY_REFRESH_HOURS_MIN = 1
 DAILY_REFRESH_HOURS_MAX = 12
-DAILY_REFRESH_HOURS_DEFAULT = 1
+# Shared Feed Refresh Interval default (applies to all windows).
+DAILY_REFRESH_HOURS_DEFAULT = 4
+FEED_REFRESH_HOURS_MIN = DAILY_REFRESH_HOURS_MIN
+FEED_REFRESH_HOURS_MAX = DAILY_REFRESH_HOURS_MAX
+FEED_REFRESH_HOURS_DEFAULT = DAILY_REFRESH_HOURS_DEFAULT
 
 # Legacy guild-level minute clamp (pre per-window schedules).
 REFRESH_INTERVAL_MIN = 5
@@ -23,17 +27,16 @@ FEED_REFRESH_RETRY_CAP_MINUTES = 5
 
 
 def _default_window(window: FeedWindow) -> dict[str, Any]:
-    base: dict[str, Any] = {
+    _ = window
+    return {
         "enabled": False,
         "channel_id": None,
         "norgoth_managed": False,
         "schedule_anchor_at": None,
         "next_refresh_at": None,
         "last_refresh_at": None,
+        "refresh_interval_hours": DAILY_REFRESH_HOURS_DEFAULT,
     }
-    if window == "daily":
-        base["refresh_interval_hours"] = DAILY_REFRESH_HOURS_DEFAULT
-    return base
 
 
 DEFAULT_FEED_CONFIG: dict[str, Any] = {
@@ -86,13 +89,21 @@ def clamp_refresh_interval_minutes(value: Any) -> int:
 
 
 def clamp_daily_refresh_interval_hours(value: Any) -> int:
-    """Normalize daily refresh interval to 1–12 hours."""
+    """Normalize shared feed refresh interval to 1–12 hours.
+
+    Invalid or missing values fall back to the 4-hour default. Values already
+    inside 1–12 are preserved (legacy Daily configs keep their setting).
+    """
 
     try:
         hours = int(value)
     except (TypeError, ValueError):
-        hours = DAILY_REFRESH_HOURS_DEFAULT
-    return max(DAILY_REFRESH_HOURS_MIN, min(DAILY_REFRESH_HOURS_MAX, hours))
+        hours = FEED_REFRESH_HOURS_DEFAULT
+    return max(FEED_REFRESH_HOURS_MIN, min(FEED_REFRESH_HOURS_MAX, hours))
+
+
+# Prefer the shared name in new call sites; keep the daily alias for imports.
+clamp_feed_refresh_interval_hours = clamp_daily_refresh_interval_hours
 
 
 def legacy_minutes_to_daily_hours(minutes: Any) -> int:
@@ -166,38 +177,30 @@ def window_cadence_label(
     *,
     hours: int | None = None,
 ) -> str:
-    if window == "daily":
-        value = (
-            clamp_daily_refresh_interval_hours(hours)
-            if hours is not None
-            else DAILY_REFRESH_HOURS_DEFAULT
-        )
-        unit = "hour" if value == 1 else "hours"
-        return f"Every {value} {unit}"
-    if window == "weekly":
-        return "Every 7 days"
-    if window == "monthly":
-        return "Every calendar month"
-    return "Every 24 hours"
+    """Shared refresh cadence label for every feed period."""
+
+    _ = window
+    value = (
+        clamp_daily_refresh_interval_hours(hours)
+        if hours is not None
+        else FEED_REFRESH_HOURS_DEFAULT
+    )
+    unit = "hour" if value == 1 else "hours"
+    return f"Every {value} {unit}"
 
 
 def first_occurrence_after_anchor(
     window: FeedWindow,
     anchor: datetime,
     *,
-    daily_hours: int = DAILY_REFRESH_HOURS_DEFAULT,
+    daily_hours: int = FEED_REFRESH_HOURS_DEFAULT,
 ) -> datetime:
-    """First scheduled occurrence after the anchor (one cadence period later)."""
+    """First scheduled occurrence after the anchor (one shared interval later)."""
 
+    _ = window
     start = _aware_utc(anchor)
-    if window == "daily":
-        hours = clamp_daily_refresh_interval_hours(daily_hours)
-        return start + timedelta(hours=hours)
-    if window == "weekly":
-        return start + timedelta(days=7)
-    if window == "monthly":
-        return add_calendar_months(start, 1)
-    return start + timedelta(hours=24)
+    hours = clamp_daily_refresh_interval_hours(daily_hours)
+    return start + timedelta(hours=hours)
 
 
 def next_occurrence_after(
@@ -205,29 +208,14 @@ def next_occurrence_after(
     anchor: datetime,
     after: datetime,
     *,
-    daily_hours: int = DAILY_REFRESH_HOURS_DEFAULT,
+    daily_hours: int = FEED_REFRESH_HOURS_DEFAULT,
 ) -> datetime:
-    """Least occurrence on the anchor series that is strictly after ``after``."""
+    """Least occurrence on the shared hourly grid that is strictly after ``after``."""
 
+    _ = window
     start = _aware_utc(anchor)
     cutoff = _aware_utc(after)
-
-    if window == "monthly":
-        n = 1
-        while n < 12000:
-            candidate = add_calendar_months(start, n)
-            if candidate > cutoff:
-                return candidate
-            n += 1
-        raise RuntimeError("monthly occurrence search overflow")
-
-    if window == "daily":
-        period = timedelta(hours=clamp_daily_refresh_interval_hours(daily_hours))
-    elif window == "weekly":
-        period = timedelta(days=7)
-    else:
-        period = timedelta(hours=24)
-
+    period = timedelta(hours=clamp_daily_refresh_interval_hours(daily_hours))
     period_seconds = period.total_seconds()
     if period_seconds <= 0:
         raise ValueError("invalid cadence period")
@@ -371,6 +359,7 @@ def window_countdown_fields(
         status = "due"
     else:
         status = "pending"
+    shared_hours = daily_hours_from_config(config)
     return {
         "window": window,
         "enabled": bool(wcfg.get("enabled")),
@@ -379,8 +368,8 @@ def window_countdown_fields(
         "next_refresh_at": next_at,
         "remaining_seconds": remaining,
         "scheduler_status": status,
-        "cadence_label": window_cadence_label(window, hours=hours),
-        "refresh_interval_hours": hours if window == "daily" else None,
+        "cadence_label": window_cadence_label(window, hours=shared_hours),
+        "refresh_interval_hours": shared_hours,
     }
 
 
@@ -472,6 +461,7 @@ def ensure_window_schedule(
     window: FeedWindow,
     *,
     now: datetime | None = None,
+    reset_anchor: bool = False,
 ) -> dict[str, Any]:
     """Ensure a window has schedule_anchor_at and next_refresh_at."""
 
@@ -488,10 +478,9 @@ def ensure_window_schedule(
     )
     windows[window] = wcfg
     hours = daily_hours_from_config(config)
-    if window == "daily":
-        wcfg["refresh_interval_hours"] = hours
+    wcfg["refresh_interval_hours"] = hours
 
-    anchor = parse_iso_utc(wcfg.get("schedule_anchor_at"))
+    anchor = None if reset_anchor else parse_iso_utc(wcfg.get("schedule_anchor_at"))
     if anchor is None:
         last_map = config.get("last_refresh_at") or {}
         anchor = (
@@ -504,7 +493,7 @@ def ensure_window_schedule(
         )
         wcfg["schedule_anchor_at"] = now_iso_utc(anchor)
 
-    if parse_iso_utc(wcfg.get("next_refresh_at")) is None:
+    if reset_anchor or parse_iso_utc(wcfg.get("next_refresh_at")) is None:
         nxt = next_occurrence_after(window, anchor, current, daily_hours=hours)
         wcfg["next_refresh_at"] = now_iso_utc(nxt)
 
@@ -532,8 +521,7 @@ def schedule_window_after_success(
     )
     windows[window] = wcfg
     hours = daily_hours_from_config(config)
-    if window == "daily":
-        wcfg["refresh_interval_hours"] = hours
+    wcfg["refresh_interval_hours"] = hours
 
     if parse_iso_utc(wcfg.get("schedule_anchor_at")) is None:
         wcfg["schedule_anchor_at"] = now_iso_utc(current)
@@ -573,14 +561,7 @@ def schedule_window_after_failure(
     windows[window] = wcfg
 
     hours = daily_hours_from_config(config)
-    if window == "daily":
-        interval_minutes = hours * 60
-    elif window == "weekly":
-        interval_minutes = 7 * 24 * 60
-    elif window == "monthly":
-        interval_minutes = 30 * 24 * 60
-    else:
-        interval_minutes = 24 * 60
+    interval_minutes = hours * 60
     backoff = min(interval_minutes, FEED_REFRESH_RETRY_CAP_MINUTES)
     wcfg["next_refresh_at"] = now_iso_utc(current + timedelta(minutes=backoff))
     return _sync_guild_schedule_mirrors(config)
@@ -591,35 +572,38 @@ def schedule_after_daily_interval_change(
     *,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    """Keep daily anchor; recompute next on the new hourly grid."""
+    """Keep each window anchor; recompute next_refresh_at on the shared hourly grid."""
 
     current = _aware_utc(now)
     windows = config.setdefault("windows", {})
     if not isinstance(windows, dict):
         windows = {}
         config["windows"] = windows
-    existing = windows.get("daily")
-    wcfg = (
-        {**_default_window("daily"), **existing}
-        if isinstance(existing, dict)
-        else _default_window("daily")
-    )
-    windows["daily"] = wcfg
+
     hours = daily_hours_from_config(config)
-    wcfg["refresh_interval_hours"] = hours
+    for window in FEED_WINDOWS:
+        existing = windows.get(window)
+        wcfg = (
+            {**_default_window(window), **existing}
+            if isinstance(existing, dict)
+            else _default_window(window)
+        )
+        windows[window] = wcfg
+        wcfg["refresh_interval_hours"] = hours
 
-    anchor = parse_iso_utc(wcfg.get("schedule_anchor_at"))
-    if anchor is None:
-        anchor = current
-        wcfg["schedule_anchor_at"] = now_iso_utc(anchor)
+        anchor = parse_iso_utc(wcfg.get("schedule_anchor_at"))
+        if anchor is None:
+            anchor = current
+            wcfg["schedule_anchor_at"] = now_iso_utc(anchor)
 
-    nxt = next_occurrence_after(
-        "daily",
-        anchor,
-        current - timedelta(microseconds=1),
-        daily_hours=hours,
-    )
-    wcfg["next_refresh_at"] = now_iso_utc(nxt)
+        nxt = next_occurrence_after(
+            window,
+            anchor,
+            current - timedelta(microseconds=1),
+            daily_hours=hours,
+        )
+        wcfg["next_refresh_at"] = now_iso_utc(nxt)
+
     return _sync_guild_schedule_mirrors(config)
 
 
@@ -742,14 +726,21 @@ def backfill_window_schedules(
         wcfg = {**base, **existing} if isinstance(existing, dict) else dict(base)
         windows[window] = wcfg
 
+        if wcfg.get("refresh_interval_hours") is None:
+            wcfg["refresh_interval_hours"] = hours
+        else:
+            wcfg["refresh_interval_hours"] = clamp_daily_refresh_interval_hours(
+                wcfg.get("refresh_interval_hours")
+            )
         if window == "daily":
-            if wcfg.get("refresh_interval_hours") is None:
-                wcfg["refresh_interval_hours"] = hours
-            else:
-                wcfg["refresh_interval_hours"] = clamp_daily_refresh_interval_hours(
-                    wcfg.get("refresh_interval_hours")
-                )
             hours = clamp_daily_refresh_interval_hours(wcfg["refresh_interval_hours"])
+            # Keep other windows aligned to the shared guild interval.
+            for other in FEED_WINDOWS:
+                if other == "daily":
+                    continue
+                other_cfg = windows.get(other)
+                if isinstance(other_cfg, dict):
+                    other_cfg["refresh_interval_hours"] = hours
 
         if parse_iso_utc(wcfg.get("schedule_anchor_at")) is None:
             anchor = (
@@ -819,7 +810,15 @@ def window_bounds(
     *,
     now: datetime | None = None,
 ) -> tuple[datetime | None, datetime | None]:
-    """Return inclusive-start / exclusive-end UTC bounds for a calendar window."""
+    """Return inclusive UTC eligibility bounds for a feed period.
+
+    Period controls ranking eligibility, not refresh cadence:
+
+    - daily: rolling previous 24 hours ``[T-24h, T]``
+    - weekly: rolling previous 7 days ``[T-7d, T]``
+    - monthly: rolling previous calendar month ``[add_calendar_months(T,-1), T]``
+    - all_time: no age cutoff
+    """
 
     current = now or datetime.now(timezone.utc)
     if current.tzinfo is None:
@@ -831,22 +830,13 @@ def window_bounds(
         return None, None
 
     if window == "daily":
-        start = current.replace(hour=0, minute=0, second=0, microsecond=0)
-        return start, start + timedelta(days=1)
+        return current - timedelta(hours=24), current
 
     if window == "weekly":
-        # ISO week: Monday 00:00 UTC.
-        start = current.replace(hour=0, minute=0, second=0, microsecond=0)
-        start = start - timedelta(days=start.weekday())
-        return start, start + timedelta(days=7)
+        return current - timedelta(days=7), current
 
-    # monthly — calendar month UTC
-    start = current.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    if start.month == 12:
-        end = start.replace(year=start.year + 1, month=1)
-    else:
-        end = start.replace(month=start.month + 1)
-    return start, end
+    # monthly — one calendar month lookback via add_calendar_months
+    return add_calendar_months(current, -1), current
 
 
 def windows_for_timestamp(
@@ -854,7 +844,7 @@ def windows_for_timestamp(
     *,
     now: datetime | None = None,
 ) -> list[FeedWindow]:
-    """Windows that currently include ``created_at`` (UTC calendar)."""
+    """Windows whose rolling eligibility currently includes ``created_at``."""
 
     current = now or datetime.now(timezone.utc)
     included: list[FeedWindow] = ["all_time"]
@@ -866,7 +856,7 @@ def windows_for_timestamp(
             ts = ts.replace(tzinfo=timezone.utc)
         else:
             ts = ts.astimezone(timezone.utc)
-        if start <= ts < end:
+        if start <= ts <= end:
             included.append(window)  # type: ignore[arg-type]
     return included
 
@@ -946,6 +936,9 @@ def merge_feed_config(raw: dict[str, Any] | None) -> dict[str, Any]:
 
     hours = clamp_daily_refresh_interval_hours(daily.get("refresh_interval_hours"))
     daily["refresh_interval_hours"] = hours
+    for key in FEED_WINDOWS:
+        wcfg = merged["windows"].setdefault(key, _default_window(key))
+        wcfg["refresh_interval_hours"] = hours
     merged["daily_refresh_interval_hours"] = hours
     merged["refresh_interval_minutes"] = hours * 60
 

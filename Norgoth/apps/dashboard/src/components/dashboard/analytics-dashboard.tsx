@@ -251,16 +251,9 @@ export function AnalyticsDashboard({ lang }: { lang: string }) {
           category="analytics"
           description={d.description}
           actions={
-            <>
-              <Button asChild variant="secondary">
-                <Link href={`/${lang}/campaigns/history`}>{d.campaignHistory}</Link>
-              </Button>
-              <Button asChild variant="primary">
-                <Link href={`/${lang}/observability/worker-health`}>
-                  {d.workerHealth}
-                </Link>
-              </Button>
-            </>
+            <Button asChild variant="secondary">
+              <Link href={`/${lang}/campaigns/history`}>{d.campaignHistory}</Link>
+            </Button>
           }
         />
 

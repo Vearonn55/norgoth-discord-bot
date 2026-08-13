@@ -30,8 +30,6 @@ import {
   cilList,
   cilTags,
   cilBell,
-  cilHeart,
-  cilCog,
   cilImage,
   cilBug,
   cilTask,
@@ -206,17 +204,6 @@ const SIDEBAR_DEFS: SidebarGroupDef[] = [
         href: "/automation/rich-link-embeds",
         icon: cilLink,
       },
-    ],
-  },
-  {
-    titleKey: "groupSystem",
-    items: [
-      {
-        labelKey: "workerHealth",
-        href: "/observability/worker-health",
-        icon: cilHeart,
-      },
-      { labelKey: "settings", href: "/settings", icon: cilCog },
     ],
   },
 ];

@@ -108,7 +108,6 @@
     "advanced": "Gelişmiş",
     "inviteRules": "Davet Kuralları",
     "voiceAutomations": "Ses Otomasyonları",
-    "settings": "Ayarlar",
     "general": "Genel",
     "permissions": "Yetkiler",
     "templates": "Şablonlar",
@@ -129,7 +128,6 @@
     "autoModeration": "Otomatik Moderasyon",
     "raidProtection": "Baskın Koruması",
     "honeypot": "Honeypot",
-    "workerHealth": "İşçi Sağlığı",
     "brandSubtitle": "Topluluk Komuta Merkezi",
     "serverSelection": "Sunucu Seçimi",
     "noServerSelected": "Sunucu seçilmedi",
@@ -138,8 +136,7 @@
     "groupMessages": "MESAJLAR",
     "groupAudit": "DENETİM",
     "groupSecurity": "GÜVENLİK",
-    "groupAutomation": "OTOMASYON",
-    "groupSystem": "SİSTEM"
+    "groupAutomation": "OTOMASYON"
   },
   "dashboard": {
     "title": "NorBot",
@@ -340,17 +337,17 @@
     "workerLabel": "İşçi: {state}"
   },
   "feedChannels": {
-    "dailySliderTitle": "Günlük Feed Yenileme Aralığı",
-    "dailySliderHelp": "Yalnızca Günlük feed özel aralık kullanır (1–12 saat). Haftalık, Aylık ve Tüm zamanlar yapılandırma çapasından sabit kadans kullanır.",
+    "dailySliderTitle": "Besleme Yenileme Aralığı",
+    "dailySliderHelp": "Tek bir ortak aralık (1–12 saat) Günlük, Haftalık, Aylık ve Tüm zamanlar feed’lerini yeniler. Uygunluk her yenilemede kayan pencerelere göre hesaplanır.",
     "nextRefresh": "Sonraki yenileme",
     "currentHours": "Geçerli değer",
     "hours": "saat",
     "saveInterval": "Aralığı kaydet",
     "saving": "Kaydediliyor…",
-    "configureDailyFirst": "Yenileme aralığını düzenlemek için önce bir Günlük feed kanalı yapılandırın.",
-    "weeklyCadence": "Haftalık: yapılandırma çapasından bir hafta sonra ilk yenileme, ardından her hafta.",
-    "monthlyCadence": "Aylık: yapılandırma çapasından bir takvim ayı sonra ilk yenileme, ardından aylık.",
-    "allTimeCadence": "Tüm zamanlar: yapılandırma çapasından her 24 saatte bir yenilenir."
+    "configureDailyFirst": "Ortak yenileme aralığını düzenlemek için en az bir Top Trending kanalı yapılandırın.",
+    "weeklyCadence": "Günlük son 24 saati, Haftalık son 7 günü sıralar.",
+    "monthlyCadence": "Aylık bir önceki takvim ayı kadar geriye bakar.",
+    "allTimeCadence": "Tüm zamanlar yaş sınırı kullanmaz. Tüm dönemler yukarıdaki ortak aralıkla yenilenir."
   },
   "status": {
     "healthy": "Sağlıklı",
@@ -857,7 +854,7 @@
     "featureAutomation": "Otomasyon",
     "featureAutomationItems": "Otomatik Yanıtlar|Yayın Bildirimleri|Rol Menüleri",
     "featureOperations": "Operasyon",
-    "featureOperationsItems": "Kuyruk İzleme|İşçi Sağlığı|Topluluk Analitiği",
+    "featureOperationsItems": "Kuyruk İzleme|Kampanya Teslimatı|Topluluk Analitiği",
     "howTitle": "Nasıl çalışır",
     "howLead": "Her operatörün izlediği yol aynıdır: giriş yapın, botu yükleyin, ardından o sunucu için Komuta Merkezini yapılandırın.",
     "howLoginTitle": "Giriş",
@@ -1424,7 +1421,7 @@
     "categoryMissingWarn": "Daha önce seçilen kategori bu sunucuda artık yok. Yenisini seçin veya seçimi temizleyin.",
     "windowModalTitle": "{window} feed",
     "windowModalFallback": "Feed penceresi",
-    "windowModalDesc": "UTC takvim penceresi. Sıra yuvaları hedef kanalda yerinde düzenlenir.",
+    "windowModalDesc": "Kayan uygunluk penceresi (UTC). Sıra yuvaları hedef kanalda yerinde düzenlenir.",
     "feedChannel": "Feed kanalı",
     "selectChannel": "Kanal seç…",
     "settingsTitle": "Top Trending ayarları",

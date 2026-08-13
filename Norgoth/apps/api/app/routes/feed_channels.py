@@ -95,13 +95,6 @@ class FeedConfigBody(BaseModel):
             raise ValueError("Invalid upvote emoji.")
         if not emoji_reaction_key(self.downvote_emoji.model_dump()):
             raise ValueError("Invalid downvote emoji.")
-        for key, window in self.windows.items():
-            if key != "daily" and window.refresh_interval_hours is not None:
-                raise ValueError(
-                    "unsupported_refresh_interval_for_window:"
-                    f"Custom refresh intervals are only allowed for the Daily feed "
-                    f"(got window={key})."
-                )
         return self
 
 
@@ -117,20 +110,7 @@ class FeedWindowPatchBody(BaseModel):
 
 
 INVALID_DAILY_REFRESH_INTERVAL = "invalid_daily_refresh_interval"
-UNSUPPORTED_REFRESH_INTERVAL_FOR_WINDOW = "unsupported_refresh_interval_for_window"
-
-
-def _reject_interval_for_window(window: FeedWindow) -> None:
-    raise HTTPException(
-        status_code=400,
-        detail={
-            "code": UNSUPPORTED_REFRESH_INTERVAL_FOR_WINDOW,
-            "message": (
-                "Custom refresh intervals are only allowed for the Daily feed."
-            ),
-            "window": window,
-        },
-    )
+INVALID_FEED_REFRESH_INTERVAL = INVALID_DAILY_REFRESH_INTERVAL
 
 
 def _reject_invalid_daily_hours(hours: int) -> None:
@@ -138,7 +118,7 @@ def _reject_invalid_daily_hours(hours: int) -> None:
         status_code=400,
         detail={
             "code": INVALID_DAILY_REFRESH_INTERVAL,
-            "message": "Daily refresh interval must be a whole number of hours from 1 to 12.",
+            "message": "Feed refresh interval must be a whole number of hours from 1 to 12.",
             "min": 1,
             "max": 12,
             "received": hours,
@@ -159,11 +139,6 @@ def _normalize_payload(body: FeedConfigBody, previous: dict[str, Any]) -> dict[s
             "next_refresh_at": prev.get("next_refresh_at"),
             "last_refresh_at": prev.get("last_refresh_at"),
         }
-        if key == "daily":
-            windows[key]["refresh_interval_hours"] = clamp_daily_refresh_interval_hours(
-                prev.get("refresh_interval_hours")
-                or daily_hours_from_config(previous)
-            )
 
     for key, value in body.windows.items():
         if key not in windows:
@@ -174,32 +149,33 @@ def _normalize_payload(body: FeedConfigBody, previous: dict[str, Any]) -> dict[s
             "channel_id": value.channel_id,
             "norgoth_managed": value.norgoth_managed,
         }
-        if key == "daily" and value.refresh_interval_hours is not None:
-            windows[key]["refresh_interval_hours"] = clamp_daily_refresh_interval_hours(
-                value.refresh_interval_hours
-            )
-        elif key != "daily":
-            windows[key].pop("refresh_interval_hours", None)
 
-    # Resolve daily hours: body.daily > daily window > legacy minutes > previous.
+    # Shared refresh hours: body.daily > any window interval > legacy minutes > previous.
+    shared_from_window: int | None = None
+    for key in FEED_WINDOWS:
+        win = body.windows.get(key)
+        if win is not None and win.refresh_interval_hours is not None:
+            shared_from_window = clamp_daily_refresh_interval_hours(
+                win.refresh_interval_hours
+            )
+            break
+
     if body.daily_refresh_interval_hours is not None:
         daily_hours = clamp_daily_refresh_interval_hours(
             body.daily_refresh_interval_hours
         )
-    elif body.windows.get("daily") and body.windows["daily"].refresh_interval_hours is not None:
-        daily_hours = clamp_daily_refresh_interval_hours(
-            body.windows["daily"].refresh_interval_hours
-        )
+    elif shared_from_window is not None:
+        daily_hours = shared_from_window
     elif body.refresh_interval_minutes is not None:
         from app.services.feed_ranking import legacy_minutes_to_daily_hours
 
         daily_hours = legacy_minutes_to_daily_hours(body.refresh_interval_minutes)
     else:
         daily_hours = clamp_daily_refresh_interval_hours(
-            (windows.get("daily") or {}).get("refresh_interval_hours")
-            or daily_hours_from_config(previous)
+            daily_hours_from_config(previous)
         )
-    windows["daily"]["refresh_interval_hours"] = daily_hours
+    for key in FEED_WINDOWS:
+        windows[key]["refresh_interval_hours"] = daily_hours
 
     return {
         "enabled": body.enabled,
@@ -210,6 +186,7 @@ def _normalize_payload(body: FeedConfigBody, previous: dict[str, Any]) -> dict[s
         "min_net_score": body.min_net_score,
         "display_limit": clamp_display_limit(body.display_limit),
         "refresh_interval_minutes": daily_hours * 60,
+        "daily_refresh_interval_hours": daily_hours,
         "feed_category_id": body.feed_category_id,
         "exclude_bots": body.exclude_bots,
         "exclude_webhooks": body.exclude_webhooks,
@@ -399,18 +376,19 @@ async def patch_feed_window(
     if body.norgoth_managed is not None:
         current["norgoth_managed"] = body.norgoth_managed
     if body.refresh_interval_hours is not None:
-        if window != "daily":
-            _reject_interval_for_window(window)
         # Pydantic already enforces 1–12; guard for direct callers / clamps.
         if body.refresh_interval_hours != clamp_daily_refresh_interval_hours(
             body.refresh_interval_hours
         ):
             _reject_invalid_daily_hours(int(body.refresh_interval_hours))
-        current["refresh_interval_hours"] = clamp_daily_refresh_interval_hours(
-            body.refresh_interval_hours
-        )
-    elif window != "daily":
-        current.pop("refresh_interval_hours", None)
+        hours = clamp_daily_refresh_interval_hours(body.refresh_interval_hours)
+        config["daily_refresh_interval_hours"] = hours
+        config["refresh_interval_minutes"] = hours * 60
+        for key in FEED_WINDOWS:
+            w = dict(config["windows"].get(key) or {})
+            w["refresh_interval_hours"] = hours
+            config["windows"][key] = w
+        current = dict(config["windows"].get(window) or current)
     # Cleared channel → not configured.
     if body.channel_id == "" or (
         "channel_id" in body.model_fields_set and body.channel_id is None
@@ -425,7 +403,7 @@ async def patch_feed_window(
             window,
             reset_anchor=not was_ready,
         )
-    if window == "daily" and body.refresh_interval_hours is not None:
+    if body.refresh_interval_hours is not None:
         schedule_after_daily_interval_change(config)
     await save_config(
         guild_id, "feed_channels", config, enabled=bool(config.get("enabled"))

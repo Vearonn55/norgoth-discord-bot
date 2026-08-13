@@ -286,12 +286,6 @@ export function CampaignCommandCenter() {
                   </p>
                 </div>
               </div>
-
-              <Button asChild variant="secondary" size="sm">
-                <Link href={`/${lang}/observability/worker-health`}>
-                  {copy.workerHealth}
-                </Link>
-              </Button>
             </div>
 
             {activeCampaigns.length === 0 ? (
@@ -335,10 +329,6 @@ export function CampaignCommandCenter() {
               <ActionLink
                 href={`/${lang}/campaigns/history`}
                 label={copy.campaignHistory}
-              />
-              <ActionLink
-                href={`/${lang}/observability/worker-health`}
-                label={copy.workerHealth}
               />
             </div>
           </Card>

@@ -80,14 +80,14 @@ docker build -f Norgoth/deploy/docker/Dockerfile.api -t norbot-api:local Norgoth
 Provider API credential acquisition for Content Notifications:
 [`docs/runbooks/content-notifications-credentials.md`](content-notifications-credentials.md).
 
-## Smoke: Worker Health, Content Notifications, Top Trending
+## Smoke: Worker Health APIs, Content Notifications, Top Trending
 
-After deploy (or when validating WH / CN / feed closeout), confirm:
+After deploy (or when validating WH / CN / feed closeout), confirm. System UI pages were removed; use APIs/Redis for worker checks.
 
-### Worker Health
+### Worker Health (API)
 
 1. Compose has four worker processes: `campaign-worker`, `content-worker`, `rss-worker`, `bot`.
-2. Command Center → Worker Health shows all four **online** (campaign may be **paused** if queue is paused).
+2. `GET /observability/workers/health` reports workers online (campaign may be **paused** if queue is paused).
 3. Heartbeat keys present in Redis (TTL ~45s):
    - `norgoth:worker:heartbeat`
    - `norgoth:content_notifications:worker:heartbeat`
@@ -103,8 +103,16 @@ After deploy (or when validating WH / CN / feed closeout), confirm:
 
 ### Top Trending schedules
 
-1. Configure Daily with a channel → Daily 1–12h slider is editable; without Daily channel → cadence is read-only / configure-first.
-2. Daily interval outside 1–12 → API `invalid_daily_refresh_interval`; non-daily interval submit → `unsupported_refresh_interval_for_window`.
-3. Enable Weekly → `next_refresh_at` ≈ `schedule_anchor_at` + 7 days (UTC).
-4. Countdown in the panel follows backend `remaining_seconds` / `next_refresh_at` (not FE-only math).
-5. Bot refresh loop hits `feed-refresh-window` for due windows; Repair still runs full `feed-repair`.
+1. With any Top Trending channel configured, the shared **Feed Refresh Interval** slider (1–12h, default 4) is editable and applies to Daily/Weekly/Monthly/All-time.
+2. Interval outside 1–12 → API `invalid_daily_refresh_interval`.
+3. Changing the interval recomputes each window’s `next_refresh_at` on the shared hourly grid without an immediate rebuild.
+4. Eligibility is rolling at refresh time `T`: Daily `T-24h`, Weekly `T-7d`, Monthly `add_calendar_months(T,-1)`, All-time no age cutoff. A message older than 7 days must leave Weekly on the next Weekly rebuild.
+5. Countdown in the panel follows backend `remaining_seconds` / `next_refresh_at` (not FE-only math).
+6. Bot refresh loop hits `feed-refresh-window` for due windows; Repair still runs full `feed-repair`.
+
+### Deploy / rollback (Top Trending + System UI)
+
+1. Deploy API (shared interval default 4 + rolling bounds + shared schedule) before or with bot.
+2. Deploy web (topbar grid fix + System UI removal + Feed Refresh Interval slider).
+3. Deploy bot.
+4. Rollback web alone restores System/topbar UI; API merge remains backward-compatible for legacy daily hours. Rolling bounds are a behavior change — revert API to restore calendar windows if needed.

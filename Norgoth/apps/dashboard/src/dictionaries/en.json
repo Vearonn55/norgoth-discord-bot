@@ -121,8 +121,6 @@
     "autoModeration": "Auto-Moderation",
     "raidProtection": "Raid Protection",
     "honeypot": "Honeypot",
-    "workerHealth": "Worker Health",
-    "settings": "Settings",
     "general": "General",
     "permissions": "Permissions",
     "templates": "Templates",
@@ -138,8 +136,7 @@
     "groupMessages": "MESSAGES",
     "groupAudit": "AUDIT",
     "groupSecurity": "SECURITY",
-    "groupAutomation": "AUTOMATION",
-    "groupSystem": "SYSTEM"
+    "groupAutomation": "AUTOMATION"
   },
   "dashboard": {
     "title": "NorBot",
@@ -340,17 +337,17 @@
     "workerLabel": "Worker: {state}"
   },
   "feedChannels": {
-    "dailySliderTitle": "Daily Feed Refresh Interval",
-    "dailySliderHelp": "Only the Daily feed uses a custom interval (1–12 hours). Weekly, Monthly, and All-time use fixed cadences from their configuration anchors.",
+    "dailySliderTitle": "Feed Refresh Interval",
+    "dailySliderHelp": "One shared interval (1–12 hours) refreshes Daily, Weekly, Monthly, and All-time feeds. Eligibility uses rolling windows at each refresh.",
     "nextRefresh": "Next refresh",
     "currentHours": "Current value",
     "hours": "hours",
     "saveInterval": "Save interval",
     "saving": "Saving…",
-    "configureDailyFirst": "Configure a Daily feed channel to edit its refresh interval.",
-    "weeklyCadence": "Weekly: first refresh one week after the configuration anchor, then every week.",
-    "monthlyCadence": "Monthly: first refresh one calendar month after the configuration anchor, then monthly.",
-    "allTimeCadence": "All-time: refreshes every 24 hours from the configuration anchor."
+    "configureDailyFirst": "Configure at least one Top Trending channel to edit the shared refresh interval.",
+    "weeklyCadence": "Daily ranks messages from the last 24 hours. Weekly ranks messages from the last 7 days.",
+    "monthlyCadence": "Monthly ranks messages from the previous calendar month lookback.",
+    "allTimeCadence": "All-time has no age cutoff. Every period refreshes on the shared interval above."
   },
   "status": {
     "healthy": "Healthy",
@@ -857,7 +854,7 @@
     "featureAutomation": "Automation",
     "featureAutomationItems": "Auto Responses|Stream Notifications|Role Menus",
     "featureOperations": "Operations",
-    "featureOperationsItems": "Queue Monitoring|Worker Health|Community Analytics",
+    "featureOperationsItems": "Queue Monitoring|Campaign Delivery|Community Analytics",
     "howTitle": "How it works",
     "howLead": "The same path every operator takes: sign in, install the bot, then configure the Command Center for that guild.",
     "howLoginTitle": "Login",
@@ -1424,7 +1421,7 @@
     "categoryMissingWarn": "The previously selected category no longer exists in this server. Pick a replacement or clear the selection.",
     "windowModalTitle": "{window} feed",
     "windowModalFallback": "Feed window",
-    "windowModalDesc": "UTC calendar window. Rank slots are edited in place in the destination channel.",
+    "windowModalDesc": "Rolling eligibility window (UTC). Rank slots are edited in place in the destination channel.",
     "feedChannel": "Feed channel",
     "selectChannel": "Select channel…",
     "settingsTitle": "Top Trending settings",

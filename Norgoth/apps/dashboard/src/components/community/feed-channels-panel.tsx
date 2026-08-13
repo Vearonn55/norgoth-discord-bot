@@ -91,7 +91,7 @@ export function FeedChannelsPanel() {
     channel_id: string;
     enabled: boolean;
   }>({ channel_id: "", enabled: false });
-  const [intervalDraft, setIntervalDraft] = useState(1);
+  const [intervalDraft, setIntervalDraft] = useState(4);
   const [intervalSaving, setIntervalSaving] = useState(false);
   const [countdownMs, setCountdownMs] = useState(0);
   const [countdownReady, setCountdownReady] = useState(false);
@@ -116,9 +116,9 @@ export function FeedChannelsPanel() {
   );
 
   const savedDailyHours = clampDailyHours(
-    config?.windows?.daily?.refresh_interval_hours ??
-      config?.daily_refresh_interval_hours ??
-      Math.max(1, Math.round((config?.refresh_interval_minutes ?? 60) / 60))
+    config?.daily_refresh_interval_hours ??
+      config?.windows?.daily?.refresh_interval_hours ??
+      Math.max(1, Math.round((config?.refresh_interval_minutes ?? 240) / 60))
   );
 
   useEffect(() => {
@@ -199,7 +199,12 @@ export function FeedChannelsPanel() {
     all_time: d.windowAllTime,
   };
 
-  const dailyConfigured = Boolean(config?.windows?.daily?.channel_id);
+  const anyFeedConfigured = Boolean(
+    config &&
+      Object.values(config.windows ?? {}).some((window) =>
+        Boolean(window?.channel_id)
+      )
+  );
   const needsSetup = feedNeedsSetup(config);
 
   async function persistDailyHours(hours: number) {
@@ -224,8 +229,8 @@ export function FeedChannelsPanel() {
       if (saved) {
         setIntervalDraft(
           clampDailyHours(
-            saved.windows?.daily?.refresh_interval_hours ??
-              saved.daily_refresh_interval_hours ??
+            saved.daily_refresh_interval_hours ??
+              saved.windows?.daily?.refresh_interval_hours ??
               next
           )
         );
@@ -416,7 +421,7 @@ export function FeedChannelsPanel() {
                 </div>
               </div>
             </div>
-            {dailyConfigured ? (
+            {anyFeedConfigured ? (
               <>
                 <div className="d-flex align-items-center justify-content-between gap-3 flex-wrap">
                   <span className="small text-body-secondary">

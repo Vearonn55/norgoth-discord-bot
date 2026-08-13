@@ -143,7 +143,7 @@ async def top_messages_for_window(
     ]
     if start is not None and end is not None:
         filters.append(FeedMessage.created_at >= start)
-        filters.append(FeedMessage.created_at < end)
+        filters.append(FeedMessage.created_at <= end)
 
     rows = (
         await session.execute(

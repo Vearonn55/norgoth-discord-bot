@@ -20,13 +20,6 @@ const WINDOW_ORDER: FeedWindowKey[] = [
   "all_time",
 ];
 
-const DEFAULT_CADENCE: Record<FeedWindowKey, string> = {
-  daily: "Every 1 hour",
-  weekly: "Every week from configuration anchor",
-  monthly: "Every calendar month from configuration anchor",
-  all_time: "Every 24 hours from configuration anchor",
-};
-
 /** Always return four cards so unconfigured windows stay visible (grey). */
 export function mergeFeedWindowCards(
   config: FeedConfig | null,
@@ -54,7 +47,7 @@ export function mergeFeedWindowCards(
     const dailyHours =
       window?.refresh_interval_hours ??
       config?.daily_refresh_interval_hours ??
-      1;
+      4;
     return {
       key,
       label: FEED_WINDOW_LABELS[key],
@@ -64,9 +57,7 @@ export function mergeFeedWindowCards(
       last_updated: status?.last_updated ?? null,
       cadence_label:
         status?.cadence_label ??
-        (key === "daily"
-          ? `Every ${dailyHours} hour${dailyHours === 1 ? "" : "s"}`
-          : DEFAULT_CADENCE[key]),
+        `Every ${dailyHours} hour${dailyHours === 1 ? "" : "s"}`,
       next_refresh_at:
         status?.next_refresh_at ?? window?.next_refresh_at ?? null,
       remaining_seconds: status?.remaining_seconds ?? null,

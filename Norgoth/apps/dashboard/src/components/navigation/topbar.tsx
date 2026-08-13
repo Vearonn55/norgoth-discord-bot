@@ -111,7 +111,8 @@ export function Topbar({ lang, dict }: TopbarProps) {
       position={preferences.stickyTopbar ? "sticky" : undefined}
       className="norgoth-topbar mb-0 px-4"
     >
-      <CHeaderNav className="norgoth-topbar-nav d-flex align-items-center gap-3 w-100">
+      {/* No Bootstrap d-flex here — CSS grid on .norgoth-topbar-nav must win. */}
+      <CHeaderNav className="norgoth-topbar-nav align-items-center gap-3 w-100">
         <div className="norgoth-topbar-left d-flex align-items-center gap-3">
           <CBadge
             color={connected ? "success" : "danger"}
@@ -133,7 +134,7 @@ export function Topbar({ lang, dict }: TopbarProps) {
           ) : null}
         </div>
 
-        <div className="norgoth-topbar-center flex-grow-1 d-flex justify-content-center">
+        <div className="norgoth-topbar-center d-flex justify-content-center">
           <button
             type="button"
             className="norgoth-topbar-search"
@@ -162,7 +163,11 @@ export function Topbar({ lang, dict }: TopbarProps) {
 
         <div className="norgoth-topbar-right d-flex align-items-center gap-2">
           {authUser ? (
-            <span className="small text-body-secondary d-none d-xl-inline">
+            <span
+              className="small text-body-secondary d-none d-xl-inline text-truncate"
+              style={{ maxWidth: "12rem" }}
+              title={authUser.global_name || authUser.username}
+            >
               {authUser.global_name || authUser.username}
             </span>
           ) : null}

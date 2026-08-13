@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -39,9 +39,9 @@ def test_merge_feed_config_defaults() -> None:
     assert merged["feed_category_id"] is None
     assert merged["last_full_sync_at"] is None
     assert merged["next_refresh_at"] is None
-    assert merged["refresh_interval_minutes"] == 60
-    assert merged["daily_refresh_interval_hours"] == 1
-    assert merged["windows"]["daily"]["refresh_interval_hours"] == 1
+    assert merged["refresh_interval_minutes"] == 240
+    assert merged["daily_refresh_interval_hours"] == 4
+    assert merged["windows"]["daily"]["refresh_interval_hours"] == 4
     assert set(merged["windows"]) == {"daily", "weekly", "monthly", "all_time"}
     for key in merged["windows"]:
         assert merged["windows"][key]["channel_id"] is None
@@ -129,28 +129,49 @@ def test_emoji_reaction_key_and_equality() -> None:
     assert emojis_equal(up, custom) is False
 
 
-def test_window_bounds_utc_calendar() -> None:
-    now = datetime(2026, 8, 10, 15, 30, tzinfo=timezone.utc)  # Monday
+def test_window_bounds_rolling() -> None:
+    now = datetime(2026, 8, 10, 15, 30, tzinfo=timezone.utc)
 
     daily_start, daily_end = window_bounds("daily", now=now)
-    assert daily_start == datetime(2026, 8, 10, 0, 0, tzinfo=timezone.utc)
-    assert daily_end == datetime(2026, 8, 11, 0, 0, tzinfo=timezone.utc)
+    assert daily_start == datetime(2026, 8, 9, 15, 30, tzinfo=timezone.utc)
+    assert daily_end == now
 
     weekly_start, weekly_end = window_bounds("weekly", now=now)
-    assert weekly_start == datetime(2026, 8, 10, 0, 0, tzinfo=timezone.utc)
-    assert weekly_end == datetime(2026, 8, 17, 0, 0, tzinfo=timezone.utc)
+    assert weekly_start == datetime(2026, 8, 3, 15, 30, tzinfo=timezone.utc)
+    assert weekly_end == now
 
     monthly_start, monthly_end = window_bounds("monthly", now=now)
-    assert monthly_start == datetime(2026, 8, 1, 0, 0, tzinfo=timezone.utc)
-    assert monthly_end == datetime(2026, 9, 1, 0, 0, tzinfo=timezone.utc)
+    assert monthly_start == add_calendar_months(now, -1)
+    assert monthly_end == now
 
     all_start, all_end = window_bounds("all_time", now=now)
     assert all_start is None and all_end is None
 
 
+def test_weekly_excludes_message_older_than_seven_days() -> None:
+    """Regression: a 9-day-old message must leave Weekly eligibility."""
+
+    now = datetime(2026, 8, 13, 12, 0, tzinfo=timezone.utc)
+    nine_days_ago = datetime(2026, 8, 4, 12, 0, tzinfo=timezone.utc)
+    six_days_ago = datetime(2026, 8, 7, 12, 0, tzinfo=timezone.utc)
+
+    included_old = windows_for_timestamp(nine_days_ago, now=now)
+    assert "weekly" not in included_old
+    assert "daily" not in included_old
+    assert "all_time" in included_old
+
+    included_recent = windows_for_timestamp(six_days_ago, now=now)
+    assert "weekly" in included_recent
+    assert "daily" not in included_recent
+    assert "all_time" in included_recent
+
+    too_old_for_monthly = add_calendar_months(now, -1) - timedelta(seconds=1)
+    assert windows_for_timestamp(too_old_for_monthly, now=now) == ["all_time"]
+
+
 def test_windows_for_timestamp_includes_matching() -> None:
     now = datetime(2026, 8, 10, 12, 0, tzinfo=timezone.utc)
-    # Freeze calendar "now" so the fixture date stays inside daily/weekly/monthly.
+    # Freeze rolling "now" so the fixture timestamp stays inside daily/weekly/monthly.
     included = windows_for_timestamp(now, now=now)
     assert "all_time" in included
     assert "daily" in included
@@ -467,17 +488,22 @@ def test_touch_last_full_sync_and_merge_category() -> None:
     assert other["feed_category_id"] != cfg["feed_category_id"]
 
 
-def test_weekly_monthly_all_time_cadences() -> None:
+def test_weekly_monthly_all_time_shared_cadence() -> None:
+    """All windows advance by the shared refresh interval (default 4h)."""
+
     anchor = datetime(2026, 1, 31, 12, 0, tzinfo=timezone.utc)
     assert first_occurrence_after_anchor("weekly", anchor) == datetime(
-        2026, 2, 7, 12, 0, tzinfo=timezone.utc
+        2026, 1, 31, 16, 0, tzinfo=timezone.utc
     )
     assert first_occurrence_after_anchor("monthly", anchor) == datetime(
-        2026, 2, 28, 12, 0, tzinfo=timezone.utc
+        2026, 1, 31, 16, 0, tzinfo=timezone.utc
     )
     assert first_occurrence_after_anchor("all_time", anchor) == datetime(
-        2026, 2, 1, 12, 0, tzinfo=timezone.utc
+        2026, 1, 31, 16, 0, tzinfo=timezone.utc
     )
+    assert first_occurrence_after_anchor(
+        "daily", anchor, daily_hours=6
+    ) == datetime(2026, 1, 31, 18, 0, tzinfo=timezone.utc)
     assert add_calendar_months(anchor, 1) == datetime(
         2026, 2, 28, 12, 0, tzinfo=timezone.utc
     )
@@ -485,6 +511,7 @@ def test_weekly_monthly_all_time_cadences() -> None:
     cfg = merge_feed_config(
         {
             "enabled": True,
+            "daily_refresh_interval_hours": 4,
             "windows": {
                 "weekly": {
                     "enabled": True,
@@ -508,9 +535,37 @@ def test_weekly_monthly_all_time_cadences() -> None:
     schedule_window_after_success(cfg, "weekly", now=now)
     schedule_window_after_success(cfg, "monthly", now=now)
     schedule_window_after_success(cfg, "all_time", now=now)
-    assert cfg["windows"]["weekly"]["next_refresh_at"] == "2026-02-07T12:00:00Z"
-    assert cfg["windows"]["monthly"]["next_refresh_at"] == "2026-02-28T12:00:00Z"
-    assert cfg["windows"]["all_time"]["next_refresh_at"] == "2026-02-01T12:00:00Z"
+    assert cfg["windows"]["weekly"]["next_refresh_at"] == "2026-01-31T16:00:00Z"
+    assert cfg["windows"]["monthly"]["next_refresh_at"] == "2026-01-31T16:00:00Z"
+    assert cfg["windows"]["all_time"]["next_refresh_at"] == "2026-01-31T16:00:00Z"
+
+
+def test_schedule_after_interval_change_updates_all_windows() -> None:
+    cfg = merge_feed_config(
+        {
+            "enabled": True,
+            "daily_refresh_interval_hours": 2,
+            "windows": {
+                "daily": {
+                    "enabled": True,
+                    "channel_id": "111111111111111111",
+                    "schedule_anchor_at": "2026-08-10T12:00:00Z",
+                    "next_refresh_at": "2026-08-10T13:00:00Z",
+                },
+                "weekly": {
+                    "enabled": True,
+                    "channel_id": "222222222222222222",
+                    "schedule_anchor_at": "2026-08-10T12:00:00Z",
+                    "next_refresh_at": "2026-08-17T12:00:00Z",
+                },
+            },
+        }
+    )
+    now = datetime(2026, 8, 10, 14, 0, tzinfo=timezone.utc)
+    schedule_after_interval_change(cfg, now=now)
+    assert cfg["windows"]["daily"]["next_refresh_at"] == "2026-08-10T14:00:00Z"
+    assert cfg["windows"]["weekly"]["next_refresh_at"] == "2026-08-10T14:00:00Z"
+    assert cfg["windows"]["weekly"]["refresh_interval_hours"] == 2
 
 
 def test_missed_run_advances_to_future_occurrence() -> None:

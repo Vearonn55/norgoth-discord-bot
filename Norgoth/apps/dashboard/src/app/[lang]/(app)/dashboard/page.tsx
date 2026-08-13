@@ -93,11 +93,6 @@ export default async function DashboardPage({
       description: d.quickWelcomeDesc,
       href: "/automation/welcome-goodbye-invite",
     },
-    {
-      title: d.quickBotRuntimeTitle,
-      description: d.quickBotRuntimeDesc,
-      href: "/settings/bot-runtime",
-    },
   ];
 
   return (
@@ -124,60 +119,45 @@ export default async function DashboardPage({
 
         <CRow className="g-2">
           <CCol md={6} xl={3}>
-            <Link
-              href={`/${lang}/settings/bot-runtime`}
-              className="text-decoration-none d-block h-100"
-            >
-              <MetricWidget
-                label={d.botLabel}
-                value={
-                  status.botConnected
-                    ? dict.common.connected
-                    : dict.common.offline
-                }
-                accent={status.botConnected ? "success" : "danger"}
-                helper={
-                  status.botConnected
-                    ? d.botHelperOnline
-                    : d.botHelperOffline
-                }
-                icon={<Icon icon={cilMediaPlay} size="lg" />}
-              />
-            </Link>
+            <MetricWidget
+              label={d.botLabel}
+              value={
+                status.botConnected
+                  ? dict.common.connected
+                  : dict.common.offline
+              }
+              accent={status.botConnected ? "success" : "danger"}
+              helper={
+                status.botConnected
+                  ? d.botHelperOnline
+                  : d.botHelperOffline
+              }
+              icon={<Icon icon={cilMediaPlay} size="lg" />}
+            />
           </CCol>
           <CCol md={6} xl={3}>
-            <Link
-              href={`/${lang}/observability/worker-health`}
-              className="text-decoration-none d-block h-100"
-            >
-              <MetricWidget
-                label={d.queueLabel}
-                value={
-                  status.queuePaused ? dict.common.paused : dict.common.running
-                }
-                accent={status.queuePaused ? "warning" : "success"}
-                helper={fillTemplate(d.queueHelper, {
-                  count: status.queuedCount,
-                })}
-                icon={<Icon icon={cilSend} size="lg" />}
-              />
-            </Link>
+            <MetricWidget
+              label={d.queueLabel}
+              value={
+                status.queuePaused ? dict.common.paused : dict.common.running
+              }
+              accent={status.queuePaused ? "warning" : "success"}
+              helper={fillTemplate(d.queueHelper, {
+                count: status.queuedCount,
+              })}
+              icon={<Icon icon={cilSend} size="lg" />}
+            />
           </CCol>
           <CCol md={6} xl={3}>
-            <Link
-              href={`/${lang}/observability/worker-health`}
-              className="text-decoration-none d-block h-100"
-            >
-              <MetricWidget
-                label={d.workerLabel}
-                value={
-                  status.workerOnline ? dict.common.online : dict.common.offline
-                }
-                accent={status.workerOnline ? "success" : "danger"}
-                helper={d.workerHelper}
-                icon={<Icon icon={cilMediaPlay} size="lg" />}
-              />
-            </Link>
+            <MetricWidget
+              label={d.workerLabel}
+              value={
+                status.workerOnline ? dict.common.online : dict.common.offline
+              }
+              accent={status.workerOnline ? "success" : "danger"}
+              helper={d.workerHelper}
+              icon={<Icon icon={cilMediaPlay} size="lg" />}
+            />
           </CCol>
           <CCol md={6} xl={3}>
             <HomeVerificationMetric lang={lang} />
