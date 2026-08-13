@@ -6,7 +6,7 @@ const root = resolve(__dirname, "..");
 const honeypotPath = resolve(root, "components/security/honeypot-panel.tsx");
 const campaignPath = resolve(
   root,
-  "components/campaigns/campaign-create-wizard.tsx"
+  "components/campaigns/campaign-wizard.tsx"
 );
 const leaderboardPath = resolve(
   root,

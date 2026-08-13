@@ -56,6 +56,6 @@ describe("mini feature card equalization", () => {
   it("applies h-100 and description clamp class", () => {
     const src = readFileSync(miniCardPath, "utf8");
     expect(src).toContain("h-100");
-    expect(src).toContain("norgoth-mini-feature-desc");
+    expect(src).toContain("norgoth-mini-card-description");
   });
 });
