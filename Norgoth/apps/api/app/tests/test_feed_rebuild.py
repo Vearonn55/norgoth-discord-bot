@@ -66,8 +66,14 @@ def test_refresh_interval_clamp_and_snap() -> None:
     assert clamp_refresh_interval_minutes(100) == 60
     assert clamp_refresh_interval_minutes(17) == 15
     assert clamp_refresh_interval_minutes(18) == 20
+    # Legacy guild minutes map onto daily hours (floor 1h), not 5-minute snaps.
     merged = merge_feed_config({"refresh_interval_minutes": 7})
-    assert merged["refresh_interval_minutes"] == 5
+    assert merged["refresh_interval_minutes"] == 60
+    assert merged["windows"]["daily"]["refresh_interval_hours"] == 1
+    assert merged["daily_refresh_interval_hours"] == 1
+    hourly = merge_feed_config({"refresh_interval_minutes": 120})
+    assert hourly["refresh_interval_minutes"] == 120
+    assert hourly["windows"]["daily"]["refresh_interval_hours"] == 2
 
 
 def test_build_feed_embed_includes_image_not_raw_only() -> None:
