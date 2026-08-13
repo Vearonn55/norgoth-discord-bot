@@ -13,7 +13,6 @@ import {
   type EmbedMessage,
 } from "@/stores/embed-messages-store";
 import type { DiscordEmbedPayload } from "@/lib/discord/message-payload";
-import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import {
   DISCORD_LIMITS,
   scrubEmptyEmbedUrls,
