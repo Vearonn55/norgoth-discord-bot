@@ -326,6 +326,7 @@ export function RichLinkEmbedsPanel() {
               </CFormLabel>
               <NumberInput
                 value={draft.max_links_per_message}
+                defaultValue={3}
                 min={1}
                 max={10}
                 onCommit={(next) => patch({ max_links_per_message: next })}
