@@ -8,6 +8,8 @@ import pytest
 
 from app.services.feed_ranking import (
     DEFAULT_FEED_CONFIG,
+    add_calendar_months,
+    clamp_daily_refresh_interval_hours,
     clamp_refresh_interval_minutes,
     composite_rank_score,
     compute_next_refresh_at,
@@ -16,11 +18,12 @@ from app.services.feed_ranking import (
     feed_author_net_key,
     feed_dirty_key,
     feed_rank_key,
+    first_occurrence_after_anchor,
     is_feed_refresh_due,
     merge_feed_config,
     schedule_after_failure,
     schedule_after_interval_change,
-    schedule_after_success,
+    schedule_window_after_success,
     scheduler_countdown_fields,
     touch_last_full_sync,
     window_bounds,
@@ -36,7 +39,9 @@ def test_merge_feed_config_defaults() -> None:
     assert merged["feed_category_id"] is None
     assert merged["last_full_sync_at"] is None
     assert merged["next_refresh_at"] is None
-    assert merged["refresh_interval_minutes"] == 15
+    assert merged["refresh_interval_minutes"] == 60
+    assert merged["daily_refresh_interval_hours"] == 1
+    assert merged["windows"]["daily"]["refresh_interval_hours"] == 1
     assert set(merged["windows"]) == {"daily", "weekly", "monthly", "all_time"}
     for key in merged["windows"]:
         assert merged["windows"][key]["channel_id"] is None
@@ -244,8 +249,9 @@ def test_compute_next_refresh_at_when_overdue_keeps_due_instant() -> None:
 
     last = "2026-08-10T10:00:00Z"
     now = datetime(2026, 8, 10, 12, 0, tzinfo=timezone.utc)
-    next_at = compute_next_refresh_at(last, 15, now=now)
-    assert next_at == "2026-08-10T10:15:00Z"
+    # Legacy 15 minutes maps to 1 hour on the daily hour grid.
+    next_at = compute_next_refresh_at(last, 60, now=now)
+    assert next_at == "2026-08-10T11:00:00Z"
 
 
 def test_compute_next_refresh_at_missing_last_returns_none() -> None:
@@ -254,27 +260,50 @@ def test_compute_next_refresh_at_missing_last_returns_none() -> None:
 
 
 def test_schedule_after_success_sets_last_and_next() -> None:
-    cfg = merge_feed_config({"refresh_interval_minutes": 15, "enabled": True})
+    cfg = merge_feed_config(
+        {
+            "enabled": True,
+            "windows": {
+                "daily": {
+                    "enabled": True,
+                    "channel_id": "111111111111111111",
+                    "refresh_interval_hours": 1,
+                    "schedule_anchor_at": "2026-08-10T14:00:00Z",
+                }
+            },
+        }
+    )
     now = datetime(2026, 8, 10, 14, 0, tzinfo=timezone.utc)
-    schedule_after_success(cfg, now=now)
+    schedule_window_after_success(cfg, "daily", now=now)
+    assert cfg["windows"]["daily"]["last_refresh_at"] == "2026-08-10T14:00:00Z"
+    assert cfg["windows"]["daily"]["next_refresh_at"] == "2026-08-10T15:00:00Z"
     assert cfg["last_full_sync_at"] == "2026-08-10T14:00:00Z"
-    assert cfg["next_refresh_at"] == "2026-08-10T14:15:00Z"
+    assert cfg["next_refresh_at"] == "2026-08-10T15:00:00Z"
 
 
 def test_schedule_after_interval_change_uses_now_plus_interval() -> None:
-    """Legacy helper still supports immediate reschedule (routes no longer call it)."""
+    """Daily interval change keeps anchor and recomputes next on the hour grid."""
 
     cfg = merge_feed_config(
         {
-            "refresh_interval_minutes": 30,
-            "last_full_sync_at": "2026-08-10T12:00:00Z",
-            "next_refresh_at": "2026-08-10T12:15:00Z",
+            "enabled": True,
+            "windows": {
+                "daily": {
+                    "enabled": True,
+                    "channel_id": "111111111111111111",
+                    "refresh_interval_hours": 2,
+                    "schedule_anchor_at": "2026-08-10T12:00:00Z",
+                    "last_refresh_at": "2026-08-10T12:00:00Z",
+                    "next_refresh_at": "2026-08-10T13:00:00Z",
+                }
+            },
         }
     )
     now = datetime(2026, 8, 10, 14, 0, tzinfo=timezone.utc)
     schedule_after_interval_change(cfg, now=now)
-    assert cfg["last_full_sync_at"] == "2026-08-10T12:00:00Z"
-    assert cfg["next_refresh_at"] == "2026-08-10T14:30:00Z"
+    assert cfg["windows"]["daily"]["schedule_anchor_at"] == "2026-08-10T12:00:00Z"
+    assert cfg["windows"]["daily"]["next_refresh_at"] == "2026-08-10T14:00:00Z"
+    assert cfg["next_refresh_at"] == "2026-08-10T14:00:00Z"
 
 
 def test_interval_change_defers_until_success() -> None:
@@ -282,28 +311,47 @@ def test_interval_change_defers_until_success() -> None:
 
     cfg = merge_feed_config(
         {
-            "refresh_interval_minutes": 15,
-            "last_full_sync_at": "2026-08-10T12:00:00Z",
-            "next_refresh_at": "2026-08-10T12:15:00Z",
+            "enabled": True,
+            "windows": {
+                "daily": {
+                    "enabled": True,
+                    "channel_id": "111111111111111111",
+                    "refresh_interval_hours": 1,
+                    "schedule_anchor_at": "2026-08-10T12:00:00Z",
+                    "last_refresh_at": "2026-08-10T12:00:00Z",
+                    "next_refresh_at": "2026-08-10T13:00:00Z",
+                }
+            },
         }
     )
     # Simulate PUT: update interval only, keep schedule.
-    cfg["refresh_interval_minutes"] = 30
-    assert cfg["next_refresh_at"] == "2026-08-10T12:15:00Z"
-    assert cfg["last_full_sync_at"] == "2026-08-10T12:00:00Z"
+    cfg["windows"]["daily"]["refresh_interval_hours"] = 2
+    cfg["daily_refresh_interval_hours"] = 2
+    cfg["refresh_interval_minutes"] = 120
+    assert cfg["windows"]["daily"]["next_refresh_at"] == "2026-08-10T13:00:00Z"
+    assert cfg["windows"]["daily"]["last_refresh_at"] == "2026-08-10T12:00:00Z"
 
-    now = datetime(2026, 8, 10, 12, 15, tzinfo=timezone.utc)
-    schedule_after_success(cfg, now=now)
-    assert cfg["last_full_sync_at"] == "2026-08-10T12:15:00Z"
-    assert cfg["next_refresh_at"] == "2026-08-10T12:45:00Z"
+    now = datetime(2026, 8, 10, 13, 0, tzinfo=timezone.utc)
+    schedule_window_after_success(cfg, "daily", now=now)
+    assert cfg["windows"]["daily"]["last_refresh_at"] == "2026-08-10T13:00:00Z"
+    assert cfg["windows"]["daily"]["next_refresh_at"] == "2026-08-10T14:00:00Z"
 
 
 def test_scheduler_countdown_fields_remaining_and_server_time() -> None:
     cfg = merge_feed_config(
         {
-            "refresh_interval_minutes": 15,
+            "enabled": True,
             "last_full_sync_at": "2026-08-10T14:00:00Z",
-            "next_refresh_at": "2026-08-10T14:15:00Z",
+            "windows": {
+                "daily": {
+                    "enabled": True,
+                    "channel_id": "111111111111111111",
+                    "refresh_interval_hours": 1,
+                    "schedule_anchor_at": "2026-08-10T14:00:00Z",
+                    "last_refresh_at": "2026-08-10T14:00:00Z",
+                    "next_refresh_at": "2026-08-10T14:15:00Z",
+                }
+            },
         }
     )
     now = datetime(2026, 8, 10, 14, 5, 30, tzinfo=timezone.utc)
@@ -311,7 +359,9 @@ def test_scheduler_countdown_fields_remaining_and_server_time() -> None:
     assert fields["server_time"] == "2026-08-10T14:05:30Z"
     assert fields["remaining_seconds"] == 570
     assert fields["next_refresh_at"] == "2026-08-10T14:15:00Z"
+    assert fields["daily_refresh_interval_hours"] == 1
     assert fields["scheduler_status"] == "scheduled"
+    assert fields["windows"]["daily"]["next_refresh_at"] == "2026-08-10T14:15:00Z"
 
 
 def test_scheduler_countdown_fields_null_when_never_synced() -> None:
@@ -341,13 +391,25 @@ def test_is_feed_refresh_due_overdue_and_pending() -> None:
     overdue = merge_feed_config(
         {
             "enabled": True,
-            "next_refresh_at": "2026-08-10T13:15:00Z",
+            "windows": {
+                "daily": {
+                    "enabled": True,
+                    "channel_id": "111111111111111111",
+                    "next_refresh_at": "2026-08-10T13:15:00Z",
+                }
+            },
         }
     )
     pending = merge_feed_config(
         {
             "enabled": True,
-            "next_refresh_at": "2026-08-10T13:40:00Z",
+            "windows": {
+                "daily": {
+                    "enabled": True,
+                    "channel_id": "111111111111111111",
+                    "next_refresh_at": "2026-08-10T13:40:00Z",
+                }
+            },
         }
     )
     assert is_feed_refresh_due(overdue, now=now) is True
@@ -356,13 +418,21 @@ def test_is_feed_refresh_due_overdue_and_pending() -> None:
 
 def test_multi_guild_schedules_independent() -> None:
     a = merge_feed_config(
-        {"refresh_interval_minutes": 5, "next_refresh_at": "2026-08-10T12:05:00Z"}
+        {
+            "windows": {"daily": {"refresh_interval_hours": 1}},
+            "next_refresh_at": "2026-08-10T12:05:00Z",
+        }
     )
     b = merge_feed_config(
-        {"refresh_interval_minutes": 30, "next_refresh_at": "2026-08-10T12:30:00Z"}
+        {
+            "windows": {"daily": {"refresh_interval_hours": 2}},
+            "next_refresh_at": "2026-08-10T12:30:00Z",
+        }
     )
-    assert a["refresh_interval_minutes"] == 5
-    assert b["refresh_interval_minutes"] == 30
+    assert a["refresh_interval_minutes"] == 60
+    assert b["refresh_interval_minutes"] == 120
+    assert a["windows"]["daily"]["refresh_interval_hours"] == 1
+    assert b["windows"]["daily"]["refresh_interval_hours"] == 2
     assert a["next_refresh_at"] != b["next_refresh_at"]
 
 
@@ -370,17 +440,23 @@ def test_interval_clamp_min_max() -> None:
     assert clamp_refresh_interval_minutes(1) == 5
     assert clamp_refresh_interval_minutes(100) == 60
     assert clamp_refresh_interval_minutes(15) == 15
+    assert clamp_daily_refresh_interval_hours(0) == 1
+    assert clamp_daily_refresh_interval_hours(100) == 12
+    assert clamp_daily_refresh_interval_hours(3) == 3
 
 
 def test_touch_last_full_sync_and_merge_category() -> None:
     cfg = merge_feed_config(
         {
             "feed_category_id": "111",
-            "refresh_interval_minutes": 30,
+            "windows": {"daily": {"refresh_interval_hours": 2}},
         }
     )
     assert cfg["feed_category_id"] == "111"
-    assert clamp_refresh_interval_minutes(cfg["refresh_interval_minutes"]) == 30
+    assert cfg["refresh_interval_minutes"] == 120
+    assert clamp_daily_refresh_interval_hours(
+        cfg["windows"]["daily"]["refresh_interval_hours"]
+    ) == 2
     touch_last_full_sync(
         cfg, now=datetime(2026, 8, 10, 12, 0, tzinfo=timezone.utc)
     )
@@ -389,3 +465,70 @@ def test_touch_last_full_sync_and_merge_category() -> None:
     other = merge_feed_config({"feed_category_id": "222"})
     assert other["feed_category_id"] == "222"
     assert other["feed_category_id"] != cfg["feed_category_id"]
+
+
+def test_weekly_monthly_all_time_cadences() -> None:
+    anchor = datetime(2026, 1, 31, 12, 0, tzinfo=timezone.utc)
+    assert first_occurrence_after_anchor("weekly", anchor) == datetime(
+        2026, 2, 7, 12, 0, tzinfo=timezone.utc
+    )
+    assert first_occurrence_after_anchor("monthly", anchor) == datetime(
+        2026, 2, 28, 12, 0, tzinfo=timezone.utc
+    )
+    assert first_occurrence_after_anchor("all_time", anchor) == datetime(
+        2026, 2, 1, 12, 0, tzinfo=timezone.utc
+    )
+    assert add_calendar_months(anchor, 1) == datetime(
+        2026, 2, 28, 12, 0, tzinfo=timezone.utc
+    )
+
+    cfg = merge_feed_config(
+        {
+            "enabled": True,
+            "windows": {
+                "weekly": {
+                    "enabled": True,
+                    "channel_id": "222222222222222222",
+                    "schedule_anchor_at": "2026-01-31T12:00:00Z",
+                },
+                "monthly": {
+                    "enabled": True,
+                    "channel_id": "333333333333333333",
+                    "schedule_anchor_at": "2026-01-31T12:00:00Z",
+                },
+                "all_time": {
+                    "enabled": True,
+                    "channel_id": "444444444444444444",
+                    "schedule_anchor_at": "2026-01-31T12:00:00Z",
+                },
+            },
+        }
+    )
+    now = datetime(2026, 1, 31, 12, 0, tzinfo=timezone.utc)
+    schedule_window_after_success(cfg, "weekly", now=now)
+    schedule_window_after_success(cfg, "monthly", now=now)
+    schedule_window_after_success(cfg, "all_time", now=now)
+    assert cfg["windows"]["weekly"]["next_refresh_at"] == "2026-02-07T12:00:00Z"
+    assert cfg["windows"]["monthly"]["next_refresh_at"] == "2026-02-28T12:00:00Z"
+    assert cfg["windows"]["all_time"]["next_refresh_at"] == "2026-02-01T12:00:00Z"
+
+
+def test_missed_run_advances_to_future_occurrence() -> None:
+    cfg = merge_feed_config(
+        {
+            "enabled": True,
+            "windows": {
+                "daily": {
+                    "enabled": True,
+                    "channel_id": "111111111111111111",
+                    "refresh_interval_hours": 1,
+                    "schedule_anchor_at": "2026-08-10T10:00:00Z",
+                    "next_refresh_at": "2026-08-10T11:00:00Z",
+                }
+            },
+        }
+    )
+    now = datetime(2026, 8, 10, 14, 30, tzinfo=timezone.utc)
+    schedule_window_after_success(cfg, "daily", now=now)
+    assert cfg["windows"]["daily"]["last_refresh_at"] == "2026-08-10T14:30:00Z"
+    assert cfg["windows"]["daily"]["next_refresh_at"] == "2026-08-10T15:00:00Z"

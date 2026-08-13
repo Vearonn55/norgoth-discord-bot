@@ -15,9 +15,12 @@
 - [ ] CORS allowlist + Secure cookies (`NORGOTH_ENVIRONMENT=production`) + `NORGOTH_AUTH_ENFORCED=true`
 - [ ] Nginx only public ingress; Postgres/Redis not published
 - [ ] Content-notification worker running in Compose
+- [ ] RSS worker running in Compose (prod/test overlays include `rss-worker`)
+- [ ] Worker Health shows campaign, content_notifications, rss_feeds, bot
 - [ ] Campaign Postgres durability gate completed (`NORGOTH_CAMPAIGN_PG_ENABLED=true`)
 - [ ] Ticket ingest dual-write verified (open/close lands in Postgres)
 - [ ] Rollback drill completed (app images only)
 - [ ] Rehydrate guards verified fail-closed against prod
 - [ ] Smoke: `https://www.norbot.io`, `https://api.norbot.io/api/v1/health`, bot heartbeat
+- [ ] Smoke WH/CN/Top Trending per `docs/runbooks/deployment.md` (four heartbeats, CN at-limit 400, Daily 1–12)
 - [ ] Product-facing NorBot naming on landing tracked if not already shipped

@@ -139,14 +139,18 @@ export function AccountsPanel() {
             {PLATFORMS.map((p) => {
               const meta = platformMeta(p.id);
               const blocked = meta && !meta.available;
+              const activeCount = meta?.active_count ?? 0;
+              const activeLimit = meta?.active_limit ?? 0;
               return (
                 <CBadge
                   key={p.id}
                   color={blocked ? "secondary" : "success"}
                   className="text-uppercase"
+                  title={`${activeCount} of ${activeLimit} active`}
                 >
                   {p.label}
                   {blocked ? " · blocked" : ""}
+                  {` · ${activeCount}/${activeLimit} active`}
                 </CBadge>
               );
             })}
@@ -155,7 +159,19 @@ export function AccountsPanel() {
             </CBadge>
           </div>
         </div>
-        <Button type="button" onClick={() => setWizardOpen((v) => !v)}>
+        <Button
+          type="button"
+          onClick={() => setWizardOpen((v) => !v)}
+          disabled={
+            !wizardOpen &&
+            platforms.length > 0 &&
+            platforms.every(
+              (p) =>
+                !p.available ||
+                (typeof p.active_remaining === "number" && p.active_remaining <= 0)
+            )
+          }
+        >
           {wizardOpen ? "Close" : "Add Account"}
         </Button>
       </div>
@@ -176,13 +192,40 @@ export function AccountsPanel() {
                   setResolved(null);
                 }}
               >
-                {PLATFORMS.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.label}
-                    {platformMeta(p.id)?.available === false ? " (unavailable)" : ""}
-                  </option>
-                ))}
+                {PLATFORMS.map((p) => {
+                  const meta = platformMeta(p.id);
+                  const remaining = meta?.active_remaining;
+                  const atLimit =
+                    typeof remaining === "number" && remaining <= 0;
+                  return (
+                    <option
+                      key={p.id}
+                      value={p.id}
+                      disabled={meta?.available === false || atLimit}
+                    >
+                      {p.label}
+                      {meta?.available === false
+                        ? " (unavailable)"
+                        : atLimit
+                          ? " (limit reached)"
+                          : meta?.active_count != null &&
+                              meta?.active_limit != null
+                            ? ` (${meta.active_count}/${meta.active_limit} active)`
+                            : ""}
+                    </option>
+                  );
+                })}
               </CFormSelect>
+              {platformMeta(platform)?.active_limit != null ? (
+                <p className="form-text mb-0" aria-live="polite">
+                  {platformMeta(platform)?.active_count ?? 0} of{" "}
+                  {platformMeta(platform)?.active_limit} active configurations
+                  {typeof platformMeta(platform)?.active_remaining === "number"
+                    ? ` · ${platformMeta(platform)?.active_remaining} remaining`
+                    : ""}
+                  . Disabled configurations do not consume active capacity.
+                </p>
+              ) : null}
             </div>
             <div className="col-md-8">
               <label className="form-label small">Creator / channel URL</label>
@@ -331,9 +374,15 @@ export function AccountsPanel() {
               type="button"
               variant="secondary"
               size="sm"
-              onClick={() =>
-                void toggleAccount(guildId!, account.id, !account.enabled)
-              }
+              onClick={() => {
+                void toggleAccount(guildId!, account.id, !account.enabled).catch(
+                  (err) => {
+                    setFeedback(
+                      err instanceof Error ? err.message : "Update failed"
+                    );
+                  }
+                );
+              }}
             >
               {account.enabled ? "Pause" : "Enable"}
             </Button>

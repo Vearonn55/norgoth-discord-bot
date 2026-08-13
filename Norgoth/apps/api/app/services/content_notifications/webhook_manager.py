@@ -19,9 +19,16 @@ NORGOTH_WEBHOOK_NAME = "Norgoth Notifications"
 
 
 class WebhookManagerError(Exception):
-    def __init__(self, message: str, *, code: str = "webhook_error") -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "webhook_error",
+        retry_after: float | None = None,
+    ) -> None:
         super().__init__(message)
         self.code = code
+        self.retry_after = retry_after
 
 
 async def ensure_managed_webhook(
@@ -147,6 +154,31 @@ async def execute_managed_webhook(
         webhook_row.status = WebhookHealth.INVALID
         await session.flush()
         raise WebhookManagerError("Webhook token invalid.", code="invalid")
+
+    if response.status_code == 429:
+        retry_after_raw = response.headers.get("Retry-After") or response.headers.get(
+            "retry-after"
+        )
+        retry_after: float | None = None
+        if retry_after_raw:
+            try:
+                retry_after = float(retry_after_raw)
+            except ValueError:
+                retry_after = None
+        # Discord also returns JSON {"retry_after": seconds} on many routes.
+        if retry_after is None:
+            try:
+                body = response.json()
+                if isinstance(body, dict) and body.get("retry_after") is not None:
+                    retry_after = float(body["retry_after"])
+            except Exception:  # noqa: BLE001
+                retry_after = None
+        raise WebhookManagerError(
+            f"Discord rate limited webhook execute"
+            f"{f' (retry_after={retry_after}s)' if retry_after is not None else ''}.",
+            code="rate_limited",
+            retry_after=retry_after,
+        )
 
     raise WebhookManagerError(
         f"Webhook execute failed: HTTP {response.status_code} {response.text}",

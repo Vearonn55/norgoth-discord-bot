@@ -37,9 +37,11 @@ router = APIRouter(
 public_router = APIRouter(prefix="/campaigns", tags=["Campaigns"])
 internal_router = APIRouter(prefix="/internal/campaigns", tags=["Internal Campaigns"])
 
+from app.services.worker_registry import CAMPAIGN_HEARTBEAT_KEY
+
 QUEUE_STATE_KEY = "norgoth:campaign_queue_state"
 
-WORKER_HEARTBEAT_KEY = "norgoth:worker:heartbeat"
+WORKER_HEARTBEAT_KEY = CAMPAIGN_HEARTBEAT_KEY
 
 CampaignStatus = Literal[
     "draft",

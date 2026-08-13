@@ -10,6 +10,22 @@ export type PlatformAvailability = {
   available: boolean;
   supports_push: boolean;
   reason: string | null;
+  active_limit?: number;
+  active_count?: number;
+  active_remaining?: number;
+  total_limit?: number;
+  total_count?: number;
+  total_remaining?: number;
+};
+
+export type PlatformUsage = {
+  platform: ContentPlatform;
+  active_limit: number;
+  active_count: number;
+  active_remaining: number;
+  total_limit: number;
+  total_count: number;
+  total_remaining: number;
 };
 
 export type ResolvedCreator = {
@@ -93,6 +109,7 @@ type ContentNotificationsState = {
   templates: NotificationTemplate[];
   styles: SenderStyle[];
   platforms: PlatformAvailability[];
+  platformUsage: PlatformUsage[];
   history: DeliveryHistoryItem[];
   analytics: ContentAnalytics | null;
   workerOnline: boolean;
@@ -144,12 +161,22 @@ type ContentNotificationsState = {
   deleteStyle: (guildId: string, styleId: string) => Promise<void>;
 };
 
+function readApiErrorDetail(detail: unknown, fallback: string): string {
+  if (typeof detail === "string") return detail;
+  if (detail && typeof detail === "object" && "message" in detail) {
+    const message = (detail as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim()) return message;
+  }
+  return fallback;
+}
+
 export const useContentNotificationsStore = create<ContentNotificationsState>(
   (set, get) => ({
     accounts: [],
     templates: [],
     styles: [],
     platforms: [],
+    platformUsage: [],
     history: [],
     analytics: null,
     workerOnline: false,
@@ -169,6 +196,7 @@ export const useContentNotificationsStore = create<ContentNotificationsState>(
         set({
           accounts: data.accounts ?? [],
           platforms: data.platforms ?? [],
+          platformUsage: data.platform_usage ?? [],
           workerOnline: Boolean(data.worker_online),
           loading: false,
         });
@@ -251,9 +279,7 @@ export const useContentNotificationsStore = create<ContentNotificationsState>(
         );
         const data = await response.json();
         if (!response.ok) {
-          throw new Error(
-            typeof data.detail === "string" ? data.detail : "Save failed"
-          );
+          throw new Error(readApiErrorDetail(data.detail, "Save failed"));
         }
         await get().loadAccounts(guildId);
         set({ saving: false });
@@ -277,7 +303,7 @@ export const useContentNotificationsStore = create<ContentNotificationsState>(
     },
 
     async toggleAccount(guildId, subscriptionId, enabled) {
-      await fetch(
+      const response = await fetch(
         apiUrl(
           `/guilds/${guildId}/content-notifications/accounts/${subscriptionId}`
         ),
@@ -288,6 +314,10 @@ export const useContentNotificationsStore = create<ContentNotificationsState>(
           body: JSON.stringify({ enabled }),
         }
       );
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(readApiErrorDetail(data.detail, "Update failed"));
+      }
       await get().loadAccounts(guildId);
     },
 

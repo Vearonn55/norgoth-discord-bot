@@ -3,14 +3,21 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 from typing import Any
 
 from redis.asyncio import Redis
 
+from app.services.worker_registry import CONTENT_NOTIFICATIONS_HEARTBEAT_KEY
+
 CONTENT_NOTIFICATION_QUEUE = "norgoth:content_notifications:queue"
-CONTENT_NOTIFICATION_HEARTBEAT = "norgoth:content_notifications:worker:heartbeat"
+CONTENT_NOTIFICATION_HEARTBEAT = CONTENT_NOTIFICATIONS_HEARTBEAT_KEY
 CONTENT_NOTIFICATION_REPLAY = "norgoth:content_notifications:replay"
 CONTENT_NOTIFICATION_CIRCUIT = "norgoth:content_notifications:circuit:{platform}"
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 async def get_redis() -> Redis:
@@ -38,9 +45,11 @@ async def pop_job(timeout_seconds: int = 2) -> str | None:
 
 
 async def heartbeat(ttl_seconds: int = 45) -> None:
+    """Publish ISO heartbeat (compatible with Worker Health aggregation)."""
+
     client = await get_redis()
     try:
-        await client.set(CONTENT_NOTIFICATION_HEARTBEAT, "1", ex=ttl_seconds)
+        await client.set(CONTENT_NOTIFICATION_HEARTBEAT, _now_iso(), ex=ttl_seconds)
     finally:
         await client.aclose()
 

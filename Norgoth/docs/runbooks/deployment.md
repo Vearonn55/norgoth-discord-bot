@@ -76,3 +76,32 @@ docker build -f Norgoth/deploy/docker/Dockerfile.api -t norbot-api:local Norgoth
 - `GET https://www.norbot.io/api/health`
 - `GET https://api.norbot.io/api/v1/health` (includes `release_sha` when set)
 - Bot/worker heartbeat routes via API
+
+## Smoke: Worker Health, Content Notifications, Top Trending
+
+After deploy (or when validating WH / CN / feed closeout), confirm:
+
+### Worker Health
+
+1. Compose has four worker processes: `campaign-worker`, `content-worker`, `rss-worker`, `bot`.
+2. Command Center → Worker Health shows all four **online** (campaign may be **paused** if queue is paused).
+3. Heartbeat keys present in Redis (TTL ~45s):
+   - `norgoth:worker:heartbeat`
+   - `norgoth:content_notifications:worker:heartbeat`
+   - `norgoth:rss:worker:heartbeat`
+   - `norgoth:bot:heartbeat` (+ `norgoth:bot:status`)
+4. Legacy smoke still works: `GET …/campaigns/worker/health`, `GET …/bot/health`.
+
+### Content Notifications limits
+
+1. Create/enable subscriptions up to the platform active cap (YT/Twitch 10, Kick 5, X 3, TikTok 0).
+2. Next create/enable over the cap returns **400** with `content_notification_limit_reached` (or total soft-cap code).
+3. Dashboard capacity badges match server usage.
+
+### Top Trending schedules
+
+1. Configure Daily with a channel → Daily 1–12h slider is editable; without Daily channel → cadence is read-only / configure-first.
+2. Daily interval outside 1–12 → API `invalid_daily_refresh_interval`; non-daily interval submit → `unsupported_refresh_interval_for_window`.
+3. Enable Weekly → `next_refresh_at` ≈ `schedule_anchor_at` + 7 days (UTC).
+4. Countdown in the panel follows backend `remaining_seconds` / `next_refresh_at` (not FE-only math).
+5. Bot refresh loop hits `feed-refresh-window` for due windows; Repair still runs full `feed-repair`.

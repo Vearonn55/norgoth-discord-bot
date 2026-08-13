@@ -51,6 +51,7 @@ from app.routes.tickets import router as tickets_router  # noqa: E402
 from app.routes.tickets import public_router as tickets_public_router  # noqa: E402
 from app.routes.tickets import session_router as tickets_session_router  # noqa: E402
 from app.routes.verification_panel import router as verification_panel_router  # noqa: E402
+from app.routes.observability import router as observability_router  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -175,6 +176,7 @@ def create_application(settings: Settings | None = None) -> FastAPI:
     application.include_router(honeypot_router)
     application.include_router(rich_link_embeds_router)
     application.include_router(rss_feeds_router)
+    application.include_router(observability_router)
     application.include_router(ingest_router)
     application.include_router(internal_config_router)
     application.include_router(activity_router)

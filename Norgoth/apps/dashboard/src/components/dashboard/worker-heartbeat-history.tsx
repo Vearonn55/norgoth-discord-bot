@@ -6,16 +6,21 @@ import { Badge } from "@/components/ui/badge";
 import { apiUrl } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
 
-
-type WorkerHealthResponse = {
-  online: boolean;
-  last_heartbeat: string | null;
+type WorkersHealthResponse = {
+  overall_state: string;
+  redis_available: boolean;
   checked_at: string;
+  workers: Array<{
+    type: string;
+    online: boolean;
+    last_heartbeat: string | null;
+  }>;
 };
 
 type HeartbeatSample = {
   id: string;
   online: boolean;
+  overallState: string;
   lastHeartbeat: string | null;
   checkedAt: string;
 };
@@ -28,20 +33,27 @@ export function WorkerHeartbeatHistory() {
 
   async function collectSample() {
     try {
-      const response = await fetch(apiUrl(`/campaigns/worker/health`), {
+      const response = await fetch(apiUrl(`/observability/workers/health`), {
         cache: "no-store",
+        credentials: "include",
       });
 
       if (!response.ok) return;
 
-      const data: WorkerHealthResponse = await response.json();
+      const data: WorkersHealthResponse = await response.json();
+      const oldestHeartbeat = data.workers
+        .map((w) => w.last_heartbeat)
+        .filter(Boolean)
+        .sort()
+        .at(-1) ?? null;
 
       setSamples((prev) => {
         const next = [
           {
             id: `${Date.now()}-${Math.random()}`,
-            online: data.online,
-            lastHeartbeat: data.last_heartbeat,
+            online: data.overall_state === "online",
+            overallState: data.overall_state,
+            lastHeartbeat: oldestHeartbeat,
             checkedAt: data.checked_at,
           },
           ...prev,
@@ -55,6 +67,7 @@ export function WorkerHeartbeatHistory() {
           {
             id: `${Date.now()}-${Math.random()}`,
             online: false,
+            overallState: "unknown",
             lastHeartbeat: null,
             checkedAt: new Date().toISOString(),
           },
@@ -95,12 +108,10 @@ export function WorkerHeartbeatHistory() {
     <div className="border rounded p-4">
       <div className="mb-4 d-flex align-items-center justify-content-between gap-3">
         <div>
-          <h2 className="h5 mb-0 fw-semibold">
-            Worker Heartbeat History
-          </h2>
+          <h2 className="h5 mb-0 fw-semibold">Worker Heartbeat History</h2>
 
           <p className="mt-1 small text-body-secondary">
-            Recent heartbeat samples collected from worker health endpoint.
+            Recent overall health samples from the worker registry endpoint.
           </p>
         </div>
 
@@ -108,6 +119,7 @@ export function WorkerHeartbeatHistory() {
           <span
             className="rounded-circle bg-success d-inline-block"
             style={{ width: 8, height: 8 }}
+            aria-hidden
           />
           <span className="small text-success">SAMPLING</span>
         </div>
@@ -157,14 +169,13 @@ function HeartbeatSampleCard({
 }) {
   return (
     <div
-      className={`rounded border p-3 h-100 ${sample.online
-        ? "border-success"
-        : "border-danger"
-        }`}
+      className={`rounded border p-3 h-100 ${
+        sample.online ? "border-success" : "border-danger"
+      }`}
     >
       <div className="mb-3 d-flex align-items-center justify-content-between gap-3">
         <Badge variant={sample.online ? "success" : "danger"}>
-          {sample.online ? "ONLINE" : "OFFLINE"}
+          {sample.overallState.toUpperCase()}
         </Badge>
 
         <span className="small text-body-secondary">
@@ -172,9 +183,7 @@ function HeartbeatSampleCard({
         </span>
       </div>
 
-      <div className="small text-body-secondary text-uppercase">
-        Last Heartbeat
-      </div>
+      <div className="small text-body-secondary text-uppercase">Last Heartbeat</div>
 
       <div className="mt-2 text-break small">
         {formatDateTime(sample.lastHeartbeat, lang)}
@@ -196,13 +205,9 @@ function HistoryStat({
 
   return (
     <div className="border rounded p-3 h-100">
-      <div className="small text-body-secondary text-uppercase">
-        {label}
-      </div>
+      <div className="small text-body-secondary text-uppercase">{label}</div>
 
-      <div className={`mt-3 fs-4 fw-semibold ${valueClass}`}>
-        {value}
-      </div>
+      <div className={`mt-3 fs-4 fw-semibold ${valueClass}`}>{value}</div>
     </div>
   );
 }

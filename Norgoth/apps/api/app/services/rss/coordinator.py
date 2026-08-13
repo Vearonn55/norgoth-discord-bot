@@ -7,7 +7,9 @@ from datetime import datetime, timezone
 
 from redis.asyncio import Redis
 
-RSS_WORKER_HEARTBEAT = "norgoth:rss:worker:heartbeat"
+from app.services.worker_registry import RSS_HEARTBEAT_KEY
+
+RSS_WORKER_HEARTBEAT = RSS_HEARTBEAT_KEY
 RSS_CLAIM_PREFIX = "norgoth:rss:claim:"
 
 

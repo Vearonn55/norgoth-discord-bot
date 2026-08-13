@@ -49,6 +49,8 @@ import {
   type FeedWindowKey,
   useFeedChannelsStore,
 } from "@/stores/feed-channels-store";
+import en from "@/dictionaries/en.json";
+import tr from "@/dictionaries/tr.json";
 
 const WINDOW_ICONS: Record<FeedWindowKey, string[]> = {
   daily: cilMediaPlay,
@@ -57,15 +59,19 @@ const WINDOW_ICONS: Record<FeedWindowKey, string[]> = {
   all_time: cilFire,
 };
 
-function clampRefreshMinutes(value: number): number {
-  const clamped = Math.max(5, Math.min(60, Math.round(value)));
-  return Math.round((clamped - 5) / 5) * 5 + 5;
+function clampDailyHours(value: number): number {
+  return Math.max(1, Math.min(12, Math.round(value)));
 }
 
 const NOT_CONFIGURED: Record<string, string> = {
   en: "Not Configured",
   tr: "Yapılandırılmadı",
 };
+
+const CADENCE_COPY = {
+  en: en.feedChannels,
+  tr: tr.feedChannels,
+} as const;
 
 export function FeedChannelsPanel() {
   const params = useParams();
@@ -97,11 +103,12 @@ export function FeedChannelsPanel() {
     channel_id: string;
     enabled: boolean;
   }>({ channel_id: "", enabled: false });
-  const [intervalDraft, setIntervalDraft] = useState(15);
+  const [intervalDraft, setIntervalDraft] = useState(1);
   const [intervalSaving, setIntervalSaving] = useState(false);
   const [countdownMs, setCountdownMs] = useState(0);
   const [countdownReady, setCountdownReady] = useState(false);
   const intervalDraftRef = useRef(intervalDraft);
+  const cadenceCopy = CADENCE_COPY[lang === "tr" ? "tr" : "en"];
 
   useEffect(() => {
     intervalDraftRef.current = intervalDraft;
@@ -122,7 +129,11 @@ export function FeedChannelsPanel() {
     [status]
   );
 
-  const savedIntervalMinutes = config?.refresh_interval_minutes ?? 15;
+  const savedDailyHours = clampDailyHours(
+    config?.windows?.daily?.refresh_interval_hours ??
+      config?.daily_refresh_interval_hours ??
+      Math.max(1, Math.round((config?.refresh_interval_minutes ?? 60) / 60))
+  );
 
   useEffect(() => {
     if (!guildId) return;
@@ -130,8 +141,8 @@ export function FeedChannelsPanel() {
   }, [guildId, load]);
 
   useEffect(() => {
-    setIntervalDraft(clampRefreshMinutes(savedIntervalMinutes));
-  }, [savedIntervalMinutes]);
+    setIntervalDraft(savedDailyHours);
+  }, [savedDailyHours]);
 
   useEffect(() => {
     setCountdownReady(Boolean(status) && !loading);
@@ -195,22 +206,35 @@ export function FeedChannelsPanel() {
     [config, status?.windows]
   );
 
+  const dailyConfigured = Boolean(config?.windows?.daily?.channel_id);
   const needsSetup = feedNeedsSetup(config);
 
-  async function persistRefreshInterval(minutes: number) {
+  async function persistDailyHours(hours: number) {
     if (!guildId || !config) return;
-    const next = clampRefreshMinutes(minutes);
+    const next = clampDailyHours(hours);
     setIntervalDraft(next);
-    if (next === (config.refresh_interval_minutes ?? 15)) return;
+    if (next === savedDailyHours) return;
     setIntervalSaving(true);
     try {
       const saved = await save(guildId, {
         ...config,
-        refresh_interval_minutes: next,
+        daily_refresh_interval_hours: next,
+        refresh_interval_minutes: next * 60,
+        windows: {
+          ...config.windows,
+          daily: {
+            ...config.windows.daily,
+            refresh_interval_hours: next,
+          },
+        },
       });
       if (saved) {
         setIntervalDraft(
-          clampRefreshMinutes(saved.refresh_interval_minutes ?? next)
+          clampDailyHours(
+            saved.windows?.daily?.refresh_interval_hours ??
+              saved.daily_refresh_interval_hours ??
+              next
+          )
         );
       }
     } finally {
@@ -376,17 +400,20 @@ export function FeedChannelsPanel() {
           <div className="d-flex flex-column gap-3">
             <div className="d-flex align-items-start justify-content-between gap-3 flex-wrap">
               <div>
-                <h2 className="h6 mb-1 fw-semibold">Feed Refresh Interval</h2>
+                <h2 className="h6 mb-1 fw-semibold">
+                  {cadenceCopy.dailySliderTitle}
+                </h2>
                 <p className="mb-0 small text-body-secondary">
-                  How often Top Trending runs a full automatic sync (UTC windows).
-                  Vote updates still coalesce sooner via the dirty drain.
+                  {cadenceCopy.dailySliderHelp}
                 </p>
               </div>
               <div
                 className="text-end"
                 title="Time until the next automatic Discord feed synchronization"
               >
-                <div className="small text-body-secondary">Next refresh</div>
+                <div className="small text-body-secondary">
+                  {cadenceCopy.nextRefresh}
+                </div>
                 <div className="fw-semibold font-monospace">
                   {!countdownReady || !countdownSnapshot?.nextRefreshAt
                     ? COUNTDOWN_PLACEHOLDER
@@ -394,42 +421,60 @@ export function FeedChannelsPanel() {
                 </div>
               </div>
             </div>
-            <div className="d-flex align-items-center justify-content-between gap-3 flex-wrap">
-              <span className="small text-body-secondary">5 min</span>
-              <span className="fw-semibold">
-                Current value: {intervalDraft} minutes
-                {intervalSaving ? " · Saving…" : ""}
-              </span>
-              <span className="small text-body-secondary">60 min</span>
-            </div>
-            <Slider
-              min={5}
-              max={60}
-              step={5}
-              value={intervalDraft}
-              disabled={busy || intervalSaving}
-              aria-label="Feed refresh interval in minutes"
-              onChange={(value) => setIntervalDraft(clampRefreshMinutes(value))}
-              onPointerUp={() => {
-                const next = intervalDraftRef.current;
-                if (next !== savedIntervalMinutes) {
-                  void persistRefreshInterval(next);
-                }
-              }}
-            />
-            <div>
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={
-                  busy ||
-                  intervalSaving ||
-                  intervalDraft === savedIntervalMinutes
-                }
-                onClick={() => void persistRefreshInterval(intervalDraft)}
-              >
-                Save interval
-              </Button>
+            {dailyConfigured ? (
+              <>
+                <div className="d-flex align-items-center justify-content-between gap-3 flex-wrap">
+                  <span className="small text-body-secondary">
+                    1 {cadenceCopy.hours}
+                  </span>
+                  <span className="fw-semibold">
+                    {cadenceCopy.currentHours}: {intervalDraft}{" "}
+                    {cadenceCopy.hours}
+                    {intervalSaving ? ` · ${cadenceCopy.saving}` : ""}
+                  </span>
+                  <span className="small text-body-secondary">
+                    12 {cadenceCopy.hours}
+                  </span>
+                </div>
+                <Slider
+                  min={1}
+                  max={12}
+                  step={1}
+                  value={intervalDraft}
+                  disabled={busy || intervalSaving}
+                  aria-label={cadenceCopy.dailySliderTitle}
+                  onChange={(value) => setIntervalDraft(clampDailyHours(value))}
+                  onPointerUp={() => {
+                    const next = intervalDraftRef.current;
+                    if (next !== savedDailyHours) {
+                      void persistDailyHours(next);
+                    }
+                  }}
+                />
+                <div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={
+                      busy ||
+                      intervalSaving ||
+                      intervalDraft === savedDailyHours
+                    }
+                    onClick={() => void persistDailyHours(intervalDraft)}
+                  >
+                    {cadenceCopy.saveInterval}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <p className="mb-0 small text-body-secondary" role="status">
+                {cadenceCopy.configureDailyFirst}
+              </p>
+            )}
+            <div className="small text-body-secondary d-flex flex-column gap-1">
+              <span>{cadenceCopy.weeklyCadence}</span>
+              <span>{cadenceCopy.monthlyCadence}</span>
+              <span>{cadenceCopy.allTimeCadence}</span>
             </div>
           </div>
         </Card>

@@ -17,6 +17,10 @@ export type FeedWindowConfig = {
   enabled: boolean;
   channel_id: string | null;
   norgoth_managed: boolean;
+  schedule_anchor_at?: string | null;
+  next_refresh_at?: string | null;
+  last_refresh_at?: string | null;
+  refresh_interval_hours?: number | null;
 };
 
 export type FeedConfig = {
@@ -27,7 +31,9 @@ export type FeedConfig = {
   excluded_channel_ids: string[];
   min_net_score: number;
   display_limit: number;
+  /** Legacy mirror of daily hours * 60. */
   refresh_interval_minutes: number;
+  daily_refresh_interval_hours?: number;
   feed_category_id: string | null;
   last_full_sync_at?: string | null;
   next_refresh_at?: string | null;
@@ -48,6 +54,11 @@ export type FeedStatus = {
     enabled: boolean;
     channel_id: string | null;
     last_updated: string | null;
+    schedule_anchor_at?: string | null;
+    next_refresh_at?: string | null;
+    remaining_seconds?: number | null;
+    cadence_label?: string | null;
+    refresh_interval_hours?: number | null;
   }>;
   warnings: string[];
   top_message: {
@@ -57,6 +68,7 @@ export type FeedStatus = {
   } | null;
   last_refresh_at: Record<string, string>;
   refresh_interval_minutes?: number;
+  daily_refresh_interval_hours?: number;
   feed_category_id?: string | null;
   last_full_sync_at?: string | null;
   next_refresh_at?: string | null;
@@ -65,6 +77,15 @@ export type FeedStatus = {
   /** Client receive time for snapshot countdown (ms since epoch). */
   countdown_received_at?: number;
   scheduler_status?: string | null;
+  window_schedules?: Record<
+    string,
+    {
+      next_refresh_at?: string | null;
+      remaining_seconds?: number | null;
+      cadence_label?: string | null;
+      refresh_interval_hours?: number | null;
+    }
+  >;
 };
 
 export const DEFAULT_FEED_CONFIG: FeedConfig = {
@@ -87,7 +108,8 @@ export const DEFAULT_FEED_CONFIG: FeedConfig = {
   excluded_channel_ids: [],
   min_net_score: 1,
   display_limit: 10,
-  refresh_interval_minutes: 15,
+  refresh_interval_minutes: 60,
+  daily_refresh_interval_hours: 1,
   feed_category_id: null,
   last_full_sync_at: null,
   next_refresh_at: null,
@@ -95,7 +117,12 @@ export const DEFAULT_FEED_CONFIG: FeedConfig = {
   exclude_webhooks: true,
   exclude_threads: true,
   windows: {
-    daily: { enabled: false, channel_id: null, norgoth_managed: false },
+    daily: {
+      enabled: false,
+      channel_id: null,
+      norgoth_managed: false,
+      refresh_interval_hours: 1,
+    },
     weekly: { enabled: false, channel_id: null, norgoth_managed: false },
     monthly: { enabled: false, channel_id: null, norgoth_managed: false },
     all_time: { enabled: false, channel_id: null, norgoth_managed: false },

@@ -211,24 +211,46 @@ def _parse_iso_utc(value: Any) -> datetime | None:
     return ts.astimezone(timezone.utc)
 
 
-def _is_feed_refresh_due(config: dict[str, Any], *, now: datetime | None = None) -> bool:
-    """Mirror API is_feed_refresh_due: prefer stored next_refresh_at."""
+def _is_window_refresh_due(
+    config: dict[str, Any],
+    window: str,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    """True when an enabled window's next_refresh_at is due (UTC)."""
 
     if not config.get("enabled"):
+        return False
+    wcfg = (config.get("windows") or {}).get(window) or {}
+    if not wcfg.get("enabled") or not wcfg.get("channel_id"):
         return False
     current = now or datetime.now(timezone.utc)
     if current.tzinfo is None:
         current = current.replace(tzinfo=timezone.utc)
     else:
         current = current.astimezone(timezone.utc)
-    next_at = _parse_iso_utc(config.get("next_refresh_at"))
+    next_at = _parse_iso_utc(wcfg.get("next_refresh_at"))
     if next_at is not None:
         return current >= next_at
-    last = _parse_iso_utc(config.get("last_full_sync_at"))
-    if last is None:
-        return True
-    interval_min = _clamp_refresh_minutes(config.get("refresh_interval_minutes"))
-    return current >= last + timedelta(minutes=interval_min)
+    return True
+
+
+def _due_windows(
+    config: dict[str, Any],
+    *,
+    now: datetime | None = None,
+) -> list[str]:
+    return [
+        window
+        for window in ("daily", "weekly", "monthly", "all_time")
+        if _is_window_refresh_due(config, window, now=now)
+    ]
+
+
+def _is_feed_refresh_due(config: dict[str, Any], *, now: datetime | None = None) -> bool:
+    """True when any enabled window is due."""
+
+    return bool(_due_windows(config, now=now))
 
 
 class FeedChannelsCog(commands.Cog):
@@ -388,7 +410,11 @@ class FeedChannelsCog(commands.Cog):
             return None
         url = f"{base}/internal/ingest/{guild_id}/{path}"
         try:
-            timeout = REPAIR_TIMEOUT if path == "feed-repair" else API_TIMEOUT
+            timeout = (
+                REPAIR_TIMEOUT
+                if path in {"feed-repair", "feed-refresh-window", "feed-reconcile"}
+                else API_TIMEOUT
+            )
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.post(
                     url,
@@ -611,23 +637,30 @@ class FeedChannelsCog(commands.Cog):
 
     @tasks.loop(minutes=1)
     async def _refresh_loop(self) -> None:
-        """Full sync when guild next_refresh_at is due (guild-scoped)."""
+        """Per-window sync when each window's next_refresh_at is due."""
 
         for guild in list(self.bot.guilds):
             try:
                 if not await self._module_enabled(guild.id):
                     continue
                 config = await self._config(guild.id)
-                if not _is_feed_refresh_due(config):
+                due = _due_windows(config)
+                if not due:
                     continue
-                result = await self._ingest(guild.id, "feed-repair", {})
-                if result is not None:
-                    logger.info(
-                        "Feed auto refresh completed guild=%s next=%s status=%s",
+                for window in due:
+                    result = await self._ingest(
                         guild.id,
-                        result.get("next_refresh_at"),
-                        result.get("scheduler_status"),
+                        "feed-refresh-window",
+                        {"window": window},
                     )
+                    if result is not None:
+                        logger.info(
+                            "Feed window refresh completed guild=%s window=%s next=%s status=%s",
+                            guild.id,
+                            window,
+                            result.get("next_refresh_at"),
+                            result.get("scheduler_status"),
+                        )
             except Exception:  # noqa: BLE001
                 logger.exception("Feed refresh loop failed for guild %s", guild.id)
 

@@ -148,7 +148,12 @@ async def process_job(
             subscription.status = "discord_permission_missing"
         elif error.code == "missing":
             subscription.status = "webhook_missing"
-        await _schedule_retry_or_dead(session, job, permanent=permanent)
+        await _schedule_retry_or_dead(
+            session,
+            job,
+            permanent=permanent,
+            retry_after=getattr(error, "retry_after", None),
+        )
     except Exception as error:  # noqa: BLE001
         latency_ms = int((time.perf_counter() - started) * 1000)
         logger.exception("Delivery failed for job %s", job_id)
@@ -170,6 +175,7 @@ async def _schedule_retry_or_dead(
     job: NotificationJob,
     *,
     permanent: bool,
+    retry_after: float | None = None,
 ) -> None:
     if permanent or job.attempt_count >= MAX_ATTEMPTS:
         job.status = "dead"
@@ -177,6 +183,9 @@ async def _schedule_retry_or_dead(
         return
 
     delay = BASE_BACKOFF_SECONDS * (2 ** max(0, job.attempt_count - 1))
+    if retry_after is not None and retry_after > 0:
+        # Honor Discord Retry-After while keeping exponential backoff as a floor.
+        delay = max(delay, float(retry_after))
     job.status = "failed"
     job.next_attempt_at = datetime.now(timezone.utc) + timedelta(seconds=delay)
     await session.flush()

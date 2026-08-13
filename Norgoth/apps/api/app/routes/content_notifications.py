@@ -49,6 +49,13 @@ from app.services.content_notifications.fanout import (
 from app.services.content_notifications.payload_builder import build_discord_payload
 from app.services.content_notifications.permission_checks import explain_permission_gap
 from app.services.content_notifications.queue import enqueue_job, worker_online
+from app.services.content_notifications.quotas import (
+    ACTIVE_LIMITS,
+    ContentNotificationQuotaError,
+    assert_can_create,
+    assert_can_enable,
+    guild_platform_usage,
+)
 from app.services.content_notifications.tag_registry import DEFAULT_TEMPLATES, TAG_REGISTRY
 from app.services.content_notifications.tag_resolver import preview_placeholders
 from app.services.content_notifications.webhook_manager import (
@@ -163,7 +170,12 @@ def _serialize_subscription(sub: GuildContentSubscription) -> dict[str, Any]:
 
 @catalog_router.get("/content-notifications/platforms")
 async def list_platforms() -> dict[str, Any]:
-    return {"platforms": platform_availability()}
+    platforms = platform_availability()
+    for row in platforms:
+        platform = str(row["platform"])
+        row["active_limit"] = ACTIVE_LIMITS.get(platform, 0)
+        row["total_limit"] = ACTIVE_LIMITS.get(platform, 0) * 3
+    return {"platforms": platforms}
 
 
 @catalog_router.get("/content-notifications/tags")
@@ -219,10 +231,25 @@ async def list_accounts(
             .order_by(GuildContentSubscription.created_at.desc())
         )
     ).all()
+    usage = await guild_platform_usage(session, guild_id=guild_id)
+    usage_by_platform = {item["platform"]: item for item in usage}
+    platforms = platform_availability()
+    for row in platforms:
+        platform = str(row["platform"])
+        stats = usage_by_platform.get(platform) or {
+            "active_limit": ACTIVE_LIMITS.get(platform, 0),
+            "active_count": 0,
+            "active_remaining": ACTIVE_LIMITS.get(platform, 0),
+            "total_limit": ACTIVE_LIMITS.get(platform, 0) * 3,
+            "total_count": 0,
+            "total_remaining": ACTIVE_LIMITS.get(platform, 0) * 3,
+        }
+        row.update(stats)
     return {
         "accounts": [_serialize_subscription(row) for row in rows],
         "worker_online": await worker_online(),
-        "platforms": platform_availability(),
+        "platforms": platforms,
+        "platform_usage": usage,
     }
 
 
@@ -250,6 +277,16 @@ async def create_account(
         metadata=creator.metadata,
         monitor_status="blocked" if not adapter.is_available() else "active",
     )
+
+    try:
+        await assert_can_create(
+            session,
+            guild_id=guild_id,
+            platform=creator.platform.value,
+            will_be_enabled=body.enabled,
+        )
+    except ContentNotificationQuotaError as error:
+        raise HTTPException(status_code=400, detail=error.as_detail()) from error
 
     existing = await session.scalar(
         select(GuildContentSubscription).where(
@@ -382,6 +419,16 @@ async def update_account(
     if body.event_types is not None:
         sub.event_types = body.event_types
     if body.enabled is not None:
+        if body.enabled and not sub.enabled:
+            try:
+                await assert_can_enable(
+                    session,
+                    guild_id=guild_id,
+                    platform=sub.source.platform,
+                    currently_enabled=sub.enabled,
+                )
+            except ContentNotificationQuotaError as error:
+                raise HTTPException(status_code=400, detail=error.as_detail()) from error
         sub.enabled = body.enabled
         if not body.enabled:
             sub.status = "paused"

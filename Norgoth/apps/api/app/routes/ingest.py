@@ -523,6 +523,52 @@ async def ingest_feed_repair(
     return await repair_feed_channels(session, guild_id=guild_id)
 
 
+class FeedRefreshWindowBody(BaseModel):
+    window: Literal["daily", "weekly", "monthly", "all_time"]
+
+
+@router.post("/{guild_id}/feed-refresh-window")
+async def ingest_feed_refresh_window(
+    body: FeedRefreshWindowBody,
+    guild_id: str = Path(pattern=SNOWFLAKE),
+    session: AsyncSession = Depends(get_database_session),
+) -> dict[str, Any]:
+    """Rebuild a single due Top Trending window and advance its schedule."""
+
+    from app.services.feature_config_store import save_config
+    from app.services.feed_ranking import (
+        load_merged_feed_config,
+        schedule_window_after_failure,
+        schedule_window_after_success,
+        scheduler_countdown_fields,
+    )
+    from app.services.feed_rebuild import rebuild_feed_window
+
+    config = await load_merged_feed_config(guild_id)
+    result = await rebuild_feed_window(
+        session,
+        guild_id=guild_id,
+        window=body.window,
+        config=config,
+    )
+    if result.get("ok"):
+        schedule_window_after_success(config, body.window)
+        await save_config(
+            guild_id, "feed_channels", config, enabled=bool(config.get("enabled"))
+        )
+    elif result.get("reason") not in {"locked", "window_not_configured"}:
+        schedule_window_after_failure(config, body.window)
+        await save_config(
+            guild_id, "feed_channels", config, enabled=bool(config.get("enabled"))
+        )
+    return {
+        "guild_id": guild_id,
+        "window": body.window,
+        "result": result,
+        **scheduler_countdown_fields(config),
+    }
+
+
 # Backward-compatible alias for older bot builds.
 @router.post("/{guild_id}/feed-reconcile")
 async def ingest_feed_reconcile(

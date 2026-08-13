@@ -35,6 +35,14 @@ services:
     environment:
       NORGOTH_ENVIRONMENT: staging
 
+  rss-worker:
+    image: ${NORBOT_API_IMAGE:?}:${NORBOT_IMAGE_TAG:?}
+    command: ["python", "-m", "app.workers.rss_feed_worker"]
+    env_file:
+      - /opt/norbot/env/test.env
+    environment:
+      NORGOTH_ENVIRONMENT: staging
+
   bot:
     image: ${NORBOT_BOT_IMAGE:?}:${NORBOT_IMAGE_TAG:?}
     env_file:

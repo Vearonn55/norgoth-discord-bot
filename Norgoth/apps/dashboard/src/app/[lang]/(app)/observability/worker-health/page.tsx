@@ -16,7 +16,8 @@ export default async function WorkerHealthPage({
 
   if (!hasLocale(lang)) notFound();
 
-  await getDictionary(lang);
+  const dict = await getDictionary(lang);
+  const copy = dict.workerHealth;
 
   return (
     <>
@@ -24,9 +25,9 @@ export default async function WorkerHealthPage({
 
       <div className="d-flex flex-column gap-4">
         <PageHeader
-          title="Worker Health"
+          title={copy.title}
           icon={<Icon icon={cilHeart} size="xl" />}
-          description="Campaign worker heartbeat and delivery liveness, straight from Redis."
+          description={copy.pageDescription}
           actions={
             <Button asChild variant="secondary">
               <Link href={`/${lang}/campaigns/history`}>Campaign History</Link>
