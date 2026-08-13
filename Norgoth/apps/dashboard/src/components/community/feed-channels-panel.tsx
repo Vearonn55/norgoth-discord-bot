@@ -358,7 +358,9 @@ export function FeedChannelsPanel() {
                 card.configured
                   ? channels.find((c) => c.id === card.channel_id)?.name
                     ? `#${channels.find((c) => c.id === card.channel_id)?.name}`
-                    : formatDict(d.channelFallback, { id: card.channel_id })
+                    : formatDict(d.channelFallback, {
+                        id: card.channel_id ?? "",
+                      })
                   : d.chooseDestination
               }
               status={card.configured ? (card.enabled ? "enabled" : "disabled") : "neutral"}
