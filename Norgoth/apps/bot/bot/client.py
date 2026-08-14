@@ -144,7 +144,7 @@ class NorgothBot(commands.Bot):
         self.state = BotState(
             settings.redis_url,
             api_base_url=settings.api_base_url,
-            bot_token=settings.token,
+            bot_token=settings.internal_token,
         )
 
     async def setup_hook(self) -> None:
@@ -295,6 +295,10 @@ class NorgothBot(commands.Bot):
                     json={
                         "discord_guild_name": guild.name,
                         "discord_owner_id": str(guild.owner_id),
+                    },
+                    headers={
+                        "X-Norgoth-Internal-Token": self.settings.internal_token,
+                        "X-Norgoth-Bot-Token": self.settings.internal_token,
                     },
                 )
 

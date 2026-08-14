@@ -405,7 +405,7 @@ class FeedChannelsCog(commands.Cog):
     async def _ingest(self, guild_id: int, path: str, payload: dict[str, Any]) -> dict[str, Any] | None:
         settings = self.bot.settings
         base = (settings.api_base_url or "").rstrip("/")
-        token = settings.token
+        token = settings.internal_token
         if not base or not token:
             return None
         url = f"{base}/internal/ingest/{guild_id}/{path}"
@@ -418,8 +418,11 @@ class FeedChannelsCog(commands.Cog):
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.post(
                     url,
-                    headers={"X-Norgoth-Bot-Token": token},
                     json=payload,
+                    headers={
+                        "X-Norgoth-Internal-Token": token,
+                        "X-Norgoth-Bot-Token": token,
+                    },
                 )
             if response.status_code >= 400:
                 logger.warning(

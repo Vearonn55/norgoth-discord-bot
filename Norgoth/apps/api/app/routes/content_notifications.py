@@ -170,6 +170,48 @@ def _serialize_subscription(sub: GuildContentSubscription) -> dict[str, Any]:
     }
 
 
+async def _assert_guild_owned_template(
+    session: AsyncSession,
+    *,
+    guild_id: str,
+    template_id: UUID | None,
+) -> None:
+    if template_id is None:
+        return
+    owned = await session.scalar(
+        select(NotificationTemplate.id).where(
+            NotificationTemplate.id == template_id,
+            NotificationTemplate.guild_id == guild_id,
+        )
+    )
+    if owned is None:
+        raise HTTPException(
+            status_code=400,
+            detail="template_id does not belong to this guild.",
+        )
+
+
+async def _assert_guild_owned_sender_style(
+    session: AsyncSession,
+    *,
+    guild_id: str,
+    sender_style_id: UUID | None,
+) -> None:
+    if sender_style_id is None:
+        return
+    owned = await session.scalar(
+        select(NotificationSenderStyle.id).where(
+            NotificationSenderStyle.id == sender_style_id,
+            NotificationSenderStyle.guild_id == guild_id,
+        )
+    )
+    if owned is None:
+        raise HTTPException(
+            status_code=400,
+            detail="sender_style_id does not belong to this guild.",
+        )
+
+
 @catalog_router.get("/content-notifications/platforms")
 async def list_platforms() -> dict[str, Any]:
     platforms = platform_availability()
@@ -303,6 +345,12 @@ async def create_account(
     template_id = body.template_id
     if template_id is None:
         template_id = await _ensure_default_template(session, guild_id, creator.platform)
+    await _assert_guild_owned_template(
+        session, guild_id=guild_id, template_id=template_id
+    )
+    await _assert_guild_owned_sender_style(
+        session, guild_id=guild_id, sender_style_id=body.sender_style_id
+    )
 
     # Ensure managed webhook exists when bot token + encryption are configured.
     settings = get_settings()
@@ -424,8 +472,14 @@ async def update_account(
     if body.ping_role_id is not None:
         sub.ping_role_id = body.ping_role_id or None
     if body.template_id is not None:
+        await _assert_guild_owned_template(
+            session, guild_id=guild_id, template_id=body.template_id
+        )
         sub.template_id = body.template_id
     if body.sender_style_id is not None:
+        await _assert_guild_owned_sender_style(
+            session, guild_id=guild_id, sender_style_id=body.sender_style_id
+        )
         sub.sender_style_id = body.sender_style_id
     if body.event_types is not None:
         sub.event_types = body.event_types

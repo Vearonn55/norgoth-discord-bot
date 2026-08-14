@@ -132,6 +132,19 @@ def validate_url_for_fetch(url: str) -> str:
     return urlunparse((scheme, netloc, path or "/", "", query, ""))
 
 
+def _url_with_ip(url: str, ip: str, port: int | None, scheme: str) -> str:
+    parsed = urlparse(url)
+    try:
+        ip_obj = ipaddress.ip_address(ip)
+        host = f"[{ip}]" if isinstance(ip_obj, ipaddress.IPv6Address) else ip
+    except ValueError:
+        host = ip
+    netloc = host if port is None else f"{host}:{port}"
+    if port is None:
+        netloc = host
+    return urlunparse((scheme, netloc, parsed.path or "/", "", parsed.query, ""))
+
+
 async def _resolve_host_async(hostname: str) -> list[str]:
     return await asyncio.to_thread(resolve_and_validate_host, hostname)
 
@@ -172,14 +185,18 @@ async def safe_fetch(
 
     try:
         for _ in range(MAX_REDIRECTS + 1):
-            scheme, host, _port, _pq = validate_url_syntax(current)
-            await _resolve_host_async(host)
+            scheme, host, port, _pq = validate_url_syntax(current)
+            resolved = await _resolve_host_async(host)
+            pin_ip = resolved[0]
+            request_headers["Host"] = host if port is None else f"{host}:{port}"
+            pinned_url = _url_with_ip(current, pin_ip, port, scheme)
 
             response = await client.request(
                 method,
-                current,
+                pinned_url,
                 headers=request_headers,
                 follow_redirects=False,
+                extensions={"sni_hostname": host} if scheme == "https" else None,
             )
 
             if response.status_code in {301, 302, 303, 307, 308}:

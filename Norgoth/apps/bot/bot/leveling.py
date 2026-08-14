@@ -240,7 +240,10 @@ class LevelingCog(commands.Cog):
             async with httpx.AsyncClient(timeout=5.0) as client:
                 await client.post(
                     f"{base}/internal/ingest/{guild_id}/xp",
-                    headers={"X-Norgoth-Bot-Token": token},
+                    headers={
+                        "X-Norgoth-Internal-Token": token,
+                        "X-Norgoth-Bot-Token": token,
+                    },
                     json={
                         "user_id": user_id,
                         "text_xp": text_xp,

@@ -94,12 +94,20 @@ async def current_session(
 @router.post("/logout")
 async def logout(
     response: Response,
+    settings: SettingsDependency,
     sessions: Annotated[SessionService, Depends(get_session_service)],
     norgoth_session: Annotated[str | None, Cookie(alias=COOKIE_NAME)] = None,
 ) -> dict[str, str]:
     if norgoth_session:
         await sessions.delete_session(norgoth_session)
-    response.delete_cookie(COOKIE_NAME, path="/")
+    secure = settings.environment == "production"
+    response.delete_cookie(
+        COOKIE_NAME,
+        path="/",
+        httponly=True,
+        secure=secure,
+        samesite="lax",
+    )
     return {"status": "ok"}
 
 

@@ -35,9 +35,11 @@ fi
 case "${ENV_NAME}" in
   production)
     COMPOSE_FILES=(-f "${DEPLOY_DIR}/compose.yml" -f "${DEPLOY_DIR}/compose.production.yml")
+    ENV_FILE="/opt/norbot/env/production.env"
     ;;
   test)
     COMPOSE_FILES=(-f "${DEPLOY_DIR}/compose.yml" -f "${DEPLOY_DIR}/compose.test.yml")
+    ENV_FILE="/opt/norbot/env/test.env"
     ;;
   *)
     echo "Usage: $0 [production|test]" >&2
@@ -52,7 +54,7 @@ export NORBOT_BOT_IMAGE="${NORBOT_BOT_IMAGE:-ghcr.io/${OWNER}/norbot-bot}"
 export NORBOT_WEB_IMAGE="${NORBOT_WEB_IMAGE:-ghcr.io/${OWNER}/norbot-web}"
 
 echo "Rolling back ${ENV_NAME} app containers to SHA=${SHA}…"
-docker compose "${COMPOSE_FILES[@]}" up -d --no-deps --force-recreate \
-  api campaign-worker content-worker bot web
+docker compose --env-file "${ENV_FILE}" "${COMPOSE_FILES[@]}" up -d --no-deps --force-recreate \
+  api campaign-worker content-worker rss-worker bot web
 
 echo "Rollback recreate issued. Run smoke-check.sh next."

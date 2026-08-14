@@ -16,9 +16,11 @@ ENV_NAME="${1:-production}"
 case "${ENV_NAME}" in
   production)
     COMPOSE_FILES=(-f "${DEPLOY_DIR}/compose.yml" -f "${DEPLOY_DIR}/compose.production.yml")
+    ENV_FILE="/opt/norbot/env/production.env"
     ;;
   test)
     COMPOSE_FILES=(-f "${DEPLOY_DIR}/compose.yml" -f "${DEPLOY_DIR}/compose.test.yml")
+    ENV_FILE="/opt/norbot/env/test.env"
     ;;
   *)
     echo "Usage: $0 [production|test]" >&2
@@ -30,6 +32,6 @@ esac
 : "${NORBOT_API_IMAGE:?NORBOT_API_IMAGE is required}"
 
 echo "=== alembic current (${ENV_NAME}) ==="
-docker compose "${COMPOSE_FILES[@]}" run --rm --no-deps api python -m alembic current
+docker compose --env-file "${ENV_FILE}" "${COMPOSE_FILES[@]}" run --rm --no-deps api python -m alembic current
 echo "=== alembic history (last 15) ==="
-docker compose "${COMPOSE_FILES[@]}" run --rm --no-deps api python -m alembic history -r -15:current
+docker compose --env-file "${ENV_FILE}" "${COMPOSE_FILES[@]}" run --rm --no-deps api python -m alembic history -r -15:current

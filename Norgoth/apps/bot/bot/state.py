@@ -157,7 +157,10 @@ class BotState:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(
                     f"{self._api_base_url}/internal/config/{guild_id}/{feature_key}",
-                    headers={"X-Norgoth-Bot-Token": self._bot_token},
+                    headers={
+                        "X-Norgoth-Internal-Token": self._bot_token,
+                        "X-Norgoth-Bot-Token": self._bot_token,
+                    },
                 )
             if response.status_code != 200:
                 logger.warning(
@@ -189,7 +192,10 @@ class BotState:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(
                     f"{self._api_base_url}/internal/config/verification/{guild_id}",
-                    headers={"X-Norgoth-Bot-Token": self._bot_token},
+                    headers={
+                        "X-Norgoth-Internal-Token": self._bot_token,
+                        "X-Norgoth-Bot-Token": self._bot_token,
+                    },
                 )
             if response.status_code != 200:
                 logger.warning(

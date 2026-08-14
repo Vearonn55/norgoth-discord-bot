@@ -127,6 +127,23 @@ def test_get_client_ip_prefers_proxy_headers() -> None:
     assert _get_client_ip(Request(scope2)) == "203.0.113.10"
 
 
+def test_get_client_ip_ignores_spoofed_headers_from_untrusted_peer() -> None:
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "GET",
+        "path": "/",
+        "raw_path": b"/",
+        "query_string": b"",
+        "headers": [(b"x-forwarded-for", b"198.51.100.1")],
+        "client": ("8.8.8.8", 443),
+        "server": ("test", 80),
+        "scheme": "http",
+    }
+    assert _get_client_ip(Request(scope)) == "8.8.8.8"
+
+
 @pytest.mark.asyncio
 async def test_authorize_not_configured_html(monkeypatch: pytest.MonkeyPatch) -> None:
     guild_service = SimpleNamespace(

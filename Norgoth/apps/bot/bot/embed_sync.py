@@ -28,13 +28,16 @@ class EmbedSyncCog(commands.Cog):
             return
 
         base = self.bot.settings.api_base_url  # type: ignore[attr-defined]
-        token = self.bot.settings.token  # type: ignore[attr-defined]
+        token = self.bot.settings.internal_token  # type: ignore[attr-defined]
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.post(
                     f"{base}/internal/embed-deliveries/mark-deleted",
                     json={"message_ids": ids},
-                    headers={"X-Norgoth-Bot-Token": token},
+                    headers={
+                        "X-Norgoth-Internal-Token": token,
+                        "X-Norgoth-Bot-Token": token,
+                    },
                 )
             if response.status_code != 200:
                 logger.debug(

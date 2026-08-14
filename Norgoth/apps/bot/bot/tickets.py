@@ -287,7 +287,7 @@ class TicketsCog(commands.Cog):
 
         settings = self.bot.settings
         base = (settings.api_base_url or "").rstrip("/")
-        token = settings.token
+        token = settings.internal_token
         if not base or not token:
             return
 
@@ -309,7 +309,10 @@ class TicketsCog(commands.Cog):
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.post(
                     url,
-                    headers={"X-Norgoth-Bot-Token": token},
+                    headers={
+                        "X-Norgoth-Internal-Token": token,
+                        "X-Norgoth-Bot-Token": token,
+                    },
                     json=payload,
                 )
             if response.status_code >= 400:

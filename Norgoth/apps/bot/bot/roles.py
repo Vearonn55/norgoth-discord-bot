@@ -138,6 +138,23 @@ class RolesCog(commands.Cog):
             )
             return
 
+        menus = await self.load_menus(guild.id)
+        allowed_role_ids = {
+            str(entry.get("role_id"))
+            for menu in menus
+            if str(menu.get("message_id") or "") == str(interaction.message.id if interaction.message else "")
+            for entry in (menu.get("roles") or [])
+            if entry.get("role_id")
+        }
+        if not allowed_role_ids and interaction.message is not None:
+            # Fall back to any configured menu in this guild if message_id drifted.
+            allowed_role_ids = {
+                str(entry.get("role_id"))
+                for menu in menus
+                for entry in (menu.get("roles") or [])
+                if entry.get("role_id")
+            }
+
         # Select menu
         if custom_id.startswith(f"{ROLE_MENU_PREFIX}select:"):
             values = data.get("values") or []
@@ -147,6 +164,12 @@ class RolesCog(commands.Cog):
             mode, _, role_id = value.partition(":")
             if not role_id:
                 mode, role_id = "toggle", value
+            if role_id not in allowed_role_ids:
+                await interaction.response.send_message(
+                    "This role is no longer on the menu.",
+                    ephemeral=True,
+                )
+                return
             role = guild.get_role(int(role_id))
             if role is None:
                 await interaction.response.send_message(
@@ -167,6 +190,12 @@ class RolesCog(commands.Cog):
         if parsed is None:
             return
         mode, role_id = parsed
+        if role_id not in allowed_role_ids:
+            await interaction.response.send_message(
+                "This role is no longer on the menu.",
+                ephemeral=True,
+            )
+            return
         role = guild.get_role(int(role_id))
         if role is None:
             await interaction.response.send_message(

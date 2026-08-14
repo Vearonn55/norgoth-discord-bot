@@ -81,6 +81,31 @@ async def test_safe_fetch_oversized_body(monkeypatch: pytest.MonkeyPatch) -> Non
     with pytest.raises(SsrfError, match="size limit"):
         await safe_fetch("https://example.com/feed.xml", client=client)
 
+    pinned = client.request.await_args.args[1]
+    assert pinned.startswith("https://93.184.216.34/")
+    assert client.request.await_args.kwargs["headers"]["Host"] == "example.com"
+
+
+@pytest.mark.asyncio
+async def test_safe_fetch_pins_resolved_ip(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "app.security.ssrf.resolve_and_validate_host",
+        lambda host: ["93.184.216.34"],
+    )
+
+    response = MagicMock()
+    response.status_code = 200
+    response.headers = {"content-type": "application/xml"}
+    response.content = b"<rss/>"
+
+    client = AsyncMock(spec=httpx.AsyncClient)
+    client.request = AsyncMock(return_value=response)
+    client.aclose = AsyncMock()
+
+    result = await safe_fetch("https://example.com/feed.xml", client=client)
+    assert result.status_code == 200
+    assert client.request.await_args.args[1] == "https://93.184.216.34/feed.xml"
+
 
 @pytest.mark.asyncio
 async def test_safe_fetch_redirect_to_private(monkeypatch: pytest.MonkeyPatch) -> None:

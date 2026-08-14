@@ -496,6 +496,20 @@ async def repair_feed_channels_route(
 ) -> dict[str, Any]:
     """Primary recovery: recreate missing channels and sync feed posts."""
 
+    from app.services.campaign_store import get_redis
+
+    redis_client = await get_redis()
+    try:
+        lock_key = f"norgoth:feed:{guild_id}:repair-lock"
+        acquired = await redis_client.set(lock_key, "1", nx=True, ex=120)
+        if not acquired:
+            raise HTTPException(
+                status_code=429,
+                detail="Feed repair already in progress for this guild.",
+            )
+    finally:
+        await redis_client.aclose()
+
     try:
         result = await repair_feed_channels(session, guild_id=guild_id)
     except Exception as error:  # noqa: BLE001

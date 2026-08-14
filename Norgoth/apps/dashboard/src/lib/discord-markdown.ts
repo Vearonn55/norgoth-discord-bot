@@ -5,6 +5,15 @@
  * automation message template.
  */
 
+export function isSafeHttpUrl(href: string): boolean {
+  try {
+    const parsed = new URL(href);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 function serializeChildren(node: Node): string {
   let output = "";
   node.childNodes.forEach((child) => {
@@ -78,7 +87,7 @@ function serializeNode(node: Node): string {
     case "A": {
       const href = element.getAttribute("href") ?? "";
       const content = inner().trim() || href;
-      if (!href) return content;
+      if (!href || !isSafeHttpUrl(href)) return content;
       return `[${content}](${href})`;
     }
     case "H1":

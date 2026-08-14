@@ -47,10 +47,10 @@ echo "[3/5] Restoring dump into ${TEST_DB}…"
 docker compose -p "${TEST_PROJECT}" exec -T postgres \
   pg_restore --clean --if-exists -U "${POSTGRES_USER:-norbot}" -d "${TEST_DB}" < "${DUMP}" || true
 
-echo "[4/5] Sanitizing secrets in ${TEST_DB}…"
+echo "[4/5] Sanitizing secrets and PII in ${TEST_DB}…"
 docker compose -p "${TEST_PROJECT}" exec -T postgres \
   psql -U "${POSTGRES_USER:-norbot}" -d "${TEST_DB}" -v ON_ERROR_STOP=1 <<'SQL'
--- Best-effort scrub of high-risk secrets if tables/columns exist.
+-- Best-effort scrub of high-risk secrets and residual PII if columns exist.
 DO $$
 BEGIN
   IF EXISTS (
@@ -65,6 +65,51 @@ BEGIN
       AND column_name = 'webhook_token_encrypted'
   ) THEN
     EXECUTE 'UPDATE content_notification_subscriptions SET webhook_token_encrypted = NULL WHERE true';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'discord_managed_webhooks'
+      AND column_name = 'encrypted_webhook_token'
+  ) THEN
+    EXECUTE 'UPDATE discord_managed_webhooks SET encrypted_webhook_token = E''\\x00'' WHERE true';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'verification_attempts'
+      AND column_name = 'ip_encrypted'
+  ) THEN
+    EXECUTE 'UPDATE verification_attempts SET ip_encrypted = E''\\x00'', ip_hash = repeat(''0'', 64) WHERE true';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'campaigns'
+      AND column_name = 'audience'
+  ) THEN
+    EXECUTE 'UPDATE campaigns SET audience = jsonb_build_object() WHERE true';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'campaign_recipient_results'
+  ) THEN
+    EXECUTE 'TRUNCATE campaign_recipient_results';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'campaign_unsubscribes'
+  ) THEN
+    EXECUTE 'TRUNCATE campaign_unsubscribes';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'ticket_transcripts'
+  ) THEN
+    EXECUTE 'TRUNCATE ticket_transcripts';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'ticket_share_tokens'
+  ) THEN
+    EXECUTE 'TRUNCATE ticket_share_tokens';
   END IF;
 END $$;
 SQL

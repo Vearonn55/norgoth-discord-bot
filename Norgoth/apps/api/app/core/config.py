@@ -93,6 +93,8 @@ class Settings:
     dashboard_public_url: str | None = None
     discord_application_id: str | None = None
     discord_bot_token: str | None = None
+    internal_token: str | None = None
+    platform_admin_ids: tuple[str, ...] = ()
     proxycheck_api_key: str | None = None
     auth_enforced: bool = False
     webhook_encryption_key: bytes | None = None
@@ -261,6 +263,14 @@ class Settings:
             discord_application_id=_read_optional_string("DISCORD_APPLICATION_ID")
             or discord_client_id,
             discord_bot_token=_read_optional_string("DISCORD_BOT_TOKEN"),
+            internal_token=_read_optional_string("NORGOTH_INTERNAL_TOKEN"),
+            platform_admin_ids=tuple(
+                item.strip()
+                for item in (
+                    _read_optional_string("NORGOTH_PLATFORM_ADMIN_IDS") or ""
+                ).split(",")
+                if item.strip()
+            ),
             proxycheck_api_key=_read_optional_string("NORGOTH_PROXYCHECK_API_KEY"),
             auth_enforced=_read_boolean(
                 "NORGOTH_AUTH_ENFORCED",

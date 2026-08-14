@@ -34,7 +34,10 @@ class CampaignsCog(commands.Cog):
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.post(
                     f"{api_base}/internal/campaigns/unsubscribe",
-                    headers={"X-Norgoth-Bot-Token": self.bot.settings.token},
+                    headers={
+                        "X-Norgoth-Internal-Token": self.bot.settings.internal_token,
+                        "X-Norgoth-Bot-Token": self.bot.settings.internal_token,
+                    },
                     json={"guild_id": str(guild_id), "user_id": str(user_id)},
                 )
             if response.status_code != 200:

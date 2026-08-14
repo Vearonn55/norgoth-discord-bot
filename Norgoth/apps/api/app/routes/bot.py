@@ -148,7 +148,6 @@ async def get_bot_health() -> dict[str, Any]:
         "connected": connected,
         "heartbeat_at": heartbeat,
         "checked_at": datetime.now(timezone.utc).isoformat(),
-        "status": status or {},
     }
 
 

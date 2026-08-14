@@ -30,7 +30,7 @@ from app.security.discord_permissions import (
     can_manage_guild,
 )
 from app.security.oauth_state import DiscordOAuthStateService, InvalidOAuthStateError
-from app.security.session import SessionService
+from app.security.oauth_nonce import OAuthNonceReplayError, consume_oauth_nonce
 from app.api.v1.discord_http import http_detail
 from app.api.v1.operator_discord import fetch_operator_guilds
 
@@ -114,6 +114,11 @@ async def dashboard_callback(
         return fail()
 
     if oauth_state.purpose != "dashboard":
+        return fail(oauth_state.lang)
+
+    try:
+        await consume_oauth_nonce(oauth_state.nonce)
+    except OAuthNonceReplayError:
         return fail(oauth_state.lang)
 
     if not settings.discord_dashboard_redirect_uri:

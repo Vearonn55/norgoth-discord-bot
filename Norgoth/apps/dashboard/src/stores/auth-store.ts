@@ -4,7 +4,6 @@ import { create } from "zustand";
 import { apiUrl } from "@/lib/api";
 
 export type AuthUser = {
-  session_id: string;
   user_id: string;
   username: string;
   global_name: string | null;

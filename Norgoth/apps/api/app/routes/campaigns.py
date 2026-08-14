@@ -3,11 +3,21 @@ from __future__ import annotations
 import uuid
 from typing import Any, Dict, Literal, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from app.api.v1.dependencies_auth import require_operator_session
-from app.core.config import get_settings
+from app.api.v1.dependencies import HTTPClientDependency
+from app.api.v1.dependencies_auth import (
+    OperatorSessionDependency,
+    get_session_service,
+    operator_manageable_guild_ids,
+    require_guild_manager,
+    require_operator_session,
+    require_platform_admin,
+)
+from app.core.config import Settings, get_settings
+from app.security.internal_auth import require_internal_token
+from app.security.session import SessionService
 from app.services.campaign_store import (
     add_activity,
     delete_campaign as store_delete_campaign,
@@ -25,9 +35,8 @@ from app.services.campaign_store import (
     unschedule_campaign,
 )
 
-# Campaigns are not path-scoped to a guild (guild id lives in the body), so we
-# require an authenticated operator session at the router level. Guild-level
-# authorization for campaign targets is a follow-up (body-based check).
+# Campaigns remain body-scoped to a guild. Router-level session auth is
+# required; per-resource guild-manager checks run in each handler.
 router = APIRouter(
     prefix="/campaigns",
     tags=["Campaigns"],
@@ -242,33 +251,87 @@ async def get_queue_state_value(redis_client) -> str:
     return value
 
 
-async def require_bot_token(
-    x_norgoth_bot_token: str | None = Header(default=None),
+def _campaign_guild_id(campaign: Dict[str, Any] | None) -> str | None:
+    if not isinstance(campaign, dict):
+        return None
+    value = campaign.get("guild_id")
+    if isinstance(value, str) and value.strip().isdigit():
+        return value.strip()
+    return None
+
+
+def _filter_campaigns_for_operator(
+    campaigns: list[Dict[str, Any]],
+    allowed_guild_ids: set[str],
+) -> list[Dict[str, Any]]:
+    if "*" in allowed_guild_ids:
+        return campaigns
+    return [
+        campaign
+        for campaign in campaigns
+        if _campaign_guild_id(campaign) in allowed_guild_ids
+    ]
+
+
+async def _assert_campaign_access(
+    campaign: Dict[str, Any],
+    *,
+    session: OperatorSessionDependency,
+    http_client: HTTPClientDependency,
+    sessions: SessionService,
+    settings: Settings,
 ) -> None:
-    expected = get_settings().discord_bot_token
-    if not expected or x_norgoth_bot_token != expected:
-        raise HTTPException(status_code=401, detail="Invalid internal token.")
+    guild_id = _campaign_guild_id(campaign)
+    if not guild_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Campaign is missing a guild and cannot be accessed.",
+        )
+    await require_guild_manager(guild_id, session, http_client, sessions, settings)
 
 
 @router.get("")
-async def list_campaigns():
+async def list_campaigns(
+    session: OperatorSessionDependency,
+    http_client: HTTPClientDependency,
+    sessions: SessionService = Depends(get_session_service),
+    settings: Settings = Depends(get_settings),
+    limit: int = Query(default=100, ge=1, le=200),
+):
     redis_client = await get_redis()
 
     try:
-        campaigns = await store_list_campaigns(redis_client)
+        allowed = await operator_manageable_guild_ids(
+            session, http_client, sessions, settings
+        )
+        campaigns = _filter_campaigns_for_operator(
+            await store_list_campaigns(redis_client),
+            allowed,
+        )[:limit]
         return [normalize_campaign(campaign) for campaign in campaigns]
     finally:
         await redis_client.aclose()
 
 
 @router.get("/stats")
-async def get_stats():
+async def get_stats(
+    session: OperatorSessionDependency,
+    http_client: HTTPClientDependency,
+    sessions: SessionService = Depends(get_session_service),
+    settings: Settings = Depends(get_settings),
+):
     redis_client = await get_redis()
 
     try:
+        allowed = await operator_manageable_guild_ids(
+            session, http_client, sessions, settings
+        )
         campaigns = [
             normalize_campaign(campaign)
-            for campaign in await store_list_campaigns(redis_client)
+            for campaign in _filter_campaigns_for_operator(
+                await store_list_campaigns(redis_client),
+                allowed,
+            )
         ]
 
         return {
@@ -302,22 +365,56 @@ async def get_stats():
 
 
 @router.get("/activity")
-async def get_activity():
+async def get_activity(
+    session: OperatorSessionDependency,
+    http_client: HTTPClientDependency,
+    sessions: SessionService = Depends(get_session_service),
+    settings: Settings = Depends(get_settings),
+):
     redis_client = await get_redis()
 
     try:
-        return await store_list_activity(redis_client, limit=30)
+        allowed = await operator_manageable_guild_ids(
+            session, http_client, sessions, settings
+        )
+        items = await store_list_activity(redis_client, limit=80)
+        if "*" in allowed:
+            return items[:30]
+        campaign_ids: set[str] = set()
+        for campaign in _filter_campaigns_for_operator(
+            await store_list_campaigns(redis_client),
+            allowed,
+        ):
+            campaign_id = campaign.get("id")
+            if isinstance(campaign_id, str):
+                campaign_ids.add(campaign_id)
+        return [
+            item
+            for item in items
+            if isinstance(item, dict) and item.get("campaign_id") in campaign_ids
+        ][:30]
     finally:
         await redis_client.aclose()
 
 
 @router.get("/queue/state")
-async def get_queue_state():
+async def get_queue_state(
+    session: OperatorSessionDependency,
+    http_client: HTTPClientDependency,
+    sessions: SessionService = Depends(get_session_service),
+    settings: Settings = Depends(get_settings),
+):
     redis_client = await get_redis()
 
     try:
         state = await get_queue_state_value(redis_client)
-        campaigns = await store_list_campaigns(redis_client)
+        allowed = await operator_manageable_guild_ids(
+            session, http_client, sessions, settings
+        )
+        campaigns = _filter_campaigns_for_operator(
+            await store_list_campaigns(redis_client),
+            allowed,
+        )
 
         queued_count = sum(1 for campaign in campaigns if campaign.get("status") == "queued")
         running_count = sum(
@@ -360,9 +457,16 @@ async def get_worker_health():
 
 
 @router.get("/unsubscribed/{guild_id}")
-async def list_campaign_unsubscribed(guild_id: str) -> dict[str, Any]:
+async def list_campaign_unsubscribed(
+    guild_id: str,
+    session: OperatorSessionDependency,
+    http_client: HTTPClientDependency,
+    sessions: SessionService = Depends(get_session_service),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
     """Ops listing of members who opted out of campaign DMs."""
 
+    await require_guild_manager(guild_id, session, http_client, sessions, settings)
     redis_client = await get_redis()
 
     try:
@@ -373,7 +477,7 @@ async def list_campaign_unsubscribed(guild_id: str) -> dict[str, Any]:
     return {"guild_id": guild_id, "user_ids": user_ids, "count": len(user_ids)}
 
 
-@router.post("/queue/pause")
+@router.post("/queue/pause", dependencies=[Depends(require_platform_admin)])
 async def pause_queue():
     redis_client = await get_redis()
 
@@ -391,7 +495,7 @@ async def pause_queue():
         await redis_client.aclose()
 
 
-@router.post("/queue/resume")
+@router.post("/queue/resume", dependencies=[Depends(require_platform_admin)])
 async def resume_queue():
     redis_client = await get_redis()
 
@@ -409,7 +513,7 @@ async def resume_queue():
         await redis_client.aclose()
 
 
-@router.post("/rehydrate-runtime")
+@router.post("/rehydrate-runtime", dependencies=[Depends(require_platform_admin)])
 async def rehydrate_campaign_runtime():
     """Rebuild Redis queue and schedule indexes from Postgres campaign statuses."""
     redis_client = await get_redis()
@@ -440,7 +544,13 @@ async def rehydrate_campaign_runtime():
 
 
 @router.get("/{campaign_id}/activity")
-async def get_campaign_activity(campaign_id: str):
+async def get_campaign_activity(
+    campaign_id: str,
+    session: OperatorSessionDependency,
+    http_client: HTTPClientDependency,
+    sessions: SessionService = Depends(get_session_service),
+    settings: Settings = Depends(get_settings),
+):
     redis_client = await get_redis()
 
     try:
@@ -448,6 +558,13 @@ async def get_campaign_activity(campaign_id: str):
 
         if not campaign:
             raise HTTPException(status_code=404, detail="Campaign not found")
+        await _assert_campaign_access(
+            campaign,
+            session=session,
+            http_client=http_client,
+            sessions=sessions,
+            settings=settings,
+        )
 
         return await store_list_activity(redis_client, campaign_id=campaign_id, limit=30)
     finally:
@@ -455,7 +572,13 @@ async def get_campaign_activity(campaign_id: str):
 
 
 @router.get("/{campaign_id}")
-async def get_campaign(campaign_id: str):
+async def get_campaign(
+    campaign_id: str,
+    session: OperatorSessionDependency,
+    http_client: HTTPClientDependency,
+    sessions: SessionService = Depends(get_session_service),
+    settings: Settings = Depends(get_settings),
+):
     redis_client = await get_redis()
 
     try:
@@ -463,6 +586,13 @@ async def get_campaign(campaign_id: str):
 
         if not campaign:
             raise HTTPException(status_code=404, detail="Campaign not found")
+        await _assert_campaign_access(
+            campaign,
+            session=session,
+            http_client=http_client,
+            sessions=sessions,
+            settings=settings,
+        )
 
         return normalize_campaign(campaign)
     finally:
@@ -470,7 +600,13 @@ async def get_campaign(campaign_id: str):
 
 
 @router.post("")
-async def create_campaign(payload: Dict[str, Any]):
+async def create_campaign(
+    payload: Dict[str, Any],
+    session: OperatorSessionDependency,
+    http_client: HTTPClientDependency,
+    sessions: SessionService = Depends(get_session_service),
+    settings: Settings = Depends(get_settings),
+):
     redis_client = await get_redis()
 
     try:
@@ -487,6 +623,9 @@ async def create_campaign(payload: Dict[str, Any]):
                 status_code=422,
                 detail="guild_id is required for durable campaign persistence.",
             )
+        await require_guild_manager(
+            guild_id, session, http_client, sessions, settings
+        )
 
         requested_status = payload.get("status")
         status = "scheduled" if launch_at else requested_status or "draft"
@@ -562,7 +701,14 @@ async def create_campaign(payload: Dict[str, Any]):
 
 
 @router.patch("/{campaign_id}")
-async def update_campaign(campaign_id: str, payload: CampaignUpdate):
+async def update_campaign(
+    campaign_id: str,
+    payload: CampaignUpdate,
+    session: OperatorSessionDependency,
+    http_client: HTTPClientDependency,
+    sessions: SessionService = Depends(get_session_service),
+    settings: Settings = Depends(get_settings),
+):
     redis_client = await get_redis()
 
     try:
@@ -570,6 +716,13 @@ async def update_campaign(campaign_id: str, payload: CampaignUpdate):
 
         if not campaign:
             raise HTTPException(status_code=404, detail="Campaign not found")
+        await _assert_campaign_access(
+            campaign,
+            session=session,
+            http_client=http_client,
+            sessions=sessions,
+            settings=settings,
+        )
 
         if campaign.get("status") == "running":
             raise HTTPException(
@@ -579,6 +732,14 @@ async def update_campaign(campaign_id: str, payload: CampaignUpdate):
 
         campaign = normalize_campaign(campaign)
         update_data = payload.model_dump(exclude_unset=True)
+        if "guild_id" in update_data and update_data["guild_id"]:
+            await require_guild_manager(
+                str(update_data["guild_id"]),
+                session,
+                http_client,
+                sessions,
+                settings,
+            )
 
         if "title" in update_data and update_data["title"]:
             campaign["title"] = update_data["title"]
@@ -657,7 +818,13 @@ async def update_campaign(campaign_id: str, payload: CampaignUpdate):
 
 
 @router.delete("/{campaign_id}")
-async def delete_campaign(campaign_id: str):
+async def delete_campaign(
+    campaign_id: str,
+    session: OperatorSessionDependency,
+    http_client: HTTPClientDependency,
+    sessions: SessionService = Depends(get_session_service),
+    settings: Settings = Depends(get_settings),
+):
     redis_client = await get_redis()
 
     try:
@@ -665,6 +832,13 @@ async def delete_campaign(campaign_id: str):
 
         if not campaign:
             raise HTTPException(status_code=404, detail="Campaign not found")
+        await _assert_campaign_access(
+            campaign,
+            session=session,
+            http_client=http_client,
+            sessions=sessions,
+            settings=settings,
+        )
 
         await add_activity(redis_client, campaign, "deleted", "Campaign deleted.")
         await store_delete_campaign(redis_client, campaign_id)
@@ -675,7 +849,13 @@ async def delete_campaign(campaign_id: str):
 
 
 @router.post("/{campaign_id}/start")
-async def start_campaign(campaign_id: str):
+async def start_campaign(
+    campaign_id: str,
+    session: OperatorSessionDependency,
+    http_client: HTTPClientDependency,
+    sessions: SessionService = Depends(get_session_service),
+    settings: Settings = Depends(get_settings),
+):
     redis_client = await get_redis()
 
     try:
@@ -683,6 +863,13 @@ async def start_campaign(campaign_id: str):
 
         if not campaign:
             raise HTTPException(status_code=404, detail="Campaign not found")
+        await _assert_campaign_access(
+            campaign,
+            session=session,
+            http_client=http_client,
+            sessions=sessions,
+            settings=settings,
+        )
 
         if campaign.get("status") == "running":
             return normalize_campaign(campaign)
@@ -703,7 +890,13 @@ async def start_campaign(campaign_id: str):
 
 
 @router.post("/{campaign_id}/stop")
-async def stop_campaign(campaign_id: str):
+async def stop_campaign(
+    campaign_id: str,
+    session: OperatorSessionDependency,
+    http_client: HTTPClientDependency,
+    sessions: SessionService = Depends(get_session_service),
+    settings: Settings = Depends(get_settings),
+):
     redis_client = await get_redis()
 
     try:
@@ -711,6 +904,13 @@ async def stop_campaign(campaign_id: str):
 
         if not campaign:
             raise HTTPException(status_code=404, detail="Campaign not found")
+        await _assert_campaign_access(
+            campaign,
+            session=session,
+            http_client=http_client,
+            sessions=sessions,
+            settings=settings,
+        )
 
         await unschedule_campaign(redis_client, campaign_id)
 
@@ -727,7 +927,13 @@ async def stop_campaign(campaign_id: str):
 
 
 @router.post("/{campaign_id}/complete")
-async def complete_campaign(campaign_id: str):
+async def complete_campaign(
+    campaign_id: str,
+    session: OperatorSessionDependency,
+    http_client: HTTPClientDependency,
+    sessions: SessionService = Depends(get_session_service),
+    settings: Settings = Depends(get_settings),
+):
     redis_client = await get_redis()
 
     try:
@@ -735,6 +941,13 @@ async def complete_campaign(campaign_id: str):
 
         if not campaign:
             raise HTTPException(status_code=404, detail="Campaign not found")
+        await _assert_campaign_access(
+            campaign,
+            session=session,
+            http_client=http_client,
+            sessions=sessions,
+            settings=settings,
+        )
 
         await unschedule_campaign(redis_client, campaign_id)
 
@@ -761,7 +974,13 @@ async def complete_campaign(campaign_id: str):
 
 
 @router.post("/{campaign_id}/execute")
-async def execute_campaign(campaign_id: str):
+async def execute_campaign(
+    campaign_id: str,
+    session: OperatorSessionDependency,
+    http_client: HTTPClientDependency,
+    sessions: SessionService = Depends(get_session_service),
+    settings: Settings = Depends(get_settings),
+):
     redis_client = await get_redis()
 
     try:
@@ -769,6 +988,13 @@ async def execute_campaign(campaign_id: str):
 
         if not campaign:
             raise HTTPException(status_code=404, detail="Campaign not found")
+        await _assert_campaign_access(
+            campaign,
+            session=session,
+            http_client=http_client,
+            sessions=sessions,
+            settings=settings,
+        )
 
         if campaign.get("status") in ["queued", "running"]:
             return normalize_campaign(campaign)
@@ -798,7 +1024,7 @@ class InternalUnsubscribeBody(BaseModel):
     user_id: str = Field(pattern=r"^[0-9]{5,25}$")
 
 
-@internal_router.post("/unsubscribe", dependencies=[Depends(require_bot_token)])
+@internal_router.post("/unsubscribe", dependencies=[Depends(require_internal_token)])
 async def mark_campaign_unsubscribed_internal(
     body: InternalUnsubscribeBody,
 ) -> dict[str, Any]:

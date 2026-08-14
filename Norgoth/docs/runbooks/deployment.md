@@ -28,7 +28,10 @@
    - `DEPLOY_PORT` must match the VDS SSH listen port (default **35342** from
      `setup-firewall.sh`). Required for **both** environments — without it,
      deploy-test defaults to port 22 and times out.
-7. Push to `test` to trigger staging deploy; promote via PR into `main` for production.
+7. Create `/opt/norbot/env/ghcr.pull.token` (mode 600) with a GHCR **pull-only**
+   credential (`packages:read`). Deploy no longer sends job `GITHUB_TOKEN` to
+   the host. Optional: `GHCR_PULL_USER` (defaults to `norbot-pull`).
+8. Push to `test` to trigger staging deploy; promote via PR into `main` for production.
 
 ## After deploy: bot online check
 
@@ -116,3 +119,21 @@ After deploy (or when validating WH / CN / feed closeout), confirm. System UI pa
 2. Deploy web (topbar grid fix + System UI removal + Feed Refresh Interval slider).
 3. Deploy bot.
 4. Rollback web alone restores System/topbar UI; API merge remains backward-compatible for legacy daily hours. Rolling bounds are a behavior change — revert API to restore calendar windows if needed.
+
+## Security hardening (production operator actions)
+
+Do these on the VDS after the security-hardening deploy. Details:
+[`docs/security/baseline.md`](../security/baseline.md).
+
+1. Generate `NORGOTH_INTERNAL_TOKEN` (`python -c "import secrets; print(secrets.token_urlsafe(48))"`), set it in API and bot env, restart the stack. Bot `NORGOTH_API_URL` / `NORGOTH_API_INTERNAL_URL` must stay `http://api:8000`.
+2. Confirm `NORGOTH_AUTH_ENFORCED=true`, `NORGOTH_OAUTH_TOKEN_ENCRYPTION_KEY` (or webhook encryption fallback) set, `NORGOTH_ENABLE_DOCS=false`.
+3. Install/reload Nginx from `deploy/nginx/` (`/internal/` deny, `limit_req`, default_server).
+4. Set `REDIS_PASSWORD` (URL-safe) and `NORGOTH_REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0` (staging may use DB `1`). Rolling restart so Redis AUTH is required.
+5. Set `NORGOTH_PLATFORM_ADMIN_IDS` only if global campaign queue pause/resume is needed.
+6. After internal-token cutover, rotate the Discord bot token if it was ever used as the public API secret.
+7. Rotate Discord client secret / webhook secrets if git history may have contained them.
+8. Replace VDS GHCR login with `/opt/norbot/env/ghcr.pull.token` (pull-only). Do not copy job `GITHUB_TOKEN` onto the host.
+9. Smoke: OAuth login, guild selector, one campaign on an owned guild only, verification IP path behind Nginx.
+
+`ssl_reject_handshake` on the HTTPS catch-all requires Nginx 1.19.4+. If `nginx -t` fails on an older package, comment that `server` block and keep the HTTP `default_server`.
+

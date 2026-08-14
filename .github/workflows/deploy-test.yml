@@ -18,11 +18,11 @@ jobs:
     runs-on: ubuntu-latest
     environment: test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -54,7 +54,7 @@ jobs:
           docker push "ghcr.io/${OWNER}/norbot-web:${TAG}"
 
       - name: Sync compose and scripts to VDS
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
@@ -64,7 +64,7 @@ jobs:
           target: "/tmp/norbot-git"
           rm: true
       - name: Deploy over SSH
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
@@ -80,9 +80,9 @@ jobs:
             rsync -a /tmp/norbot-git/Norgoth/scripts/docker/ /opt/norbot/scripts/
             chmod +x /opt/norbot/scripts/*.sh
             cd /opt/norbot
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-            docker compose -f deploy/compose.yml -f deploy/compose.test.yml pull
+            /opt/norbot/scripts/ghcr-login.sh
+            docker compose --env-file /opt/norbot/env/test.env -f deploy/compose.yml -f deploy/compose.test.yml pull
             /opt/norbot/scripts/migrate.sh test
-            docker compose -f deploy/compose.yml -f deploy/compose.test.yml up -d
+            docker compose --env-file /opt/norbot/env/test.env -f deploy/compose.yml -f deploy/compose.test.yml up -d
             /opt/norbot/scripts/smoke-check.sh test
             /opt/norbot/scripts/record-release.sh "${NORBOT_IMAGE_TAG}" test

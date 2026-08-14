@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 
 import httpx
@@ -96,11 +97,18 @@ def main() -> int:
         print(f"Discovered guild from bot: {guild_name} ({guild_id})")
 
     with httpx.Client(base_url=API_BASE_URL, timeout=15.0) as client:
+        internal_token = os.getenv("NORGOTH_INTERNAL_TOKEN") or os.getenv(
+            "DISCORD_BOT_TOKEN", ""
+        )
         guild_response = client.put(
             f"/api/v1/guilds/{guild_id}",
             json={
                 "discord_guild_name": guild_name or "Unknown Guild",
                 "discord_owner_id": owner_id or "0",
+            },
+            headers={
+                "X-Norgoth-Internal-Token": internal_token,
+                "X-Norgoth-Bot-Token": internal_token,
             },
         )
         print(f"Guild upsert: HTTP {guild_response.status_code}")

@@ -16,5 +16,6 @@ export default async function AuthCompletePage({
   if (!code) {
     redirect(`/${lang}/login?error=missing_code`);
   }
-  redirect(`/api/auth/complete?lang=${encodeURIComponent(lang)}&code=${encodeURIComponent(code)}`);
+  const destination = `/api/auth/complete?lang=${encodeURIComponent(lang)}&code=${encodeURIComponent(code)}`;
+  redirect(destination);
 }

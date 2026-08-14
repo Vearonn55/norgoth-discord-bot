@@ -11,13 +11,14 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Literal, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.db.session import get_database_session
+from app.security.internal_auth import require_internal_token
 from app.models.runtime_events import (
     AnalyticsDaily,
     HoneypotTrigger,
@@ -32,20 +33,10 @@ from app.models.runtime_events import (
 SNOWFLAKE = r"^[0-9]{5,25}$"
 
 
-async def require_bot_token(
-    x_norgoth_bot_token: str | None = Header(default=None),
-) -> None:
-    """Guard internal endpoints: the bot and API share ``DISCORD_BOT_TOKEN``."""
-
-    expected = get_settings().discord_bot_token
-    if not expected or x_norgoth_bot_token != expected:
-        raise HTTPException(status_code=401, detail="Invalid internal token.")
-
-
 router = APIRouter(
     prefix="/internal/ingest",
     tags=["Internal Ingest"],
-    dependencies=[Depends(require_bot_token)],
+    dependencies=[Depends(require_internal_token)],
 )
 
 

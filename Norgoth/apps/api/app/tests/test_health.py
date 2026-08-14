@@ -36,6 +36,7 @@ def test_health_endpoint_returns_request_and_security_headers() -> None:
     assert response.headers["X-Frame-Options"] == "DENY"
     assert response.headers["Referrer-Policy"] == "no-referrer"
     assert response.headers["Permissions-Policy"] == ("camera=(), geolocation=(), microphone=()")
+    assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]
 
 
 def test_valid_caller_request_id_is_preserved() -> None:

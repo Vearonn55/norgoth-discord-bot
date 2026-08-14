@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from fastapi import Cookie, Depends, HTTPException, Request, status
@@ -16,6 +17,8 @@ from app.api.v1.dependencies import (
 from app.api.v1.discord_http import http_detail
 from app.api.v1.operator_discord import fetch_operator_guilds
 from app.integrations.discord.oauth import DiscordOAuthClient
+
+logger = logging.getLogger(__name__)
 
 
 def get_session_service() -> SessionService:
@@ -106,6 +109,11 @@ async def require_guild_manager(
     if match is None or not can_manage_guild(
         owner=match.owner, permissions=match.permissions
     ):
+        logger.warning(
+            "guild_permission_denied user_id=%s guild_id=%s",
+            session.user_id,
+            guild_id,
+        )
         raise HTTPException(
             status_code=403,
             detail=http_detail(
@@ -140,3 +148,58 @@ def guild_manager_dependency(guild_id_param: str = "guild_id"):
         )
 
     return _dep
+
+
+async def require_platform_admin(
+    session: OperatorSessionDependency,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> OperatorSession:
+    """Restrict global ops (queue pause/rehydrate) to an explicit allowlist."""
+
+    if not settings.auth_enforced and session.user_id == "0":
+        return session
+    allowed = set(settings.platform_admin_ids)
+    if session.user_id not in allowed:
+        logger.warning(
+            "platform_admin_required user_id=%s",
+            session.user_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=http_detail(
+                "platform_admin_required",
+                "This operation is restricted to platform administrators.",
+            ),
+        )
+    return session
+
+
+async def operator_manageable_guild_ids(
+    session: OperatorSession,
+    http_client: HTTPClientDependency,
+    sessions: SessionService,
+    settings: Settings,
+) -> set[str]:
+    """Return Discord guild IDs the operator may manage."""
+
+    if not settings.auth_enforced and session.user_id == "0":
+        return {"*"}
+
+    client_id, client_secret, redirect_uri = _require_discord_oauth_settings(settings)
+    oauth_client = DiscordOAuthClient(
+        client_id=client_id,
+        client_secret=client_secret,
+        redirect_uri=redirect_uri,
+        http_client=http_client,
+    )
+    guilds = await fetch_operator_guilds(
+        sessions=sessions,
+        oauth_client=oauth_client,
+        user_id=session.user_id,
+        route="operator_manageable_guild_ids",
+    )
+    return {
+        guild.id
+        for guild in guilds
+        if can_manage_guild(owner=guild.owner, permissions=guild.permissions)
+    }

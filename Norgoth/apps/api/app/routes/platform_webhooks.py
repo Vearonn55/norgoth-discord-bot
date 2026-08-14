@@ -124,15 +124,16 @@ async def twitch_eventsub(
             except Exception:  # noqa: BLE001
                 pass
 
-    if secret and signature:
-        if not verify_twitch_signature(
-            secret=secret,
-            message_id=message_id,
-            timestamp=timestamp,
-            body=body,
-            signature=signature,
-        ):
-            raise HTTPException(status_code=403, detail="Invalid Twitch signature")
+    if not secret or not signature:
+        raise HTTPException(status_code=403, detail="Twitch signature required")
+    if not verify_twitch_signature(
+        secret=secret,
+        message_id=message_id,
+        timestamp=timestamp,
+        body=body,
+        signature=signature,
+    ):
+        raise HTTPException(status_code=403, detail="Invalid Twitch signature")
 
     if message_type == "webhook_callback_verification":
         challenge = payload.get("challenge", "")
@@ -191,19 +192,21 @@ async def kick_events(
     adapter = KickAdapter()
     try:
         public_key = await adapter.get_public_key()
-    except Exception:  # noqa: BLE001
-        public_key = ""
+    except Exception as error:  # noqa: BLE001
+        logger.warning("Kick public key fetch failed: %s", error)
+        raise HTTPException(status_code=503, detail="Kick signature verification unavailable") from error
 
-    if signature and public_key:
-        ok = await verify_kick_signature(
-            message_id=message_id,
-            timestamp=timestamp,
-            body=body,
-            signature_b64=signature,
-            public_key_pem=public_key,
-        )
-        if not ok:
-            raise HTTPException(status_code=403, detail="Invalid Kick signature")
+    if not signature or not public_key:
+        raise HTTPException(status_code=403, detail="Kick signature required")
+    ok = await verify_kick_signature(
+        message_id=message_id,
+        timestamp=timestamp,
+        body=body,
+        signature_b64=signature,
+        public_key_pem=public_key,
+    )
+    if not ok:
+        raise HTTPException(status_code=403, detail="Invalid Kick signature")
 
     if message_id and not await mark_replay(f"kick:{message_id}"):
         return {"ok": True, "deduplicated": True}

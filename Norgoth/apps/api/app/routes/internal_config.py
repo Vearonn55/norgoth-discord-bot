@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Path
+from fastapi import APIRouter, Depends, Path
 
-from app.core.config import get_settings
+from app.security.internal_auth import require_internal_token
 from app.services.campaign_store import get_redis
 from app.services.feature_config_store import FEATURE_REGISTRY, read_through
 from app.services.verification_join_config import load_verification_join_config
@@ -14,18 +14,10 @@ from app.services.verification_join_config import load_verification_join_config
 SNOWFLAKE = r"^[0-9]{5,25}$"
 
 
-async def require_bot_token(
-    x_norgoth_bot_token: str | None = Header(default=None),
-) -> None:
-    expected = get_settings().discord_bot_token
-    if not expected or x_norgoth_bot_token != expected:
-        raise HTTPException(status_code=401, detail="Invalid internal token.")
-
-
 router = APIRouter(
     prefix="/internal/config",
     tags=["Internal Config"],
-    dependencies=[Depends(require_bot_token)],
+    dependencies=[Depends(require_internal_token)],
 )
 
 

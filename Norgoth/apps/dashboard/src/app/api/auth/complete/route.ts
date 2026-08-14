@@ -40,13 +40,6 @@ export async function GET(request: NextRequest) {
   }
 
   if (!sessionId) {
-    const payload = (await exchange.json()) as {
-      user?: { session_id?: string };
-    };
-    sessionId = payload.user?.session_id ?? null;
-  }
-
-  if (!sessionId) {
     return NextResponse.redirect(
       dashboardUrl(`/${lang}/login?error=session`, request.url),
     );
@@ -55,6 +48,7 @@ export async function GET(request: NextRequest) {
   const response = NextResponse.redirect(
     dashboardUrl(`/${lang}/servers`, request.url),
   );
+  response.headers.set("Cache-Control", "no-store");
   response.cookies.set({
     name: COOKIE_NAME,
     value: sessionId,

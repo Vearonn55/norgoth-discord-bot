@@ -14,7 +14,12 @@ from app.api.v1.router import api_router  # noqa: E402
 from app.core.config import Settings, get_settings  # noqa: E402
 from app.core.exceptions import register_exception_handlers  # noqa: E402
 from app.core.logging import configure_logging  # noqa: E402
+from app.middleware.csrf_origin import CsrfOriginMiddleware  # noqa: E402
+from app.middleware.rate_limit import RateLimitMiddleware  # noqa: E402
 from app.middleware.request_context import RequestContextMiddleware  # noqa: E402
+from app.middleware.request_size import RequestSizeLimitMiddleware  # noqa: E402
+from app.middleware.uploads_auth import UploadsAuthMiddleware  # noqa: E402
+from app.security.cors_origins import cors_allow_origins  # noqa: E402
 from app.routes.activity import router as activity_router  # noqa: E402
 from app.routes.analytics import router as analytics_router  # noqa: E402
 from app.routes.automation import router as automation_router  # noqa: E402
@@ -56,43 +61,24 @@ from app.routes.observability import router as observability_router  # noqa: E40
 logger = logging.getLogger(__name__)
 
 
-def _cors_allow_origins(settings: Settings) -> list[str]:
-    """Build the credentialed CORS allowlist for the current environment."""
-
-    import os
-
-    defaults = [
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "https://www.norbot.io",
-        "https://norbot.io",
-        "https://test.norbot.io",
-    ]
-    if settings.dashboard_public_url:
-        defaults.append(settings.dashboard_public_url.rstrip("/"))
-
-    extra = os.getenv("NORGOTH_CORS_ORIGINS", "").strip()
-    if extra:
-        defaults.extend(
-            origin.strip().rstrip("/")
-            for origin in extra.split(",")
-            if origin.strip()
-        )
-
-    # Preserve order while removing duplicates.
-    seen: set[str] = set()
-    origins: list[str] = []
-    for origin in defaults:
-        if origin and origin not in seen:
-            seen.add(origin)
-            origins.append(origin)
-    return origins
-
-
 @asynccontextmanager
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     settings = cast(Settings, application.state.settings)
     configure_logging(settings.log_level)
+
+    if settings.environment == "production":
+        if not settings.auth_enforced:
+            raise RuntimeError(
+                "NORGOTH_AUTH_ENFORCED must be true in production."
+            )
+        if settings.enable_docs:
+            raise RuntimeError(
+                "NORGOTH_ENABLE_DOCS must be false in production."
+            )
+        if settings.oauth_token_encryption_key is None:
+            raise RuntimeError(
+                "NORGOTH_OAUTH_TOKEN_ENCRYPTION_KEY must be set in production."
+            )
 
     logger.info(
         "Norgoth API startup completed: version=%s environment=%s",
@@ -121,10 +107,15 @@ def create_application(settings: Settings | None = None) -> FastAPI:
 
     register_exception_handlers(application)
 
+    # Last added = first executed. Request context wraps the rest.
+    application.add_middleware(UploadsAuthMiddleware, settings=resolved_settings)
+    application.add_middleware(CsrfOriginMiddleware, settings=resolved_settings)
+    application.add_middleware(RateLimitMiddleware)
+    application.add_middleware(RequestSizeLimitMiddleware)
     application.add_middleware(RequestContextMiddleware)
     application.add_middleware(
         CORSMiddleware,
-        allow_origins=_cors_allow_origins(resolved_settings),
+        allow_origins=cors_allow_origins(resolved_settings),
         # Allow dashboard access from other devices on the LAN (dev/staging).
         allow_origin_regex=(
             None

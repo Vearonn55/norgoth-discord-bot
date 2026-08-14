@@ -9,6 +9,7 @@ from app.api.v1.dependencies import (
     GuildServiceDependency,
 )
 from app.api.v1.dependencies_auth import guild_manager_dependency
+from app.security.internal_auth import require_internal_token
 from app.schemas.guild import GuildResponse, GuildUpsertRequest
 
 router = APIRouter(
@@ -51,6 +52,7 @@ async def get_guild(
 @router.put(
     "/{discord_guild_id}",
     response_model=GuildResponse,
+    dependencies=[Depends(require_internal_token)],
 )
 async def register_or_update_guild(
     discord_guild_id: DiscordGuildIdPath,

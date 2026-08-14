@@ -17,6 +17,7 @@ from sqlalchemy.orm import selectinload
 from app.api.v1.dependencies_auth import guild_manager_dependency
 from app.core.config import get_settings
 from app.db.session import get_database_session
+from app.security.internal_auth import require_internal_token
 from app.integrations.discord.bot_rest import DiscordBotAPIError, DiscordBotClient
 from app.models.embed_messages import (
     EmbedMessage,
@@ -38,25 +39,10 @@ router = APIRouter(
 )
 
 
-async def require_bot_token(
-    x_norgoth_bot_token: str | None = Header(default=None),
-) -> None:
-    """Guard internal endpoints the bot calls (no OAuth available to it).
-
-    The bot and API load the same ``DISCORD_BOT_TOKEN`` from the environment, so
-    a matching header proves the caller is our bot process.
-    """
-
-    settings = get_settings()
-    expected = settings.discord_bot_token
-    if not expected or x_norgoth_bot_token != expected:
-        raise HTTPException(status_code=401, detail="Invalid internal token.")
-
-
 # Internal, bot-only router for live drift callbacks (message deletions).
 internal_router = APIRouter(
     tags=["Embed Messages (internal)"],
-    dependencies=[Depends(require_bot_token)],
+    dependencies=[Depends(require_internal_token)],
 )
 
 SNOWFLAKE = r"^[0-9]{5,25}$"

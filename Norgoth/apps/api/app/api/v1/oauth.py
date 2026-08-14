@@ -40,6 +40,7 @@ from app.integrations.proxycheck import (
 )
 from app.security.oauth_nonce import OAuthNonceReplayError, consume_oauth_nonce
 from app.security.oauth_state import InvalidOAuthStateError
+from app.security.client_ip import get_trusted_client_ip
 from app.security.verification_rate_limit import (
     AUTHORIZE_LIMIT,
     AUTHORIZE_WINDOW_SECONDS,
@@ -86,18 +87,7 @@ def _request_lang(request: Request, fallback: str = "en") -> str:
 def _get_client_ip(request: Request) -> str:
     """Return the real client IP, preferring trusted proxy headers."""
 
-    real_ip = (request.headers.get("x-real-ip") or "").strip()
-    if real_ip:
-        return real_ip.split(",")[0].strip()
-
-    forwarded = (request.headers.get("x-forwarded-for") or "").strip()
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-
-    if request.client is None or not request.client.host:
-        raise ValueError("client_ip_unavailable")
-
-    return request.client.host
+    return get_trusted_client_ip(request)
 
 
 def _html_unavailable(
