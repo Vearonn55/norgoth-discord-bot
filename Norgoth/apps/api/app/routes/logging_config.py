@@ -602,7 +602,7 @@ async def update_logging_channel(
                 await bot.edit_channel(
                     channel.channel_id,
                     name=new_name,
-                    reason="Norgoth logging category renamed",
+                    reason="NorBot logging category renamed",
                 )
                 discord_renamed = True
             except DiscordBotAPIError as error:
@@ -763,7 +763,7 @@ async def delete_logging_discord_channel(
                     raise
             await bot.delete_channel(
                 channel_id,
-                reason="Norgoth logging category channel deleted",
+                reason="NorBot logging category channel deleted",
             )
         except HTTPException:
             raise
@@ -907,9 +907,9 @@ async def provision_logging(
             if config.norgoth_managed_category and not config.category_id:
                 created = await bot.create_guild_channel(
                     guild_id,
-                    name=config.category_name or "Norgoth Logs",
+                    name=config.category_name or "NorBot Logs",
                     channel_type=CHANNEL_TYPE_CATEGORY,
-                    reason="Norgoth logging setup",
+                    reason="NorBot logging setup",
                 )
                 config.category_id = str(created.get("id") or "") or None
                 results.append({"type": "category", "status": "created"})
@@ -929,7 +929,7 @@ async def provision_logging(
                     name=channel.name,
                     channel_type=CHANNEL_TYPE_TEXT,
                     parent_id=config.category_id,
-                    reason="Norgoth logging setup",
+                    reason="NorBot logging setup",
                 )
                 channel.channel_id = str(created.get("id") or "") or None
                 results.append(
@@ -1046,9 +1046,9 @@ async def repair_logging(
                     try:
                         created = await bot.create_guild_channel(
                             guild_id,
-                            name=config.category_name or "Norgoth Logs",
+                            name=config.category_name or "NorBot Logs",
                             channel_type=CHANNEL_TYPE_CATEGORY,
-                            reason="Norgoth logging repair",
+                            reason="NorBot logging repair",
                         )
                         config.category_id = str(created.get("id") or "") or None
                         results.append({"type": "category", "status": "recreated"})
@@ -1078,7 +1078,7 @@ async def repair_logging(
                     name=channel.name,
                     channel_type=CHANNEL_TYPE_TEXT,
                     parent_id=config.category_id,
-                    reason="Norgoth logging repair",
+                    reason="NorBot logging repair",
                 )
                 channel.channel_id = str(created.get("id") or "") or None
                 results.append(
@@ -1157,7 +1157,7 @@ async def reset_logging_config(
                 if channel.norgoth_managed and channel.channel_id:
                     try:
                         await bot.delete_channel(
-                            channel.channel_id, reason="Norgoth logging reset"
+                            channel.channel_id, reason="NorBot logging reset"
                         )
                         discord_deleted += 1
                     except DiscordBotAPIError:
@@ -1165,7 +1165,7 @@ async def reset_logging_config(
             if config.norgoth_managed_category and config.category_id:
                 try:
                     await bot.delete_channel(
-                        config.category_id, reason="Norgoth logging reset"
+                        config.category_id, reason="NorBot logging reset"
                     )
                     discord_deleted += 1
                 except DiscordBotAPIError:

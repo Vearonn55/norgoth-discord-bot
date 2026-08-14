@@ -16,6 +16,7 @@ from app.integrations.content_platforms.twitch.adapter import (
 )
 from app.integrations.content_platforms.types import (
     ContentEventType,
+    NormalizedContentEvent,
     PlatformBlockedError,
     PlatformRawEvent,
     PlatformType,
@@ -387,6 +388,51 @@ async def test_kick_enrich_offline_event() -> None:
     assert event.event_type == ContentEventType.STREAM_ENDED
     assert event.is_live is False
     assert event.content_url == "https://kick.com/demo"
+    assert event.thumbnail_url is None
+
+
+@pytest.mark.anyio
+async def test_kick_enrich_live_event_uses_fetch_latest_thumbnail() -> None:
+    from app.integrations.content_platforms.kick.adapter import KickAdapter
+
+    adapter = KickAdapter(http_client=AsyncMock())
+    live = NormalizedContentEvent(
+        platform=PlatformType.KICK,
+        event_type=ContentEventType.STREAM_STARTED,
+        external_content_id="42:live",
+        creator_platform_id="42",
+        creator_name="Demo",
+        title="Friday Night",
+        content_url="https://kick.com/demo",
+        thumbnail_url="https://kick.com/thumbs/live.jpg",
+        is_live=True,
+        game="Just Chatting",
+        viewer_count=12,
+    )
+    adapter.fetch_latest = AsyncMock(return_value=[live])
+    raw = PlatformRawEvent(
+        platform=PlatformType.KICK,
+        event_type=ContentEventType.STREAM_STARTED,
+        external_content_id="42:started",
+        platform_creator_id="42",
+        raw={
+            "broadcaster": {
+                "user_id": 42,
+                "username": "demo",
+                "channel_slug": "demo",
+                "profile_picture": "https://example.com/a.png",
+            },
+            "is_live": True,
+            "title": "Going live",
+            "started_at": "2026-08-13T10:00:00Z",
+        },
+    )
+    event = await adapter.enrich_event(raw)
+    assert event.is_live is True
+    assert event.thumbnail_url == "https://kick.com/thumbs/live.jpg"
+    assert event.title == "Friday Night"
+    assert event.game == "Just Chatting"
+    adapter.fetch_latest.assert_awaited_once()
 
 
 def test_manual_test_event_synthesizes_when_offline() -> None:

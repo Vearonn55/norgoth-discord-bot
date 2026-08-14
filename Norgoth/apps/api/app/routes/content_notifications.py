@@ -58,7 +58,11 @@ from app.services.content_notifications.quotas import (
     assert_can_enable,
     guild_platform_usage,
 )
-from app.services.content_notifications.tag_registry import DEFAULT_TEMPLATES, TAG_REGISTRY
+from app.services.content_notifications.tag_registry import (
+    DEFAULT_TEMPLATES,
+    TAG_REGISTRY,
+    default_embed_json,
+)
 from app.services.content_notifications.tag_resolver import preview_placeholders
 from app.services.content_notifications.webhook_manager import (
     WebhookManagerError,
@@ -1186,12 +1190,7 @@ async def _ensure_default_template(
         name=f"Default {platform.value.title()}",
         platform_default_for=platform.value,
         content=DEFAULT_TEMPLATES[platform],
-        embed_json={
-            "title": "{title}",
-            "description": "{account}",
-            "color": "#6ea8fe",
-            "thumbnail_url": "{profile_pic}",
-        },
+        embed_json=default_embed_json(platform),
     )
     session.add(row)
     await session.flush()

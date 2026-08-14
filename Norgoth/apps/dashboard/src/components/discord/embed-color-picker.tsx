@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { CFormInput } from "@coreui/react";
 import { parseEmbedColor } from "@/lib/discord/message-payload";
+import { placePopover } from "@/lib/place-popover";
 
 type EmbedColorPickerProps = {
   value?: number | string | null;
@@ -25,6 +27,9 @@ const PRESETS = [
   "#18181b", // near-black
 ];
 
+const POPOVER_WIDTH = 220;
+const POPOVER_HEIGHT_FALLBACK = 180;
+
 function toHex(value: number | string | null | undefined): string {
   const parsed = parseEmbedColor(value);
   return parsed != null
@@ -43,7 +48,9 @@ export function EmbedColorPicker({
 }: EmbedColorPickerProps) {
   const [open, setOpen] = useState(false);
   const [hexInput, setHexInput] = useState(toHex(value));
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [coords, setCoords] = useState({ top: 0, left: 0 });
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
 
   const currentHex = toHex(value);
 
@@ -51,18 +58,65 @@ export function EmbedColorPicker({
     setHexInput(currentHex);
   }, [currentHex]);
 
+  const close = () => {
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
+
+  useLayoutEffect(() => {
+    if (!open) return;
+
+    const update = () => {
+      const trigger = triggerRef.current?.getBoundingClientRect();
+      if (!trigger) return;
+      const panel = panelRef.current?.getBoundingClientRect();
+      const placed = placePopover(
+        trigger,
+        {
+          width: panel?.width || POPOVER_WIDTH,
+          height: panel?.height || POPOVER_HEIGHT_FALLBACK,
+        },
+        { width: window.innerWidth, height: window.innerHeight },
+      );
+      setCoords({ top: placed.top, left: placed.left });
+    };
+
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
-    const handler = (event: MouseEvent) => {
+    const onMouse = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (triggerRef.current?.contains(target)) return;
+      if (panelRef.current?.contains(target)) return;
       if (
-        containerRef.current &&
-        !containerRef.current.contains(event.target as Node)
+        panelRef.current &&
+        document.activeElement instanceof Node &&
+        panelRef.current.contains(document.activeElement)
       ) {
-        setOpen(false);
+        return;
+      }
+      close();
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        close();
       }
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener("mousedown", onMouse);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onMouse);
+      document.removeEventListener("keydown", onKey);
+    };
   }, [open]);
 
   const commitHex = (raw: string) => {
@@ -73,9 +127,69 @@ export function EmbedColorPicker({
     }
   };
 
+  const panel =
+    open && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            ref={panelRef}
+            className="p-3 border rounded shadow bg-body"
+            style={{
+              position: "fixed",
+              top: coords.top,
+              left: coords.left,
+              zIndex: 1080,
+              width: POPOVER_WIDTH,
+              maxWidth: "min(220px, calc(100vw - 16px))",
+            }}
+            role="dialog"
+          >
+            <div className="d-flex flex-wrap gap-2 mb-3">
+              {PRESETS.map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  className="rounded border p-0"
+                  style={{
+                    width: 28,
+                    height: 28,
+                    backgroundColor: preset,
+                    outline:
+                      preset.toLowerCase() === currentHex.toLowerCase()
+                        ? "2px solid var(--cui-primary)"
+                        : "none",
+                  }}
+                  title={preset}
+                  onClick={() => {
+                    commitHex(preset);
+                  }}
+                />
+              ))}
+            </div>
+            <div className="d-flex align-items-center gap-2">
+              <CFormInput
+                type="color"
+                value={currentHex}
+                onChange={(event) => commitHex(event.target.value)}
+                style={{ width: 48, padding: 2 }}
+                aria-label="Custom color"
+              />
+              <CFormInput
+                value={hexInput}
+                maxLength={7}
+                placeholder="#RRGGBB"
+                onChange={(event) => commitHex(event.target.value)}
+                aria-label="Hex color value"
+              />
+            </div>
+          </div>,
+          document.body,
+        )
+      : null;
+
   return (
-    <div className="position-relative" ref={containerRef}>
+    <div className="position-relative">
       <button
+        ref={triggerRef}
         type="button"
         className="btn btn-outline-secondary d-flex align-items-center gap-2"
         onClick={() => setOpen((prev) => !prev)}
@@ -94,53 +208,7 @@ export function EmbedColorPicker({
         />
         <span className="small text-uppercase">{currentHex}</span>
       </button>
-
-      {open ? (
-        <div
-          className="position-absolute z-3 mt-1 p-3 border rounded shadow bg-body"
-          style={{ minWidth: 220 }}
-          role="dialog"
-        >
-          <div className="d-flex flex-wrap gap-2 mb-3">
-            {PRESETS.map((preset) => (
-              <button
-                key={preset}
-                type="button"
-                className="rounded border p-0"
-                style={{
-                  width: 28,
-                  height: 28,
-                  backgroundColor: preset,
-                  outline:
-                    preset.toLowerCase() === currentHex.toLowerCase()
-                      ? "2px solid var(--cui-primary)"
-                      : "none",
-                }}
-                title={preset}
-                onClick={() => {
-                  commitHex(preset);
-                }}
-              />
-            ))}
-          </div>
-          <div className="d-flex align-items-center gap-2">
-            <CFormInput
-              type="color"
-              value={currentHex}
-              onChange={(event) => commitHex(event.target.value)}
-              style={{ width: 48, padding: 2 }}
-              aria-label="Custom color"
-            />
-            <CFormInput
-              value={hexInput}
-              maxLength={7}
-              placeholder="#RRGGBB"
-              onChange={(event) => commitHex(event.target.value)}
-              aria-label="Hex color value"
-            />
-          </div>
-        </div>
-      ) : null}
+      {panel}
     </div>
   );
 }

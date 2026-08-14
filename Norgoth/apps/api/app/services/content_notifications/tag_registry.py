@@ -28,22 +28,46 @@ PLATFORM_ICONS = {
     PlatformType.TIKTOK: "🎵",
 }
 
+# Discord embed accent colours (integers). Keep X off black so the bar is visible.
+PLATFORM_EMBED_COLORS: dict[PlatformType, int] = {
+    PlatformType.TWITCH: 0x9146FF,
+    PlatformType.YOUTUBE: 0xFF0000,
+    PlatformType.KICK: 0x53FC18,
+    PlatformType.TIKTOK: 0x25F4EE,
+    PlatformType.X: 0xE7E9EA,
+}
+
+STOCK_EMBED_COLOR = "#6ea8fe"
 
 DEFAULT_TEMPLATES: dict[PlatformType, str] = {
-    PlatformType.YOUTUBE: (
-        "{ping_role}\n{account} uploaded a new video!\n\n{title}\n{link}"
-    ),
-    PlatformType.TWITCH: (
-        "{ping_role}\n{account} is now live!\n\n{title}\nPlaying {game}\n{link}"
-    ),
-    PlatformType.KICK: (
-        "{ping_role}\n{account} is now live!\n\n{title}\nPlaying {game}\n{link}"
-    ),
-    PlatformType.X: "{ping_role}\nNew post from {account}\n\n{link}",
-    PlatformType.TIKTOK: (
-        "{ping_role}\n{account} posted new content!\n\n{link}"
-    ),
+    PlatformType.YOUTUBE: "{ping_role}\n{account} uploaded a new video!\n{link}",
+    PlatformType.TWITCH: "{ping_role}\n{account} is now live!\n{link}",
+    PlatformType.KICK: "{ping_role}\n{account} is now live!\n{link}",
+    PlatformType.X: "{ping_role}\nNew post from {account}\n{link}",
+    PlatformType.TIKTOK: "{ping_role}\n{account} posted new content!\n{link}",
 }
+
+
+def default_embed_json(platform: PlatformType) -> dict[str, str]:
+    color = PLATFORM_EMBED_COLORS.get(platform, 0x6EA8FE)
+    return {
+        "title": "{title}",
+        "color": f"#{color:06x}",
+        "image_url": "{thumbnail}",
+    }
+
+
+def is_legacy_stock_thumbnail(embed: dict | None) -> bool:
+    if not embed:
+        return True
+    return str(embed.get("thumbnail_url") or "").strip() == "{profile_pic}"
+
+
+def should_apply_platform_color(embed: dict | None) -> bool:
+    if not embed:
+        return True
+    color = str(embed.get("color") or "").strip().lower()
+    return color in {STOCK_EMBED_COLOR, STOCK_EMBED_COLOR.lstrip("#")}
 
 
 def _or_empty(value: str | None) -> str:
@@ -83,9 +107,13 @@ def build_tag_registry() -> dict[str, TagDefinition]:
             return ""
         return str(event.viewer_count)
 
+    def thumbnail(event: NormalizedContentEvent, _ctx: dict[str, str]) -> str:
+        return _or_empty(event.thumbnail_url)
+
     tags = [
         TagDefinition("account", "Creator display name", all_events, account),
         TagDefinition("profile_pic", "Creator avatar URL", all_events, profile_pic),
+        TagDefinition("thumbnail", "Content preview image URL", all_events, thumbnail),
         TagDefinition("link", "Primary content URL", all_events, link),
         TagDefinition(
             "playable_link",

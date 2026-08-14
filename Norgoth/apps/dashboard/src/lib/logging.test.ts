@@ -7,6 +7,8 @@ import {
   sanitizeChannelName,
   splitEmojiName,
 } from "@/lib/logging";
+import en from "@/dictionaries/en.json";
+import tr from "@/dictionaries/tr.json";
 
 describe("colorToHex", () => {
   it("formats a decimal colour as #RRGGBB", () => {
@@ -82,11 +84,16 @@ describe("composeChannelName", () => {
 
 describe("composeCategoryName", () => {
   it("joins emoji to category name with a single space", () => {
-    expect(composeCategoryName("📋", "Norgoth Logs")).toBe("📋 Norgoth Logs");
+    expect(composeCategoryName("📋", "NorBot Logs")).toBe("📋 NorBot Logs");
   });
 
   it("returns the name alone when emoji is empty", () => {
-    expect(composeCategoryName("", "Norgoth Logs")).toBe("Norgoth Logs");
+    expect(composeCategoryName("", "NorBot Logs")).toBe("NorBot Logs");
+  });
+
+  it("falls back to NorBot Logs when the name is empty", () => {
+    expect(composeCategoryName("", "")).toBe("NorBot Logs");
+    expect(composeCategoryName("", "   ")).toBe("NorBot Logs");
   });
 });
 
@@ -110,5 +117,16 @@ describe("splitEmojiName", () => {
       emoji: "",
       name: "chat-logs",
     });
+  });
+});
+
+describe("Discord Logs branding copy", () => {
+  it("uses NorBot in English and Turkish wizard copy", () => {
+    expect(en.discordLogsPage.willCreateCategory).toBe(
+      'NorBot will create "{name}".',
+    );
+    expect(tr.discordLogsPage.willCreateCategory).toBe(
+      'NorBot "{name}" oluşturacak.',
+    );
   });
 });

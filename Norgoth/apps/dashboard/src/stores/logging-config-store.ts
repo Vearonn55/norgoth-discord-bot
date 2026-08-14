@@ -173,7 +173,7 @@ export const useLoggingConfigStore = create<LoggingConfigState>((set, get) => ({
         set({ catalog: (await catalogRes.json()) as LoggingCatalog });
       }
     } catch {
-      set({ error: "Could not reach the Norgoth API." });
+      set({ error: "Could not reach the NorBot API." });
     } finally {
       set({ loading: false });
     }
@@ -216,7 +216,7 @@ export const useLoggingConfigStore = create<LoggingConfigState>((set, get) => ({
       });
       return data.config;
     } catch {
-      if (seq === toggleSeq) set({ error: "Could not reach the Norgoth API." });
+      if (seq === toggleSeq) set({ error: "Could not reach the NorBot API." });
       return null;
     } finally {
       toggleInFlight = false;
@@ -248,7 +248,7 @@ export const useLoggingConfigStore = create<LoggingConfigState>((set, get) => ({
       });
       return data.config;
     } catch {
-      set({ error: "Could not reach the Norgoth API." });
+      set({ error: "Could not reach the NorBot API." });
       return null;
     } finally {
       set({ busy: false });
@@ -271,7 +271,7 @@ export const useLoggingConfigStore = create<LoggingConfigState>((set, get) => ({
       set({ config: data.config, feedback: "Logging configuration saved." });
       return data.config;
     } catch {
-      set({ error: "Could not reach the Norgoth API." });
+      set({ error: "Could not reach the NorBot API." });
       return null;
     } finally {
       set({ busy: false });
@@ -331,7 +331,7 @@ export const useLoggingConfigStore = create<LoggingConfigState>((set, get) => ({
       }
       return saved;
     } catch {
-      set({ error: "Could not reach the Norgoth API." });
+      set({ error: "Could not reach the NorBot API." });
       return null;
     } finally {
       set({ busy: false });
@@ -358,7 +358,7 @@ export const useLoggingConfigStore = create<LoggingConfigState>((set, get) => ({
       });
       return normalizeLoggingConfig(data.config);
     } catch {
-      set({ error: "Could not reach the Norgoth API." });
+      set({ error: "Could not reach the NorBot API." });
       return null;
     } finally {
       set({ busy: false });
@@ -379,7 +379,7 @@ export const useLoggingConfigStore = create<LoggingConfigState>((set, get) => ({
       set({ config: data.config, feedback: "Logging channels provisioned." });
       return data.config;
     } catch {
-      set({ error: "Could not reach the Norgoth API." });
+      set({ error: "Could not reach the NorBot API." });
       return null;
     } finally {
       set({ busy: false });
@@ -400,7 +400,7 @@ export const useLoggingConfigStore = create<LoggingConfigState>((set, get) => ({
       set({ health });
       return health;
     } catch {
-      set({ error: "Could not reach the Norgoth API." });
+      set({ error: "Could not reach the NorBot API." });
       return null;
     } finally {
       set({ busy: false });
@@ -421,7 +421,7 @@ export const useLoggingConfigStore = create<LoggingConfigState>((set, get) => ({
       set({ config: data.config, feedback: "Repair complete." });
       return data.config;
     } catch {
-      set({ error: "Could not reach the Norgoth API." });
+      set({ error: "Could not reach the NorBot API." });
       return null;
     } finally {
       set({ busy: false });
@@ -444,7 +444,7 @@ export const useLoggingConfigStore = create<LoggingConfigState>((set, get) => ({
       set({ config: null, health: null, feedback: "Logging configuration reset." });
       return true;
     } catch {
-      set({ error: "Could not reach the Norgoth API." });
+      set({ error: "Could not reach the NorBot API." });
       return false;
     } finally {
       set({ busy: false });

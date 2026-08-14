@@ -475,7 +475,7 @@ class KickAdapter(ContentPlatformAdapter):
         content_id = (
             f"{creator_id}:{raw.get('started_at') or event.external_content_id}"
         )
-        return NormalizedContentEvent(
+        event_out = NormalizedContentEvent(
             platform=PlatformType.KICK,
             event_type=(
                 ContentEventType.STREAM_STARTED
@@ -493,6 +493,41 @@ class KickAdapter(ContentPlatformAdapter):
             published_at=datetime.now(timezone.utc),
             raw_metadata=raw,
         )
+        if is_live:
+            try:
+                latest = await self.fetch_latest(
+                    ResolvedCreator(
+                        platform=PlatformType.KICK,
+                        platform_creator_id=creator_id,
+                        username=username or name,
+                        display_name=name,
+                        profile_url=profile
+                        or f"https://kick.com/{username or creator_id}",
+                        avatar_url=broadcaster.get("profile_picture"),
+                    ),
+                    limit=1,
+                )
+            except Exception:
+                logger.warning(
+                    "cn_metadata_enrich_failed platform=kick creator_id=%s",
+                    creator_id,
+                    exc_info=True,
+                )
+                latest = []
+            if latest:
+                live = latest[0]
+                if live.thumbnail_url:
+                    event_out.thumbnail_url = live.thumbnail_url
+                if live.title:
+                    event_out.title = live.title
+                if live.game:
+                    event_out.game = live.game
+                if live.viewer_count is not None:
+                    event_out.viewer_count = live.viewer_count
+                if live.content_url:
+                    event_out.content_url = live.content_url
+                    event_out.playable_url = live.playable_url or live.content_url
+        return event_out
 
     async def get_public_key(self) -> str:
         if self._public_key_pem:

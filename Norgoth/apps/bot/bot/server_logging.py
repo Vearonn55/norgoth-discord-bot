@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 import discord
 from discord.ext import commands
 
+from bot.logging_presentation import compose_log_embed_spec
 from bot.state import now_iso
 
 if TYPE_CHECKING:
@@ -76,19 +77,27 @@ def build_log_embed(
     color: discord.Color,
     fields: dict[str, str] | None = None,
     footer: str | None = None,
+    event_type: str | None = None,
 ) -> discord.Embed:
     """Standardised log embed used for every routed logging event."""
 
+    spec = compose_log_embed_spec(
+        title,
+        description,
+        fields=fields,
+        footer=footer,
+        event_type=event_type,
+    )
     embed = discord.Embed(
-        title=title[:256],
-        description=description[:4000],
+        title=spec["title"],
+        description=spec["description"] or None,
         color=color,
         timestamp=discord.utils.utcnow(),
     )
-    if footer:
-        embed.set_footer(text=footer[:2048])
-    for key, value in list((fields or {}).items())[:20]:
-        embed.add_field(name=str(key)[:256], value=str(value)[:1024], inline=True)
+    if spec["footer"]:
+        embed.set_footer(text=spec["footer"])
+    for name, value, inline in spec["fields"]:
+        embed.add_field(name=name, value=value, inline=inline)
     return embed
 
 
@@ -155,11 +164,16 @@ class ServerLoggingCog(commands.Cog):
             )
             return False
 
-        footer = f"Norgoth · {category} event"
+        footer = f"NorBot · {category} event"
         if actor_name:
             footer = f"{footer} · by {actor_name}"
         embed = build_log_embed(
-            title, description, color=color, fields=fields, footer=footer
+            title,
+            description,
+            color=color,
+            fields=fields,
+            footer=footer,
+            event_type=event_type,
         )
 
         allowed = discord.AllowedMentions(everyone=False, roles=False, users=True)

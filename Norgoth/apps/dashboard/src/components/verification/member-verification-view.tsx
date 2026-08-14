@@ -10,6 +10,7 @@ import { MutedSection } from "@/components/ui/feature-muting";
 import { VerificationDetectorsPanel } from "@/components/verification/verification-detectors-panel";
 import { VerificationLogsPanel } from "@/components/verification/verification-logs-panel";
 import { useFeatureInfo } from "@/lib/feature-info";
+import { useLocaleDict } from "@/lib/locale-dict";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import { useVerificationStore } from "@/stores/verification-store";
 
@@ -21,6 +22,8 @@ import { useVerificationStore } from "@/stores/verification-store";
  */
 export function MemberVerificationView() {
   const { guildId } = useFirstGuild();
+  const dict = useLocaleDict();
+  const d = dict.verificationPage;
   const info = useFeatureInfo("memberVerification");
   const config = useVerificationStore((s) => s.config);
   const loading = useVerificationStore((s) => s.loading);
@@ -72,9 +75,7 @@ export function MemberVerificationView() {
 
       {needsBindings && (
         <CAlert color="warning" className="mb-0">
-          Save channels and roles in Verification Settings before public
-          verification can work. Turning the master switch on alone does not
-          publish a working authorize link.
+          {d.bindingsWarning}
         </CAlert>
       )}
 

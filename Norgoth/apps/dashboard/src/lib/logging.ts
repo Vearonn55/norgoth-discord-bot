@@ -90,6 +90,6 @@ export function composeChannelName(emoji: string, name: string): string {
  * Categories allow spaces, so the emoji is joined with a single space.
  */
 export function composeCategoryName(emoji: string, name: string): string {
-  const base = name.trim() || "Norgoth Logs";
+  const base = name.trim() || "NorBot Logs";
   return emoji ? `${emoji} ${base}` : base;
 }

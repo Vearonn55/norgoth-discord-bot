@@ -99,7 +99,7 @@ export function LoggingSetupWizard({ guildId, channels, onComplete }: Props) {
   const [step, setStep] = useState(0);
   const [categoryManaged, setCategoryManaged] = useState(true);
   const [categoryEmoji, setCategoryEmoji] = useState("");
-  const [categoryName, setCategoryName] = useState("Norgoth Logs");
+  const [categoryName, setCategoryName] = useState("NorBot Logs");
   const [groups, setGroups] = useState<GroupDraft[]>(() =>
     catalog ? buildDraft(catalog) : [],
   );

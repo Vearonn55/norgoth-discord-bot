@@ -16,6 +16,8 @@ from app.security.secret_box import require_secret_box
 from app.integrations.content_platforms.types import WebhookHealth
 
 NORGOTH_WEBHOOK_NAME = "Norgoth Notifications"
+NORBOT_WEBHOOK_NAME = "NorBot Notifications"
+MANAGED_WEBHOOK_NAMES = frozenset({NORGOTH_WEBHOOK_NAME, NORBOT_WEBHOOK_NAME})
 
 
 class WebhookManagerError(Exception):
@@ -49,7 +51,7 @@ async def ensure_managed_webhook(
 
     box = require_secret_box()
 
-    # Prefer reusing an existing Norgoth-named webhook in the channel.
+    # Prefer reusing an existing NorBot-named webhook (including the legacy name).
     try:
         webhooks = await bot.list_channel_webhooks(channel_id)
     except DiscordBotAPIError as error:
@@ -63,7 +65,7 @@ async def ensure_managed_webhook(
             wh
             for wh in webhooks
             if isinstance(wh, dict)
-            and wh.get("name") == NORGOTH_WEBHOOK_NAME
+            and wh.get("name") in MANAGED_WEBHOOK_NAMES
             and wh.get("token")
         ),
         None,
@@ -73,8 +75,8 @@ async def ensure_managed_webhook(
         try:
             match = await bot.create_channel_webhook(
                 channel_id,
-                name=NORGOTH_WEBHOOK_NAME,
-                reason="Norgoth content notifications",
+                name=NORBOT_WEBHOOK_NAME,
+                reason="NorBot content notifications",
             )
         except DiscordBotAPIError as error:
             raise WebhookManagerError(
