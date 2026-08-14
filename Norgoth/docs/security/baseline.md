@@ -61,7 +61,8 @@ Real `*.env` files under `Norgoth/deploy/env/` are gitignored. Only
 - Dashboard lint/test/build, API pytest, bot pytest, Docker build
 - `pip-audit` on API and bot requirements
 - `npm audit --omit=dev --audit-level=critical`
-- Trivy image scan (`CRITICAL`, ignore unfixed)
+- Trivy image scan (`CRITICAL`, ignore unfixed). The Node.js image's bundled
+  `npm`/`yarn` trees are skipped; those are not on the dashboard runtime path.
 
 Do not blind-upgrade dependencies. Classify findings as critical / recommended /
 optional / breaking-risk before changing pins.

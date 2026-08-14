@@ -159,3 +159,8 @@ jobs:
           ignore-unfixed: true
           exit-code: "1"
           vuln-type: os,library
+          # Node official images ship a full npm/yarn tree that is not on the
+          # NorBot runtime path (standalone `node server.js`). Skip it so CI
+          # fails on app/OS findings only, not CVE-2026-59873 in image npm.
+          skip-dirs: usr/local/lib/node_modules/npm,opt/yarn-v1.22.22
+          scanners: vuln
