@@ -145,3 +145,38 @@ export function validateEmbed(embed: DiscordEmbedPayload): string[] {
   }
   return errors;
 }
+
+/** Discord webhook execute embed object (API shape). */
+export type DiscordWebhookEmbed = {
+  title?: string;
+  description?: string;
+  color?: number | string | null;
+  url?: string;
+  footer?: { text?: string; icon_url?: string } | string;
+  author?: DiscordEmbedAuthor;
+  thumbnail?: { url?: string };
+  image?: { url?: string };
+  fields?: DiscordEmbedField[];
+};
+
+/** Map a Discord webhook embed onto the dashboard preview payload. */
+export function webhookEmbedToPreview(
+  embed: DiscordWebhookEmbed | null | undefined
+): DiscordEmbedPayload | null {
+  if (!embed) return null;
+  const footerObject =
+    embed.footer && typeof embed.footer === "object" ? embed.footer : undefined;
+  const footerText =
+    typeof embed.footer === "string" ? embed.footer : footerObject?.text;
+  return scrubEmptyEmbedUrls({
+    title: embed.title,
+    description: embed.description,
+    color: embed.color,
+    footer: footerText,
+    footer_icon_url: footerObject?.icon_url,
+    author: embed.author,
+    thumbnail_url: embed.thumbnail?.url,
+    image_url: embed.image?.url,
+    fields: embed.fields,
+  });
+}

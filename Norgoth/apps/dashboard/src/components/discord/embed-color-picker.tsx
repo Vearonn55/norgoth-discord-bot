@@ -49,6 +49,7 @@ export function EmbedColorPicker({
   const [open, setOpen] = useState(false);
   const [hexInput, setHexInput] = useState(toHex(value));
   const [coords, setCoords] = useState({ top: 0, left: 0 });
+  const [placed, setPlaced] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
@@ -64,13 +65,16 @@ export function EmbedColorPicker({
   };
 
   useLayoutEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setPlaced(false);
+      return;
+    }
 
     const update = () => {
       const trigger = triggerRef.current?.getBoundingClientRect();
       if (!trigger) return;
       const panel = panelRef.current?.getBoundingClientRect();
-      const placed = placePopover(
+      const next = placePopover(
         trigger,
         {
           width: panel?.width || POPOVER_WIDTH,
@@ -78,13 +82,16 @@ export function EmbedColorPicker({
         },
         { width: window.innerWidth, height: window.innerHeight },
       );
-      setCoords({ top: placed.top, left: placed.left });
+      setCoords({ top: next.top, left: next.left });
+      setPlaced(true);
     };
 
     update();
+    const raf = requestAnimationFrame(update);
     window.addEventListener("resize", update);
     window.addEventListener("scroll", update, true);
     return () => {
+      cancelAnimationFrame(raf);
       window.removeEventListener("resize", update);
       window.removeEventListener("scroll", update, true);
     };
@@ -140,6 +147,8 @@ export function EmbedColorPicker({
               zIndex: 1080,
               width: POPOVER_WIDTH,
               maxWidth: "min(220px, calc(100vw - 16px))",
+              visibility: placed ? "visible" : "hidden",
+              pointerEvents: placed ? "auto" : "none",
             }}
             role="dialog"
           >

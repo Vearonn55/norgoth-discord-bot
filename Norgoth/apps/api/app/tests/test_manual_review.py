@@ -249,7 +249,7 @@ async def test_decision_log_embed_is_well_formed_with_transcript(
     assert channel_id == "log-channel"
     assert payload["allowed_mentions"] == {"parse": []}
     embed = payload["embeds"][0]
-    assert embed["title"] == "Manual Review Decision"
+    assert embed["title"] == "❌ Manual Review Decision"
     field_names = {field["name"] for field in embed["fields"]}
     assert {"User", "Decision", "Reviewer", "Transcript"} <= field_names
 

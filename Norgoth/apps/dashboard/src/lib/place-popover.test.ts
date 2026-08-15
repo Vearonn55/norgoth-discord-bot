@@ -50,5 +50,6 @@ describe("EmbedColorPicker portal", () => {
     expect(src).toContain("createPortal");
     expect(src).toContain("placePopover");
     expect(src).toContain("1080");
+    expect(src).toContain('visibility: placed ? "visible" : "hidden"');
   });
 });

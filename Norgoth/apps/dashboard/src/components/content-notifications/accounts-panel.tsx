@@ -20,6 +20,10 @@ import { RoleSelect } from "@/components/ui/role-select";
 import { MessagePreview } from "@/components/discord/message-preview";
 import { apiUrl } from "@/lib/api";
 import {
+  webhookEmbedToPreview,
+  type DiscordWebhookEmbed,
+} from "@/lib/discord/message-payload";
+import {
   localizeSubscriptionStatus,
   useContentNotificationsCopy,
 } from "@/lib/content-notifications-copy";
@@ -65,6 +69,7 @@ export function AccountsPanel() {
   const [styleId, setStyleId] = useState("");
   const [previewPayload, setPreviewPayload] = useState<{
     content?: string;
+    embeds?: DiscordWebhookEmbed[];
   } | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
 
@@ -369,7 +374,12 @@ export function AccountsPanel() {
           {previewPayload ? (
             <div>
               <div className="small text-body-secondary mb-2">{copy.preview}</div>
-              <MessagePreview content={previewPayload.content || ""} />
+              <MessagePreview
+                content={previewPayload.content || ""}
+                embed={webhookEmbedToPreview(previewPayload.embeds?.[0])}
+                mode="embed"
+                showContentWithEmbed
+              />
             </div>
           ) : null}
 

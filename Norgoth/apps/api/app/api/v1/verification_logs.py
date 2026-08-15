@@ -31,6 +31,10 @@ from app.schemas.verification_log import (
 )
 from app.services.audit import record_audit
 from app.services.campaign_store import get_redis
+from app.services.logging_presentation import (
+    apply_log_title_emoji,
+    filter_log_embed_fields,
+)
 from app.services.verification_log_routing import resolve_verification_log_channel
 from app.services.views import VerificationAttemptView
 
@@ -500,9 +504,12 @@ async def _send_manual_review_decision(
     payload: dict[str, object] = {
         "embeds": [
             {
-                "title": "Manual Review Decision",
+                "title": apply_log_title_emoji(
+                    "verification_manual_decision",
+                    "Manual Review Decision",
+                ),
                 "color": color,
-                "fields": fields,
+                "fields": filter_log_embed_fields(fields),
             }
         ],
         "allowed_mentions": {"parse": []},

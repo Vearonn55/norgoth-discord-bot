@@ -30,6 +30,10 @@ from app.integrations.discord.snowflake import (
     InvalidDiscordSnowflakeError,
     get_discord_account_age_days,
 )
+from app.services.logging_presentation import (
+    apply_log_title_emoji,
+    filter_log_embed_fields,
+)
 from app.services.verification_log_routing import (
     classification_to_event_type,
     resolve_verification_log_channel,
@@ -589,6 +593,8 @@ async def _send_verification_log_embed(
         color = 0xF87171
         state = "Denied"
 
+    title = apply_log_title_emoji(event_type, title)
+
     reasons: list[str] = []
     if vpn_or_proxy_detected:
         reasons.append("VPN / Proxy detected")
@@ -610,16 +616,18 @@ async def _send_verification_log_embed(
     embed = {
         "title": title,
         "color": color,
-        "fields": [
-            {
-                "name": "User",
-                "value": f"<@{user_id}> (`{user_id}`)",
-                "inline": False,
-            },
-            {"name": "Display", "value": username[:80] or "—", "inline": True},
-            {"name": "State", "value": state, "inline": True},
-            {"name": "Trigger", "value": trigger[:256], "inline": False},
-        ],
+        "fields": filter_log_embed_fields(
+            [
+                {
+                    "name": "User",
+                    "value": f"<@{user_id}> (`{user_id}`)",
+                    "inline": False,
+                },
+                {"name": "Display", "value": username[:80] or "—", "inline": True},
+                {"name": "State", "value": state, "inline": True},
+                {"name": "Trigger", "value": trigger[:256], "inline": False},
+            ]
+        ),
     }
 
     payload: dict[str, object] = {

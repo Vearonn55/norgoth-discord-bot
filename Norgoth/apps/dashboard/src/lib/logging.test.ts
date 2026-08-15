@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   colorToHex,
   composeCategoryName,
@@ -120,6 +122,14 @@ describe("splitEmojiName", () => {
   });
 });
 
+function collectStrings(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (value && typeof value === "object") {
+    return Object.values(value).flatMap(collectStrings);
+  }
+  return [];
+}
+
 describe("Discord Logs branding copy", () => {
   it("uses NorBot in English and Turkish wizard copy", () => {
     expect(en.discordLogsPage.willCreateCategory).toBe(
@@ -128,5 +138,35 @@ describe("Discord Logs branding copy", () => {
     expect(tr.discordLogsPage.willCreateCategory).toBe(
       'NorBot "{name}" oluşturacak.',
     );
+    expect(en.discordLogsPage.createManagedCategory).toContain("NorBot");
+    expect(tr.discordLogsPage.createManagedCategory).toContain("NorBot");
+    expect(en.discordLogsPage.createManagedCategoryHelp).toContain("NorBot");
+    expect(tr.discordLogsPage.createManagedCategoryHelp).toContain("NorBot");
+    expect(en.discordLogsPage.resetDeleteDiscord).toContain("NorBot");
+    expect(tr.discordLogsPage.resetDeleteDiscord).toContain("NorBot");
+  });
+
+  it("has no user-facing Norgoth in discordLogsPage copy", () => {
+    for (const text of collectStrings(en.discordLogsPage)) {
+      expect(text).not.toMatch(/Norgoth/);
+    }
+    for (const text of collectStrings(tr.discordLogsPage)) {
+      expect(text).not.toMatch(/Norgoth/);
+    }
+  });
+
+  it("keeps NorBot in wizard and logging store user-facing strings", () => {
+    const wizard = readFileSync(
+      resolve(__dirname, "../components/security/logging-setup-wizard.tsx"),
+      "utf8",
+    );
+    const store = readFileSync(
+      resolve(__dirname, "../stores/logging-config-store.ts"),
+      "utf8",
+    );
+    expect(wizard).toContain('useState("NorBot Logs")');
+    expect(wizard).not.toMatch(/Norgoth/);
+    expect(store).toContain("Could not reach the NorBot API.");
+    expect(store).not.toMatch(/Norgoth API/);
   });
 });
