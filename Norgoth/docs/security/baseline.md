@@ -25,8 +25,12 @@ residual risk. It is not a pentest report.
 - Campaigns are guild-scoped the same way. Global campaign queue
   pause/resume/rehydrate requires `NORGOTH_PLATFORM_ADMIN_IDS`.
 - Guild registration (`PUT /api/v1/guilds/{id}`) is internal-token only (bot).
-- Production startup fails closed unless `NORGOTH_AUTH_ENFORCED=true`,
-  `NORGOTH_ENABLE_DOCS=false`, and OAuth token encryption is configured.
+- Production startup fails closed unless `NORGOTH_AUTH_ENFORCED=true` and
+  `NORGOTH_ENABLE_DOCS=false`. OAuth token encryption uses
+  `NORGOTH_OAUTH_TOKEN_ENCRYPTION_KEY` or falls back to
+  `NORGOTH_WEBHOOK_ENCRYPTION_KEY`. If neither is set the API still boots
+  (so deploys are not blocked); sealing operator tokens fails closed on login
+  until one key is configured.
 
 ## Edge and application controls
 
@@ -48,7 +52,7 @@ residual risk. It is not a pentest report.
 | `DISCORD_BOT_TOKEN` | Discord identity only after cutover |
 | `NORGOTH_INTERNAL_TOKEN` | Bot/worker → API |
 | `NORGOTH_DISCORD_CLIENT_SECRET` | OAuth |
-| `NORGOTH_OAUTH_TOKEN_ENCRYPTION_KEY` | Operator Discord tokens in Redis (required in production) |
+| `NORGOTH_OAUTH_TOKEN_ENCRYPTION_KEY` | Operator Discord tokens in Redis. Falls back to `NORGOTH_WEBHOOK_ENCRYPTION_KEY` when unset. |
 | `REDIS_PASSWORD` / `NORGOTH_REDIS_URL` | Redis AUTH |
 | `/opt/norbot/env/ghcr.pull.token` | Optional GHCR pull-only PAT for **manual** host pulls (mode 600). CI deploy uses a job-scoped `GITHUB_TOKEN` and logs out. |
 | IP / webhook encryption keys | Verification IPs and managed webhook tokens |

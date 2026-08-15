@@ -75,9 +75,14 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             raise RuntimeError(
                 "NORGOTH_ENABLE_DOCS must be false in production."
             )
-        if settings.oauth_token_encryption_key is None:
-            raise RuntimeError(
-                "NORGOTH_OAUTH_TOKEN_ENCRYPTION_KEY must be set in production."
+        if (
+            settings.oauth_token_encryption_key is None
+            and settings.webhook_encryption_key is None
+        ):
+            logger.warning(
+                "Neither NORGOTH_OAUTH_TOKEN_ENCRYPTION_KEY nor "
+                "NORGOTH_WEBHOOK_ENCRYPTION_KEY is set; operator Discord "
+                "tokens will not be encrypted until one is configured."
             )
 
     logger.info(

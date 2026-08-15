@@ -277,7 +277,9 @@ class Settings:
                 default=environment == "production",
             ),
             webhook_encryption_key=webhook_encryption_key,
-            oauth_token_encryption_key=oauth_token_encryption_key,
+            oauth_token_encryption_key=(
+                oauth_token_encryption_key or webhook_encryption_key
+            ),
             youtube_api_key=_read_optional_string("YOUTUBE_API_KEY"),
             twitch_client_id=_read_optional_string("TWITCH_CLIENT_ID"),
             twitch_client_secret=_read_optional_string("TWITCH_CLIENT_SECRET"),

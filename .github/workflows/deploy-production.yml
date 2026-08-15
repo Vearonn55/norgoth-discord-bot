@@ -89,16 +89,15 @@ jobs:
             /opt/norbot/scripts/backup-db.sh production
             docker compose --env-file /opt/norbot/env/production.env -f deploy/compose.yml -f deploy/compose.production.yml pull
             /opt/norbot/scripts/migrate.sh production
-            docker compose --env-file /opt/norbot/env/production.env -f deploy/compose.yml -f deploy/compose.production.yml up -d
+            compose_ok=0
+            docker compose --env-file /opt/norbot/env/production.env -f deploy/compose.yml -f deploy/compose.production.yml up -d || compose_ok=1
             docker logout ghcr.io >/dev/null 2>&1 || true
+            if [[ "${compose_ok}" -ne 0 ]]; then
+              /opt/norbot/scripts/dump-compose-logs.sh production || true
+              exit 1
+            fi
             if ! /opt/norbot/scripts/smoke-check.sh production; then
-              echo "==== campaign-worker logs ===="
-              docker logs norbot-prod-campaign-worker-1 --tail 120 || true
-              echo "==== content-worker logs ===="
-              docker logs norbot-prod-content-worker-1 --tail 80 || true
-              echo "==== bot logs ===="
-              docker logs norbot-prod-bot-1 --tail 40 || true
-              docker compose --env-file /opt/norbot/env/production.env -f deploy/compose.yml -f deploy/compose.production.yml ps || true
+              /opt/norbot/scripts/dump-compose-logs.sh production || true
               exit 1
             fi
             /opt/norbot/scripts/record-release.sh "${NORBOT_IMAGE_TAG}" production

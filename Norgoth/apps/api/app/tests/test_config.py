@@ -320,3 +320,53 @@ def test_settings_require_all_discord_oauth_values(
         Settings.from_environment()
 
     get_settings.cache_clear()
+
+
+def test_oauth_encryption_key_falls_back_to_webhook_key(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """Unset OAuth token key should reuse the webhook encryption key."""
+
+    webhook_key = b"w" * 32
+    monkeypatch.setenv(
+        "NORGOTH_WEBHOOK_ENCRYPTION_KEY",
+        base64.b64encode(webhook_key).decode("ascii"),
+    )
+    monkeypatch.delenv("NORGOTH_OAUTH_TOKEN_ENCRYPTION_KEY", raising=False)
+    _clear_ip_environment(monkeypatch)
+    _clear_discord_environment(monkeypatch)
+    get_settings.cache_clear()
+
+    settings = Settings.from_environment()
+
+    assert settings.webhook_encryption_key == webhook_key
+    assert settings.oauth_token_encryption_key == webhook_key
+
+    get_settings.cache_clear()
+
+
+def test_dedicated_oauth_encryption_key_wins_over_webhook_key(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """A dedicated OAuth token key should not be replaced by the webhook key."""
+
+    webhook_key = b"w" * 32
+    oauth_key = b"o" * 32
+    monkeypatch.setenv(
+        "NORGOTH_WEBHOOK_ENCRYPTION_KEY",
+        base64.b64encode(webhook_key).decode("ascii"),
+    )
+    monkeypatch.setenv(
+        "NORGOTH_OAUTH_TOKEN_ENCRYPTION_KEY",
+        base64.b64encode(oauth_key).decode("ascii"),
+    )
+    _clear_ip_environment(monkeypatch)
+    _clear_discord_environment(monkeypatch)
+    get_settings.cache_clear()
+
+    settings = Settings.from_environment()
+
+    assert settings.webhook_encryption_key == webhook_key
+    assert settings.oauth_token_encryption_key == oauth_key
+
+    get_settings.cache_clear()
