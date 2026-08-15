@@ -53,6 +53,14 @@ jobs:
           docker push "ghcr.io/${OWNER}/norbot-bot:${TAG}"
           docker push "ghcr.io/${OWNER}/norbot-web:${TAG}"
 
+      - name: Prepare VDS staging directory
+        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          script: mkdir -p "/var/tmp/norbot-git-${{ github.run_id }}"
       - name: Sync compose and scripts to VDS
         uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
         with:
@@ -61,8 +69,9 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT }}
           source: "Norgoth/deploy,Norgoth/scripts/docker"
-          target: "/tmp/norbot-git"
-          rm: true
+          target: "/var/tmp/norbot-git-${{ github.run_id }}"
+          rm: false
+          overwrite: true
       - name: Deploy over SSH
         uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
         env:
@@ -76,12 +85,13 @@ jobs:
           envs: GHCR_PULL_TOKEN,GHCR_PULL_USER
           script: |
             set -euo pipefail
+            trap 'rm -rf "/var/tmp/norbot-git-${{ github.run_id }}"' EXIT
             export NORBOT_IMAGE_TAG="${{ github.sha }}"
             export NORBOT_API_IMAGE="ghcr.io/${{ steps.meta.outputs.owner }}/norbot-api"
             export NORBOT_BOT_IMAGE="ghcr.io/${{ steps.meta.outputs.owner }}/norbot-bot"
             export NORBOT_WEB_IMAGE="ghcr.io/${{ steps.meta.outputs.owner }}/norbot-web"
-            rsync -a --delete /tmp/norbot-git/Norgoth/deploy/ /opt/norbot/deploy/
-            rsync -a /tmp/norbot-git/Norgoth/scripts/docker/ /opt/norbot/scripts/
+            rsync -a --delete "/var/tmp/norbot-git-${{ github.run_id }}/Norgoth/deploy/" /opt/norbot/deploy/
+            rsync -a "/var/tmp/norbot-git-${{ github.run_id }}/Norgoth/scripts/docker/" /opt/norbot/scripts/
             chmod +x /opt/norbot/scripts/*.sh
             cd /opt/norbot
             /opt/norbot/scripts/ghcr-login.sh

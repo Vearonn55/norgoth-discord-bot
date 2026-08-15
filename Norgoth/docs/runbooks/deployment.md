@@ -63,11 +63,14 @@ Keep `/opt/norbot/scripts/` in sync with `Norgoth/scripts/docker/` (including
 Triggered by push to `main` (GitHub Actions `deploy-production.yml`):
 
 1. Build/push `norbot-{api,bot,web}:<sha>` to GHCR
-2. SSH → pre-deploy `backup-db.sh production`
-3. `migrate.sh production`
-4. `docker compose … up -d`
-5. `smoke-check.sh production`
-6. `record-release.sh <sha> production`
+2. SCP compose + docker scripts into `/var/tmp/norbot-git-<run_id>` (not `/tmp`;
+   drone-scp `rm: true` on a shared `/tmp` path races with tmpfiles cleanup and
+   overlapping prod/test deploys)
+3. SSH → pre-deploy `backup-db.sh production`
+4. `migrate.sh production`
+5. `docker compose … up -d`
+6. `smoke-check.sh production`
+7. `record-release.sh <sha> production`
 
 ## Local image build (optional)
 
