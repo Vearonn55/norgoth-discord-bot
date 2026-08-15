@@ -28,9 +28,11 @@
    - `DEPLOY_PORT` must match the VDS SSH listen port (default **35342** from
      `setup-firewall.sh`). Required for **both** environments — without it,
      deploy-test defaults to port 22 and times out.
-7. Create `/opt/norbot/env/ghcr.pull.token` (mode 600) with a GHCR **pull-only**
-   credential (`packages:read`). Deploy no longer sends job `GITHUB_TOKEN` to
-   the host. Optional: `GHCR_PULL_USER` (defaults to `norbot-pull`).
+7. Optional: create `/opt/norbot/env/ghcr.pull.token` (mode 600) with a GHCR
+   **pull-only** credential (`packages:read`) for **manual** `docker pull` /
+   `rollback-app.sh` on the host. CI deploy logs in with a job-scoped
+   `GITHUB_TOKEN` (`GHCR_PULL_TOKEN`) and logs out after `compose pull`/`up`,
+   so this file is not required for GitHub Actions deploys.
 8. Push to `test` to trigger staging deploy; promote via PR into `main` for production.
 
 ## After deploy: bot online check
@@ -132,7 +134,9 @@ Do these on the VDS after the security-hardening deploy. Details:
 5. Set `NORGOTH_PLATFORM_ADMIN_IDS` only if global campaign queue pause/resume is needed.
 6. After internal-token cutover, rotate the Discord bot token if it was ever used as the public API secret.
 7. Rotate Discord client secret / webhook secrets if git history may have contained them.
-8. Replace VDS GHCR login with `/opt/norbot/env/ghcr.pull.token` (pull-only). Do not copy job `GITHUB_TOKEN` onto the host.
+8. Optional: `/opt/norbot/env/ghcr.pull.token` (pull-only) for manual host pulls.
+   CI deploys pass a job-scoped `GITHUB_TOKEN` as `GHCR_PULL_TOKEN` and
+   `docker logout` afterward — do not persist that job token as a host file.
 9. Smoke: OAuth login, guild selector, one campaign on an owned guild only, verification IP path behind Nginx.
 
 `ssl_reject_handshake` on the HTTPS catch-all requires Nginx 1.19.4+. If `nginx -t` fails on an older package, comment that `server` block and keep the HTTP `default_server`.

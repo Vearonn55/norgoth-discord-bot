@@ -34,4 +34,7 @@ Secrets on both environments (or repo secrets if preferred):
 
 ## Packages
 
-Ensure GHCR is enabled for the repository and the `norbot` VDS user can `docker login ghcr.io` (PAT or `GITHUB_TOKEN` via deploy).
+Ensure GHCR is enabled for the repository. Actions deploy logs the VDS into
+`ghcr.io` with the job `GITHUB_TOKEN` (`packages:write` includes pull) and
+logs out after image pull. An optional host file
+`/opt/norbot/env/ghcr.pull.token` is only needed for manual pulls/rollback.

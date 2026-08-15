@@ -50,7 +50,7 @@ residual risk. It is not a pentest report.
 | `NORGOTH_DISCORD_CLIENT_SECRET` | OAuth |
 | `NORGOTH_OAUTH_TOKEN_ENCRYPTION_KEY` | Operator Discord tokens in Redis (required in production) |
 | `REDIS_PASSWORD` / `NORGOTH_REDIS_URL` | Redis AUTH |
-| `/opt/norbot/env/ghcr.pull.token` | GHCR pull-only credential on the VDS (mode 600) |
+| `/opt/norbot/env/ghcr.pull.token` | Optional GHCR pull-only PAT for **manual** host pulls (mode 600). CI deploy uses a job-scoped `GITHUB_TOKEN` and logs out. |
 | IP / webhook encryption keys | Verification IPs and managed webhook tokens |
 
 Real `*.env` files under `Norgoth/deploy/env/` are gitignored. Only
