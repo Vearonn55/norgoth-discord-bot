@@ -29,8 +29,8 @@ residual risk. It is not a pentest report.
   `NORGOTH_ENABLE_DOCS=false`. OAuth token encryption uses
   `NORGOTH_OAUTH_TOKEN_ENCRYPTION_KEY` or falls back to
   `NORGOTH_WEBHOOK_ENCRYPTION_KEY`. If neither is set the API still boots
-  (so deploys are not blocked); sealing operator tokens fails closed on login
-  until one key is configured.
+  and login stores operator tokens in plaintext with a warning until a key
+  is configured.
 
 ## Edge and application controls
 

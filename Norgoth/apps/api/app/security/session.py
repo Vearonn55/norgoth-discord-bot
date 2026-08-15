@@ -72,6 +72,8 @@ def _oauth_secret_box() -> SecretBox | None:
     if key is None:
         key = getattr(settings, "webhook_encryption_key", None)
     if key is None:
+        key = getattr(settings, "ip_encryption_key", None)
+    if key is None:
         return None
     try:
         return SecretBox(key)
@@ -83,11 +85,6 @@ def _oauth_secret_box() -> SecretBox | None:
 def _seal_token(value: str) -> str:
     box = _oauth_secret_box()
     if box is None:
-        settings = get_settings()
-        if settings.environment == "production":
-            raise RuntimeError(
-                "OAuth token encryption is required in production."
-            )
         logger.warning("Storing OAuth token in plaintext; encryption key is unset.")
         return value
     blob = box.encrypt(value)

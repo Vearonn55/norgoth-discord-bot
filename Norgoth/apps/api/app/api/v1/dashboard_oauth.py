@@ -140,16 +140,20 @@ async def dashboard_callback(
         logger.exception("Dashboard OAuth exchange failed")
         return fail(oauth_state.lang)
 
-    sessions = SessionService()
-    _, exchange_code = await sessions.create_session(
-        user_id=user.id,
-        username=user.username,
-        global_name=user.global_name,
-        avatar=user.avatar,
-        access_token=token.access_token,
-        refresh_token=token.refresh_token,
-        token_expires_in=token.expires_in,
-    )
+    try:
+        sessions = get_session_service()
+        _, exchange_code = await sessions.create_session(
+            user_id=user.id,
+            username=user.username,
+            global_name=user.global_name,
+            avatar=user.avatar,
+            access_token=token.access_token,
+            refresh_token=token.refresh_token,
+            token_expires_in=token.expires_in,
+        )
+    except Exception:
+        logger.exception("Dashboard OAuth session creation failed")
+        return fail(oauth_state.lang)
 
     query = urlencode({"code": exchange_code})
     return RedirectResponse(
