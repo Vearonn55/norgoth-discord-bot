@@ -161,6 +161,28 @@ function base(guildId: string) {
   return `/guilds/${guildId}/feed-channels`;
 }
 
+function clampFeedHours(value: number | null | undefined): number {
+  if (value == null || !Number.isFinite(value)) return 4;
+  return Math.max(1, Math.min(12, Math.round(value)));
+}
+
+/** PUT body: hours are authoritative; omit the legacy minutes mirror (5–60). */
+export function feedConfigPutPayload(body: FeedConfig): Omit<
+  FeedConfig,
+  "refresh_interval_minutes"
+> & { daily_refresh_interval_hours: number } {
+  const hours = clampFeedHours(
+    body.daily_refresh_interval_hours ??
+      body.windows?.daily?.refresh_interval_hours ??
+      (body.refresh_interval_minutes ?? 240) / 60
+  );
+  const { refresh_interval_minutes: _legacyMinutes, ...rest } = body;
+  return {
+    ...rest,
+    daily_refresh_interval_hours: hours,
+  };
+}
+
 type CountdownFields = {
   next_refresh_at?: string | null;
   server_time?: string | null;
@@ -303,7 +325,7 @@ export const useFeedChannelsStore = create<FeedChannelsState>((set) => ({
       const res = await fetch(apiUrl(`${base(guildId)}/config`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify(feedConfigPutPayload(body)),
       });
       if (!res.ok) {
         set({ error: await readError(res) });

@@ -220,6 +220,82 @@ def test_feed_config_body_rejects_identical_emojis() -> None:
         )
 
 
+_EMOJI_UP = {"kind": "unicode", "name": "👍", "reaction": "👍"}
+_EMOJI_DOWN = {"kind": "unicode", "name": "👎", "reaction": "👎"}
+
+
+def test_feed_config_body_accepts_hourly_refresh_minutes() -> None:
+    """Dashboard slider sends hours * 60 (e.g. 4h → 240), not the legacy 5–60 range."""
+
+    from app.routes.feed_channels import FeedConfigBody
+
+    body = FeedConfigBody(
+        enabled=True,
+        upvote_emoji=_EMOJI_UP,
+        downvote_emoji=_EMOJI_DOWN,
+        daily_refresh_interval_hours=4,
+        refresh_interval_minutes=240,
+    )
+    assert body.daily_refresh_interval_hours == 4
+    assert body.refresh_interval_minutes == 240
+
+
+def test_feed_config_body_accepts_twelve_hour_minutes_mirror() -> None:
+    from app.routes.feed_channels import FeedConfigBody
+
+    body = FeedConfigBody(
+        enabled=True,
+        upvote_emoji=_EMOJI_UP,
+        downvote_emoji=_EMOJI_DOWN,
+        daily_refresh_interval_hours=12,
+        refresh_interval_minutes=720,
+    )
+    assert body.refresh_interval_minutes == 720
+
+
+def test_feed_config_body_still_accepts_legacy_minute_slider() -> None:
+    from app.routes.feed_channels import FeedConfigBody
+
+    body = FeedConfigBody(
+        enabled=True,
+        upvote_emoji=_EMOJI_UP,
+        downvote_emoji=_EMOJI_DOWN,
+        refresh_interval_minutes=15,
+    )
+    assert body.refresh_interval_minutes == 15
+
+
+def test_normalize_payload_prefers_hours_when_minutes_mirror_is_sent() -> None:
+    from app.routes.feed_channels import FeedConfigBody, _normalize_payload
+
+    body = FeedConfigBody(
+        enabled=True,
+        upvote_emoji=_EMOJI_UP,
+        downvote_emoji=_EMOJI_DOWN,
+        daily_refresh_interval_hours=6,
+        refresh_interval_minutes=360,
+        windows={"daily": {"enabled": True, "refresh_interval_hours": 6}},
+    )
+    payload = _normalize_payload(body, {})
+    assert payload["daily_refresh_interval_hours"] == 6
+    assert payload["refresh_interval_minutes"] == 360
+    assert payload["windows"]["weekly"]["refresh_interval_hours"] == 6
+
+
+def test_feed_config_body_rejects_minutes_beyond_twelve_hours() -> None:
+    from pydantic import ValidationError
+
+    from app.routes.feed_channels import FeedConfigBody
+
+    with pytest.raises(ValidationError):
+        FeedConfigBody(
+            enabled=True,
+            upvote_emoji=_EMOJI_UP,
+            downvote_emoji=_EMOJI_DOWN,
+            refresh_interval_minutes=721,
+        )
+
+
 def test_adjust_counts_mutual_exclusivity() -> None:
     """Switching up→down adjusts counts without double-counting."""
 

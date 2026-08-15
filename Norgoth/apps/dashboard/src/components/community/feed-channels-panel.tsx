@@ -217,7 +217,6 @@ export function FeedChannelsPanel() {
       const saved = await save(guildId, {
         ...config,
         daily_refresh_interval_hours: next,
-        refresh_interval_minutes: next * 60,
         windows: {
           ...config.windows,
           daily: {

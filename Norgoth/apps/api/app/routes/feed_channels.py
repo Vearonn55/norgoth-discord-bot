@@ -29,8 +29,10 @@ from app.services.feed_category import (
     resolve_feed_parent_id,
 )
 from app.services.feed_ranking import (
+    FEED_REFRESH_HOURS_MAX,
     FEED_WINDOWS,
     FeedWindow,
+    REFRESH_INTERVAL_MIN,
     clamp_daily_refresh_interval_hours,
     clamp_display_limit,
     daily_hours_from_config,
@@ -78,8 +80,12 @@ class FeedConfigBody(BaseModel):
     excluded_channel_ids: list[str] = Field(default_factory=list, max_length=100)
     min_net_score: int = Field(default=1, ge=0, le=10_000)
     display_limit: int = Field(default=10, ge=1, le=25)
-    # Legacy field accepted for older clients; daily hours is authoritative.
-    refresh_interval_minutes: Optional[int] = Field(default=None, ge=5, le=60)
+    # Legacy minutes (5–60) or hours-derived mirror (1–12h → 60–720).
+    refresh_interval_minutes: Optional[int] = Field(
+        default=None,
+        ge=REFRESH_INTERVAL_MIN,
+        le=FEED_REFRESH_HOURS_MAX * 60,
+    )
     daily_refresh_interval_hours: Optional[int] = Field(default=None, ge=1, le=12)
     feed_category_id: Optional[str] = Field(default=None, pattern=SNOWFLAKE)
     exclude_bots: bool = True

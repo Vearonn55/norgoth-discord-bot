@@ -3,7 +3,10 @@
  */
 import { describe, expect, it } from "vitest";
 import { feedNeedsSetup, mergeFeedWindowCards } from "@/lib/feed-windows";
-import { DEFAULT_FEED_CONFIG } from "@/stores/feed-channels-store";
+import {
+  DEFAULT_FEED_CONFIG,
+  feedConfigPutPayload,
+} from "@/stores/feed-channels-store";
 
 describe("mergeFeedWindowCards", () => {
   it("returns four cards for empty config", () => {
@@ -57,5 +60,17 @@ describe("feedNeedsSetup", () => {
         },
       })
     ).toBe(false);
+  });
+});
+
+describe("feedConfigPutPayload", () => {
+  it("omits the legacy minutes mirror so hour sliders do not 422", () => {
+    const payload = feedConfigPutPayload({
+      ...DEFAULT_FEED_CONFIG,
+      daily_refresh_interval_hours: 6,
+      refresh_interval_minutes: 360,
+    });
+    expect(payload.daily_refresh_interval_hours).toBe(6);
+    expect("refresh_interval_minutes" in payload).toBe(false);
   });
 });
