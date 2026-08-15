@@ -133,7 +133,7 @@ Do these on the VDS after the security-hardening deploy. Details:
 1. Generate `NORGOTH_INTERNAL_TOKEN` (`python -c "import secrets; print(secrets.token_urlsafe(48))"`), set it in API and bot env, restart the stack. Bot `NORGOTH_API_URL` / `NORGOTH_API_INTERNAL_URL` must stay `http://api:8000`.
 2. Confirm `NORGOTH_AUTH_ENFORCED=true`, `NORGOTH_OAUTH_TOKEN_ENCRYPTION_KEY` (or webhook encryption fallback) set, `NORGOTH_ENABLE_DOCS=false`.
 3. Install/reload Nginx from `deploy/nginx/` (`/internal/` deny, `limit_req`, default_server).
-4. Set `REDIS_PASSWORD` (URL-safe) and `NORGOTH_REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0` (staging may use DB `1`). Rolling restart so Redis AUTH is required.
+4. Optional: set `REDIS_PASSWORD` (URL-safe) and `NORGOTH_REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0` (staging may use DB `1`). Compose starts Redis without AUTH when the var is unset so deploys are not blocked. After you add it, rolling restart enables Redis AUTH.
 5. Set `NORGOTH_PLATFORM_ADMIN_IDS` only if global campaign queue pause/resume is needed.
 6. After internal-token cutover, rotate the Discord bot token if it was ever used as the public API secret.
 7. Rotate Discord client secret / webhook secrets if git history may have contained them.

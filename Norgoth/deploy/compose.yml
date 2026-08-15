@@ -2,7 +2,8 @@
 # Usage:
 #   docker compose -f Norgoth/deploy/compose.yml -f Norgoth/deploy/compose.production.yml up -d
 # Image tags default to "local"; CI/CD sets NORBOT_IMAGE_TAG=<git-sha>.
-# REDIS_PASSWORD is required (compose interpolation + Redis AUTH).
+# REDIS_PASSWORD is optional: when set, Redis AUTH is required. The VDS env
+# files predate that hardening step, so compose must not fail interpolation.
 
 name: norbot
 
@@ -46,14 +47,12 @@ services:
     pids_limit: 256
     mem_limit: 256m
     environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     command:
       [
-        "redis-server",
-        "--appendonly",
-        "yes",
-        "--requirepass",
-        "${REDIS_PASSWORD}",
+        "sh",
+        "-c",
+        "if [ -n \"$$REDIS_PASSWORD\" ]; then exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\"; else exec redis-server --appendonly yes; fi",
       ]
     volumes:
       - redisdata:/data
@@ -61,7 +60,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep PONG",
+          "if [ -n \"$$REDIS_PASSWORD\" ]; then export REDISCLI_AUTH=\"$$REDIS_PASSWORD\"; fi; redis-cli ping | grep PONG",
         ]
       interval: 10s
       timeout: 3s
@@ -81,7 +80,7 @@ services:
       - ${NORBOT_ENV_FILE:-./env/production.env.example}
     environment:
       NORGOTH_DATABASE_URL: ${NORGOTH_DATABASE_URL:-postgresql+psycopg://norbot:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-norbot_prod}}
-      NORGOTH_REDIS_URL: ${NORGOTH_REDIS_URL:-redis://:${REDIS_PASSWORD}@redis:6379/0}
+      NORGOTH_REDIS_URL: ${NORGOTH_REDIS_URL:-redis://:${REDIS_PASSWORD:-}@redis:6379/0}
       NORGOTH_RELEASE_SHA: ${NORBOT_IMAGE_TAG:-local}
       NORGOTH_UPLOAD_DIR: /app/var/uploads
     volumes:
@@ -116,7 +115,7 @@ services:
       - ${NORBOT_ENV_FILE:-./env/production.env.example}
     environment:
       NORGOTH_DATABASE_URL: ${NORGOTH_DATABASE_URL:-postgresql+psycopg://norbot:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-norbot_prod}}
-      NORGOTH_REDIS_URL: ${NORGOTH_REDIS_URL:-redis://:${REDIS_PASSWORD}@redis:6379/0}
+      NORGOTH_REDIS_URL: ${NORGOTH_REDIS_URL:-redis://:${REDIS_PASSWORD:-}@redis:6379/0}
       NORGOTH_RELEASE_SHA: ${NORBOT_IMAGE_TAG:-local}
     depends_on:
       api:
@@ -141,7 +140,7 @@ services:
       - ${NORBOT_ENV_FILE:-./env/production.env.example}
     environment:
       NORGOTH_DATABASE_URL: ${NORGOTH_DATABASE_URL:-postgresql+psycopg://norbot:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-norbot_prod}}
-      NORGOTH_REDIS_URL: ${NORGOTH_REDIS_URL:-redis://:${REDIS_PASSWORD}@redis:6379/0}
+      NORGOTH_REDIS_URL: ${NORGOTH_REDIS_URL:-redis://:${REDIS_PASSWORD:-}@redis:6379/0}
       NORGOTH_RELEASE_SHA: ${NORBOT_IMAGE_TAG:-local}
     depends_on:
       api:
@@ -166,7 +165,7 @@ services:
       - ${NORBOT_ENV_FILE:-./env/production.env.example}
     environment:
       NORGOTH_DATABASE_URL: ${NORGOTH_DATABASE_URL:-postgresql+psycopg://norbot:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-norbot_prod}}
-      NORGOTH_REDIS_URL: ${NORGOTH_REDIS_URL:-redis://:${REDIS_PASSWORD}@redis:6379/0}
+      NORGOTH_REDIS_URL: ${NORGOTH_REDIS_URL:-redis://:${REDIS_PASSWORD:-}@redis:6379/0}
       NORGOTH_RELEASE_SHA: ${NORBOT_IMAGE_TAG:-local}
     depends_on:
       api:
@@ -187,7 +186,7 @@ services:
     env_file:
       - ${NORBOT_ENV_FILE:-./env/production.env.example}
     environment:
-      NORGOTH_REDIS_URL: ${NORGOTH_REDIS_URL:-redis://:${REDIS_PASSWORD}@redis:6379/0}
+      NORGOTH_REDIS_URL: ${NORGOTH_REDIS_URL:-redis://:${REDIS_PASSWORD:-}@redis:6379/0}
       NORGOTH_API_URL: ${NORGOTH_API_URL:-http://api:8000}
       NORGOTH_RELEASE_SHA: ${NORBOT_IMAGE_TAG:-local}
     depends_on:
