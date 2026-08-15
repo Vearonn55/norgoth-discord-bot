@@ -179,12 +179,19 @@ def create_application(settings: Settings | None = None) -> FastAPI:
 
     # Serve locally-uploaded embed media (read-only).
     upload_root = resolve_upload_root(resolved_settings.upload_dir)
-    upload_root.mkdir(parents=True, exist_ok=True)
-    application.mount(
-        "/uploads",
-        StaticFiles(directory=str(upload_root)),
-        name="uploads",
-    )
+    try:
+        upload_root.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        logger.warning(
+            "Upload directory %s is not writable; /uploads will be unavailable.",
+            upload_root,
+        )
+    if upload_root.is_dir():
+        application.mount(
+            "/uploads",
+            StaticFiles(directory=str(upload_root)),
+            name="uploads",
+        )
 
     # Postgres-backed verification domain.
     application.include_router(

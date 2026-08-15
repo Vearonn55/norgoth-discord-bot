@@ -1,5 +1,7 @@
 """Production lifespan should not crash the API on optional encryption keys."""
 
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -57,3 +59,16 @@ def test_production_startup_rejects_unenforced_auth() -> None:
     with pytest.raises(RuntimeError, match="NORGOTH_AUTH_ENFORCED"):
         with TestClient(application):
             pass
+
+
+def test_unwritable_upload_dir_does_not_prevent_startup(tmp_path: Path) -> None:
+    """A root-owned uploads volume must not crash API import."""
+
+    blocked = tmp_path / "not-a-directory"
+    blocked.write_text("x", encoding="utf-8")
+    application = create_application(
+        _production_settings(upload_dir=str(blocked / "uploads"))
+    )
+
+    with TestClient(application) as client:
+        assert client.get("/api/v1/health").status_code == 200
