@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CAlert, CBadge, CFormSelect, CSpinner } from "@coreui/react";
 import { useParams } from "next/navigation";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
@@ -81,8 +81,11 @@ export function AccountsPanel() {
     if (clamped !== state.page) patchState({ page: clamped });
   }, [accountsTotal, hasLoaded, loading, patchState, state.page]);
 
-  const channelName = (id: string) =>
-    resources?.channels.find((channel) => channel.id === id)?.name ?? id;
+  const channelName = useCallback(
+    (id: string) =>
+      resources?.channels.find((channel) => channel.id === id)?.name ?? id,
+    [resources]
+  );
 
   const editingAccount =
     state.panel === "edit"
