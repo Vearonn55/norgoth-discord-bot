@@ -89,12 +89,13 @@ export function AccountEditorModal({
   } | null>(null);
   const [snapshot, setSnapshot] = useState("");
 
+  const templateId = account?.template_id;
   const assignedTemplate = useMemo(() => {
-    if (mode === "edit" && account?.template_id) {
-      return templates.find((t) => t.id === account.template_id) ?? null;
+    if (mode === "edit" && templateId) {
+      return templates.find((t) => t.id === templateId) ?? null;
     }
     return templates.find((t) => t.platform_default_for === platform) ?? null;
-  }, [account?.template_id, mode, platform, templates]);
+  }, [mode, platform, templateId, templates]);
 
   const sharedTemplate = useMemo(() => {
     if (!assignedTemplate) return false;
