@@ -15,7 +15,8 @@ def test_force_allowlisted_hosts_ignores_client_override() -> None:
     assert forced == DEFAULT_REWRITE_HOSTS
     assert forced["twitter"] == "fxtwitter.com"
     assert forced["bluesky"] == "bskx.app"
-    assert forced["instagram"] == "ddinstagram.com"
+    assert "ddinstagram" not in str(forced)
+    assert forced["instagram"] == "instagram7.com"
     assert forced["pixiv"] == "phixiv.net"
     assert forced["youtube_shorts"] == "youtu.be"
 

@@ -106,6 +106,49 @@ export const DEFAULT_LEVELING_CONFIG: LevelingConfig = {
   voice_xp_per_minute: 0,
 };
 
+export type LevelingCard = "xp" | "announce" | "rewards";
+
+export const LEVELING_CARD_KEYS: Record<
+  LevelingCard,
+  readonly (keyof LevelingConfig)[]
+> = {
+  xp: [
+    "xp_per_message",
+    "voice_xp_per_minute",
+    "xp_multiplier",
+    "level_threshold_scale",
+  ],
+  announce: [
+    "announce_mode",
+    "announce_channel_id",
+    "level_up_message",
+    "level_up_embed",
+  ],
+  rewards: ["reward_roles"],
+};
+
+export function pickLevelingCard(
+  config: LevelingConfig,
+  card: LevelingCard
+): Partial<LevelingConfig> {
+  const picked: Partial<LevelingConfig> = {};
+  for (const key of LEVELING_CARD_KEYS[card]) {
+    (picked as Record<string, unknown>)[key] = config[key];
+  }
+  return picked;
+}
+
+export function levelingCardDirty(
+  draft: LevelingConfig,
+  server: LevelingConfig,
+  card: LevelingCard
+): boolean {
+  return (
+    JSON.stringify(pickLevelingCard(draft, card)) !==
+    JSON.stringify(pickLevelingCard(server, card))
+  );
+}
+
 /**
  * Consolidates legacy configs into the embed-only model: the level-up message
  * is the single source of truth for the embed description. If a legacy config
@@ -138,9 +181,13 @@ function normalizeLevelingConfig(
 
 type LevelingState = {
   config: LevelingConfig;
+  serverConfig: LevelingConfig;
   leaderboard: LeaderboardEntry[];
   leaderboardMetric: LeaderboardMetric;
+  leaderboardLoading: boolean;
   saving: boolean;
+  savingCard: LevelingCard | null;
+  lastSavedCard: LevelingCard | null;
   feedback: string | null;
   feedbackIsError: boolean;
   rewardSearch: string;
@@ -168,14 +215,19 @@ type LevelingState = {
     metric?: LeaderboardMetric
   ) => Promise<void>;
   save: (guildId: string) => Promise<void>;
+  saveCard: (guildId: string, card: LevelingCard) => Promise<void>;
   addReward: () => void;
 };
 
 export const useLevelingStore = create<LevelingState>((set, get) => ({
   config: DEFAULT_LEVELING_CONFIG,
+  serverConfig: DEFAULT_LEVELING_CONFIG,
   leaderboard: [],
   leaderboardMetric: "text",
+  leaderboardLoading: false,
   saving: false,
+  savingCard: null,
+  lastSavedCard: null,
   feedback: null,
   feedbackIsError: false,
   rewardSearch: "",
@@ -212,6 +264,16 @@ export const useLevelingStore = create<LevelingState>((set, get) => ({
     set({ feedback, feedbackIsError: isError }),
   loadLeaderboard: async (guildId, metric) => {
     const activeMetric = metric ?? get().leaderboardMetric;
+    if (get().leaderboardLoading && get().leaderboardMetric === activeMetric) {
+      return;
+    }
+    const requestMetric = activeMetric;
+    set({
+      leaderboardLoading: true,
+      leaderboardMetric: activeMetric,
+      feedback: null,
+      feedbackIsError: false,
+    });
     try {
       const leaderboardResponse = await fetch(
         apiUrl(
@@ -219,17 +281,20 @@ export const useLevelingStore = create<LevelingState>((set, get) => ({
         ),
         { cache: "no-store" }
       );
+      if (get().leaderboardMetric !== requestMetric) {
+        return;
+      }
       if (leaderboardResponse.ok) {
         set({
-          leaderboardMetric: activeMetric,
           leaderboard: (await leaderboardResponse.json()) as LeaderboardEntry[],
+          leaderboardLoading: false,
           feedback: null,
           feedbackIsError: false,
         });
       } else {
         set({
-          leaderboardMetric: activeMetric,
           leaderboard: [],
+          leaderboardLoading: false,
           feedback: `Could not load the ${
             activeMetric === "voice"
               ? "Voice XP"
@@ -241,8 +306,12 @@ export const useLevelingStore = create<LevelingState>((set, get) => ({
         });
       }
     } catch {
+      if (get().leaderboardMetric !== requestMetric) {
+        return;
+      }
       set({
         leaderboard: [],
+        leaderboardLoading: false,
         feedback: "Could not reach the Norgoth API.",
         feedbackIsError: true,
       });
@@ -265,11 +334,13 @@ export const useLevelingStore = create<LevelingState>((set, get) => ({
 
       if (configResponse.ok) {
         const stored = (await configResponse.json()) as LevelingConfig;
+        const normalized = normalizeLevelingConfig({
+          ...DEFAULT_LEVELING_CONFIG,
+          ...stored,
+        });
         set({
-          config: normalizeLevelingConfig({
-            ...DEFAULT_LEVELING_CONFIG,
-            ...stored,
-          }),
+          config: normalized,
+          serverConfig: normalized,
         });
       }
 
@@ -286,19 +357,51 @@ export const useLevelingStore = create<LevelingState>((set, get) => ({
     }
   },
   save: async (guildId) => {
-    set({ saving: true, feedback: null });
+    await get().saveCard(guildId, "rewards");
+  },
+  saveCard: async (guildId, card) => {
+    set({
+      saving: true,
+      savingCard: card,
+      lastSavedCard: card,
+      feedback: null,
+    });
     try {
+      let snapshot = get().serverConfig;
+      const latestResponse = await fetch(
+        apiUrl(`/guilds/${guildId}/leveling/config`),
+        { cache: "no-store" }
+      );
+      if (latestResponse.ok) {
+        snapshot = normalizeLevelingConfig({
+          ...DEFAULT_LEVELING_CONFIG,
+          ...((await latestResponse.json()) as LevelingConfig),
+        });
+      }
+      const payload = normalizeLevelingConfig({
+        ...snapshot,
+        ...pickLevelingCard(get().config, card),
+      });
       const response = await fetch(
         apiUrl(`/guilds/${guildId}/leveling/config`),
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(normalizeLevelingConfig(get().config)),
+          body: JSON.stringify(payload),
         }
       );
 
       if (response.ok) {
+        const saved = normalizeLevelingConfig({
+          ...DEFAULT_LEVELING_CONFIG,
+          ...((await response.json()) as LevelingConfig),
+        });
         set({
+          serverConfig: saved,
+          config: {
+            ...get().config,
+            ...pickLevelingCard(saved, card),
+          },
           feedback: `Settings saved at ${new Date().toLocaleTimeString()}.`,
           feedbackIsError: false,
         });
@@ -314,7 +417,7 @@ export const useLevelingStore = create<LevelingState>((set, get) => ({
         feedbackIsError: true,
       });
     } finally {
-      set({ saving: false });
+      set({ saving: false, savingCard: null });
     }
   },
   addReward: () => {

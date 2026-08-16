@@ -37,10 +37,6 @@ def honeypot_triggers_key(guild_id: str) -> str:
     return f"norgoth:guild:{guild_id}:honeypot:triggers"
 
 
-class CreateChannelBody(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
-
-
 class HoneypotConfig(BaseModel):
     enabled: bool = False
     trap_channel_ids: list[str] = Field(default_factory=list, max_length=20)
@@ -101,7 +97,6 @@ async def get_honeypot_config(guild_id: str) -> dict[str, Any]:
     for extra in (
         "warning_message_id",
         "warning_channel_id",
-        "create_channel_request",
     ):
         if extra in stored:
             result[extra] = stored[extra]
@@ -138,10 +133,12 @@ async def update_honeypot_config(
         for extra in (
             "warning_message_id",
             "warning_channel_id",
-            "create_channel_request",
         ):
             if extra in existing and extra not in payload:
                 payload[extra] = existing[extra]
+        payload.pop("create_channel_request", None)
+        # Explicit Save is the signal to restore a manually deleted warning.
+        payload["force_warning_repost"] = True
 
         payload["updated_at"] = now_iso()
         await save_config(guild_id, "honeypot", payload, enabled=bool(payload.get("enabled", False)))
@@ -149,39 +146,6 @@ async def update_honeypot_config(
         await redis_client.aclose()
 
     return {"guild_id": guild_id, **payload}
-
-
-@router.post("/guilds/{guild_id}/honeypot/create-channel")
-async def request_honeypot_channel(
-    guild_id: str,
-    body: CreateChannelBody,
-) -> dict[str, Any]:
-    """Store a create-channel request for the bot to process on next sync."""
-
-    redis_client = await get_redis()
-
-    try:
-        existing = load_stored_config(await read_raw(guild_id, "honeypot", redis_client))
-        config = HoneypotConfig(**{
-            key: value
-            for key, value in existing.items()
-            if key in HoneypotConfig.model_fields
-        })
-        payload = {**existing, **config.model_dump()}
-        payload["create_channel_request"] = {
-            "name": body.name.strip()[:100],
-            "requested_at": now_iso(),
-        }
-        payload["updated_at"] = now_iso()
-        await save_config(guild_id, "honeypot", payload, enabled=bool(payload.get("enabled", False)))
-    finally:
-        await redis_client.aclose()
-
-    return {
-        "guild_id": guild_id,
-        "ok": True,
-        "create_channel_request": payload["create_channel_request"],
-    }
 
 
 @router.get("/guilds/{guild_id}/honeypot/triggers")

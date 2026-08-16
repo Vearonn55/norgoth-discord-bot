@@ -21,6 +21,7 @@ import {
 import { Icon } from "@/components/ui/icon";
 import { SectionCard } from "@/components/ui/section-card";
 import { formatDateTime } from "@/lib/datetime";
+import { invitedByLabel } from "@/lib/invite-attribution";
 import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import { useInvitesStore } from "@/stores/invites-store";
@@ -65,7 +66,13 @@ export function InvitesPanel() {
     return recent.filter((entry) => {
       if (!isInDateRange(entry.joined_at, dateRange)) return false;
       if (!query) return true;
-      return [entry.member_name, entry.inviter_name ?? "", entry.code ?? ""]
+      return [
+        entry.member_name,
+        entry.inviter_name ?? "",
+        entry.inviter_id ?? "",
+        entry.attribution ?? "",
+        entry.code ?? "",
+      ]
         .join(" ")
         .toLowerCase()
         .includes(query);
@@ -272,9 +279,7 @@ export function InvitesPanel() {
               {
                 key: "inviter",
                 header: d.colInvitedBy,
-                cell: (row) =>
-                  row.inviter_name ??
-                  (row.code === "vanity" ? d.vanityUrl : d.unknown),
+                cell: (row) => invitedByLabel(row, d),
               },
               {
                 key: "code",

@@ -505,26 +505,32 @@ async def repair_feed_channels_route(
     from app.services.campaign_store import get_redis
 
     redis_client = await get_redis()
+    lock_key = f"norgoth:feed:{guild_id}:repair-lock"
+    acquired = False
     try:
-        lock_key = f"norgoth:feed:{guild_id}:repair-lock"
-        acquired = await redis_client.set(lock_key, "1", nx=True, ex=120)
+        # Match the dashboard repair proxy timeout (280s) so a long rebuild is
+        # not treated as a stuck lock while the client is still waiting.
+        acquired = bool(await redis_client.set(lock_key, "1", nx=True, ex=280))
         if not acquired:
             raise HTTPException(
                 status_code=429,
                 detail="Feed repair already in progress for this guild.",
             )
+        try:
+            result = await repair_feed_channels(session, guild_id=guild_id)
+        except Exception as error:  # noqa: BLE001
+            raise HTTPException(
+                status_code=500,
+                detail=f"Feed repair failed: {error}",
+            ) from error
+        return result
     finally:
+        if acquired:
+            try:
+                await redis_client.delete(lock_key)
+            except Exception:  # noqa: BLE001
+                pass
         await redis_client.aclose()
-
-    try:
-        result = await repair_feed_channels(session, guild_id=guild_id)
-    except Exception as error:  # noqa: BLE001
-        raise HTTPException(
-            status_code=500,
-            detail=f"Feed repair failed: {error}",
-        ) from error
-    # Always return a serializable body (never a false empty 500 after work).
-    return result
 
 
 @router.post("/guilds/{guild_id}/feed-channels/process-dirty")

@@ -18,8 +18,11 @@ export type InviteLeaderboardEntry = {
 };
 
 export type RecentJoin = {
+  member_id?: string | null;
   member_name: string;
+  inviter_id?: string | null;
   inviter_name: string | null;
+  attribution?: string | null;
   code: string | null;
   rejoin: boolean;
   joined_at: string;

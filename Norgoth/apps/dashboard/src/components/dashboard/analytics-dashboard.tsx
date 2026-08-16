@@ -1,10 +1,12 @@
 "use client";
 
+import { cilChartLine } from "@coreui/icons";
 import Link from "next/link";
 import { useEffect, useMemo } from "react";
 import { DashboardAutoRefresh } from "@/components/dashboard/dashboard-auto-refresh";
 import { KpiStrip } from "@/components/analytics/kpi-strip";
 import { TrendChart } from "@/components/analytics/trend-chart";
+import { Icon } from "@/components/ui/icon";
 import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -248,6 +250,7 @@ export function AnalyticsDashboard({ lang }: { lang: string }) {
       <div className="d-flex flex-column gap-3">
         <PageHeader
           title={d.title}
+          icon={<Icon icon={cilChartLine} size="xl" />}
           category="analytics"
           description={d.description}
           actions={

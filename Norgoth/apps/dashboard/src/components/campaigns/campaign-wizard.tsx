@@ -37,6 +37,7 @@ import { formatDateTime } from "@/lib/datetime";
 import { formatDict } from "@/lib/locale-dict";
 import { useCampaignsStore } from "@/stores/campaigns-store";
 import { useCampaignWizardDraftStore } from "@/stores/campaign-wizard-draft-store";
+import { useFirstGuild } from "@/lib/use-first-guild";
 
 const CAMPAIGN_VARIABLES = ["{user_name}", "{server_name}", "{campaign_name}"];
 
@@ -319,6 +320,7 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
   const showDraftBanner =
     !isEdit && draftHydrated && hasDraft() && !bannerDismissed;
 
+  const { guildId: selectedGuildId, selectedGuild } = useFirstGuild();
   const [guildId, setGuildId] = useState<string | null>(null);
   const [guildName, setGuildName] = useState<string>(wizardCopy.defaultServerName);
   const [channels, setChannels] = useState<WizardChannel[]>([]);
@@ -331,31 +333,54 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
 
     async function loadGuildData() {
       try {
-        const healthResponse = await fetch(apiUrl(`/bot/health`), {
-          cache: "no-store",
-        });
-        const health = healthResponse.ok ? await healthResponse.json() : null;
-        const guilds = health?.status?.guilds;
-
-        if (!Array.isArray(guilds) || guilds.length === 0) {
+        const [healthResponse, workerResponse] = await Promise.all([
+          fetch(apiUrl(`/bot/health`), { cache: "no-store" }),
+          fetch(apiUrl(`/campaigns/worker/health`), { cache: "no-store" }),
+        ]);
+        if (!healthResponse.ok || !workerResponse.ok) {
           if (!cancelled) {
-            setResourcesError(wizardCopy.botOfflineDelivery);
+            setResourcesError(wizardCopy.guildApiError);
+          }
+          return;
+        }
+        const health = await healthResponse.json();
+        const worker = await workerResponse.json();
+
+        if (!health?.connected) {
+          if (!cancelled) {
+            setResourcesError(
+              health?.stale
+                ? wizardCopy.staleHeartbeat
+                : wizardCopy.botOfflineDelivery
+            );
+          }
+          return;
+        }
+        if (!worker?.online) {
+          if (!cancelled) {
+            setResourcesError(wizardCopy.workerOfflineDelivery);
+          }
+          return;
+        }
+        if (!selectedGuildId || selectedGuild?.bot_installed === false) {
+          if (!cancelled) {
+            setResourcesError(wizardCopy.botNotInGuild);
           }
           return;
         }
 
-        const guild = guilds[0];
-
         if (!cancelled) {
-          setGuildId(String(guild.id));
-          setGuildName(String(guild.name ?? wizardCopy.defaultServerName));
+          setGuildId(selectedGuildId);
+          setGuildName(
+            String(selectedGuild?.name ?? wizardCopy.defaultServerName)
+          );
         }
 
         const [resourcesResponse, membersResponse] = await Promise.all([
-          fetch(apiUrl(`/guilds/${guild.id}/discord-resources`), {
+          fetch(apiUrl(`/guilds/${selectedGuildId}/discord-resources`), {
             cache: "no-store",
           }),
-          fetch(apiUrl(`/guilds/${guild.id}/members`), {
+          fetch(apiUrl(`/guilds/${selectedGuildId}/members`), {
             cache: "no-store",
           }),
         ]);
@@ -394,9 +419,15 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
       cancelled = true;
     };
   }, [
+    selectedGuild?.bot_installed,
+    selectedGuild?.name,
+    selectedGuildId,
+    wizardCopy.botNotInGuild,
     wizardCopy.botOfflineDelivery,
     wizardCopy.defaultServerName,
     wizardCopy.guildApiError,
+    wizardCopy.staleHeartbeat,
+    wizardCopy.workerOfflineDelivery,
   ]);
 
   const isDM = wizardState.audience.deliveryTarget === "dm";

@@ -121,6 +121,14 @@ def xp_cooldown_key(guild_id: int | str, user_id: int | str) -> str:
     return f"norgoth:guild:{guild_id}:xp:cooldown:{user_id}"
 
 
+def voice_tick_lock_key(guild_id: int | str) -> str:
+    return f"norgoth:guild:{guild_id}:xp:voice:tick"
+
+
+# Slightly under the 60s loop so the next interval can acquire the lock.
+VOICE_TICK_LOCK_TTL_SECONDS = 55
+
+
 LEVEL_THRESHOLD_SCALE_MIN = 0.5
 LEVEL_THRESHOLD_SCALE_MAX = 2.0
 DEFAULT_LEVEL_THRESHOLD_SCALE = 1.0
@@ -254,6 +262,69 @@ class LevelingCog(commands.Cog):
             logger.debug(
                 "XP ingest failed for guild %s user %s", guild_id, user_id, exc_info=True
             )
+
+    async def _ingest_xp_clear(self, guild_id: int, user_id: str) -> None:
+        base = getattr(self.bot.state, "_api_base_url", "") or ""
+        token = getattr(self.bot.state, "_bot_token", "") or ""
+        if not base or not token:
+            return
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                await client.post(
+                    f"{base}/internal/ingest/{guild_id}/xp-clear",
+                    headers={
+                        "X-Norgoth-Internal-Token": token,
+                        "X-Norgoth-Bot-Token": token,
+                    },
+                    json={"user_id": str(user_id)},
+                )
+        except Exception:  # noqa: BLE001
+            logger.debug(
+                "XP clear ingest failed for guild %s user %s",
+                guild_id,
+                user_id,
+                exc_info=True,
+            )
+
+    async def clear_member_xp(self, guild_id: int, user_id: int | str) -> None:
+        """Remove a member's guild XP from Redis and Postgres (idempotent)."""
+
+        member = str(user_id)
+        redis = self.bot.state.redis
+        await redis.zrem(xp_key(guild_id), member)
+        await redis.zrem(xp_text_key(guild_id), member)
+        await redis.zrem(xp_voice_key(guild_id), member)
+        await redis.delete(xp_cooldown_key(guild_id, member))
+        await self._ingest_xp_clear(guild_id, member)
+
+    async def reconcile_departed_xp(self, guild: discord.Guild) -> None:
+        """Drop XP for user IDs no longer in the current guild member cache."""
+
+        current = {str(member.id) for member in guild.members}
+        redis = self.bot.state.redis
+        seen: set[str] = set()
+        for key in (
+            xp_key(guild.id),
+            xp_text_key(guild.id),
+            xp_voice_key(guild.id),
+        ):
+            try:
+                members = await redis.zrange(key, 0, -1)
+            except Exception:  # noqa: BLE001
+                logger.debug("XP reconcile zrange failed for %s", key, exc_info=True)
+                continue
+            for user_id in members:
+                uid = str(user_id)
+                if uid in current or uid in seen:
+                    continue
+                seen.add(uid)
+                await self.clear_member_xp(guild.id, uid)
+
+    @commands.Cog.listener()
+    async def on_member_remove(self, member: discord.Member) -> None:
+        if member.bot:
+            return
+        await self.clear_member_xp(member.guild.id, member.id)
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
@@ -442,12 +513,15 @@ class LevelingCog(commands.Cog):
     def _voice_member_eligible(member: discord.Member) -> bool:
         """Return whether a member's current voice state earns XP.
 
-        Policy ("meaningful participation, not idle farming"):
+        Policy ("meaningful participation, not idle farming") — do not change:
         - bots never earn (filtered by the caller before this check);
         - AFK-channel members never earn (filtered by the caller);
-        - self-deafened, server-deafened, and server-muted members are excluded
-          (they cannot meaningfully participate / are being moderated);
+        - Stage channels are not scanned (caller iterates ``guild.voice_channels``);
+        - need ≥2 humans in the channel (caller);
+        - ``voice_xp_per_minute == 0`` (default) awards nothing (caller);
+        - self-deafened, server-deafened, and server-muted members are excluded;
         - self-muted members STILL earn, since listening is participation.
+        A 10-minute solo session, or a still-zero rate, earns nothing.
         """
 
         voice = member.voice
@@ -461,6 +535,17 @@ class LevelingCog(commands.Cog):
         if not await self.bot.state.is_module_enabled(guild.id, "leveling"):
             return
 
+        redis = self.bot.state.redis
+        acquired = await redis.set(
+            voice_tick_lock_key(guild.id),
+            "1",
+            nx=True,
+            ex=VOICE_TICK_LOCK_TTL_SECONDS,
+        )
+        if not acquired:
+            logger.debug("Voice XP tick lock held for guild %s", guild.id)
+            return
+
         config = await self.get_config(guild.id)
         gain = effective_voice_xp(config)
         # 0 per-minute (the disabled state) means no voice XP is awarded.
@@ -469,7 +554,6 @@ class LevelingCog(commands.Cog):
 
         scale = threshold_scale(config)
         afk_channel_id = guild.afk_channel.id if guild.afk_channel else None
-        redis = self.bot.state.redis
 
         for channel in guild.voice_channels:
             # AFK channel participation never earns XP.
@@ -497,7 +581,13 @@ class LevelingCog(commands.Cog):
 
     @tasks.loop(seconds=VOICE_XP_INTERVAL_SECONDS)
     async def voice_xp_loop(self) -> None:
-        """Award voice XP once per minute to eligible members in every guild."""
+        """Award voice XP once per minute to eligible members in every guild.
+
+        Eligibility is unchanged: module on, rate > 0, not AFK/Stage, ≥2 humans,
+        not self-deaf/server-deaf/server-mute. Self-mute still earns. A per-guild
+        NX lock ``norgoth:guild:{id}:xp:voice:tick`` prevents multi-instance
+        double awards for the same interval.
+        """
 
         for guild in list(self.bot.guilds):
             try:

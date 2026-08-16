@@ -260,7 +260,7 @@ async def _resolve_embed_binding(
     if not delivery_id:
         raise HTTPException(
             status_code=400,
-            detail="Select a published Embed Message instance for this menu.",
+            detail="Select an Embed Message template for this menu.",
         )
 
     try:
@@ -291,8 +291,8 @@ async def _resolve_embed_binding(
         raise HTTPException(
             status_code=400,
             detail=(
-                "The selected Embed Message instance is not live in Discord. "
-                "Publish the Embed Message first, then re-select it."
+                "The bound Embed Message has not been posted yet. "
+                "Save the menu to post a new Discord message."
             ),
         )
 

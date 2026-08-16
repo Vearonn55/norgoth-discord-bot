@@ -50,7 +50,7 @@ export const FIXED_REWRITE_HOSTS: RichLinkRewriteHosts = {
   twitter: "fxtwitter.com",
   bluesky: "bskx.app",
   tiktok: "vxtiktok.com",
-  instagram: "ddinstagram.com",
+  instagram: "instagram7.com",
   reddit: "vxreddit.com",
   pixiv: "phixiv.net",
   youtube_shorts: "youtu.be",

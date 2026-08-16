@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from typing import Annotated
+from urllib.parse import urlencode
 
 from fastapi import (
     APIRouter,
@@ -24,6 +25,7 @@ from app.api.v1.dependencies import (
     ProxycheckClientDependency,
     VerificationServiceDependency,
 )
+from app.core.config import get_settings
 from app.integrations.discord.bot_rest import DiscordBotAPIError, DiscordBotClient
 from app.integrations.discord.oauth import DiscordOAuthError
 from app.integrations.discord.snowflake import (
@@ -56,9 +58,7 @@ from app.security.verification_rate_limit import (
 from app.services.guild_meta import resolve_guild_public_meta
 from app.services.verification_html import (
     message_for_setup_state,
-    render_verification_result_page,
     render_verification_unavailable_page,
-    t,
 )
 from app.services.verification_service import VerificationRequest
 from app.services.verification_setup import derive_verification_setup_state
@@ -111,6 +111,43 @@ def _html_unavailable(
         retry_href=retry_href,
     )
     return HTMLResponse(content=content, status_code=status.HTTP_200_OK)
+
+
+def _verify_result_redirect(
+    request: Request,
+    *,
+    lang: str,
+    outcome: str,
+    reason: str,
+) -> RedirectResponse:
+    """303 to the dashboard public result page (never include code/state)."""
+
+    cid = str(getattr(request.state, "request_id", "") or "")
+    base = (get_settings().dashboard_public_url or "https://www.norbot.io").rstrip(
+        "/"
+    )
+    locale = lang if lang in {"en", "tr"} else "en"
+    query = urlencode(
+        {
+            "outcome": outcome,
+            "reason": reason,
+            "cid": cid,
+        }
+    )
+    return RedirectResponse(
+        url=f"{base}/{locale}/verify/result?{query}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+def _reason_from_oauth_error(error: DiscordOAuthError) -> str:
+    if error.http_status == 429:
+        return "discord_rate_limited"
+    if error.operation == "token_exchange" and error.http_status == 400:
+        return "oauth_expired"
+    if error.operation == "token_exchange":
+        return "oauth_invalid"
+    return "discord_unavailable"
 
 
 @router.get(
@@ -210,7 +247,6 @@ async def authorize_discord(
 
 @router.get(
     "/callback",
-    response_class=HTMLResponse,
 )
 async def discord_callback(
     request: Request,
@@ -227,38 +263,26 @@ async def discord_callback(
         Query(alias="state", min_length=1, max_length=4096),
     ] = None,
     error: Annotated[str | None, Query()] = None,
-) -> HTMLResponse:
-    """Authenticate through Discord, verify, apply roles, and show the result."""
+) -> Response:
+    """Authenticate through Discord, verify, apply roles, and redirect to the dashboard."""
 
     lang = _request_lang(request)
 
     if error:
-        return _html_unavailable(
-            guild_name="this server",
-            icon_url=None,
-            state="disabled",
-            lang=lang,
-            message=t(lang, "oauth_denied"),
+        return _verify_result_redirect(
+            request, lang=lang, outcome="error", reason="oauth_invalid"
         )
 
     if not code or not state_value:
-        return _html_unavailable(
-            guild_name="this server",
-            icon_url=None,
-            state="error",
-            lang=lang,
-            message=t(lang, "oauth_invalid"),
+        return _verify_result_redirect(
+            request, lang=lang, outcome="error", reason="oauth_invalid"
         )
 
     try:
         client_ip = _get_client_ip(request)
     except ValueError:
-        return _html_unavailable(
-            guild_name="this server",
-            icon_url=None,
-            state="error",
-            lang=lang,
-            message=message_for_setup_state("error", lang=lang),
+        return _verify_result_redirect(
+            request, lang=lang, outcome="error", reason="internal_error"
         )
 
     try:
@@ -269,12 +293,8 @@ async def discord_callback(
             window_seconds=CALLBACK_WINDOW_SECONDS,
         )
     except VerificationRateLimitExceeded:
-        return _html_unavailable(
-            guild_name="this server",
-            icon_url=None,
-            state="error",
-            lang=lang,
-            message=message_for_setup_state("error", lang=lang),
+        return _verify_result_redirect(
+            request, lang=lang, outcome="error", reason="discord_rate_limited"
         )
     except Exception:
         logger.info("callback rate-limit check skipped", exc_info=True)
@@ -283,12 +303,8 @@ async def discord_callback(
         verified_state = oauth_state_service.verify(state_value)
     except InvalidOAuthStateError:
         logger.info("verification_callback code=oauth_state_invalid")
-        return _html_unavailable(
-            guild_name="this server",
-            icon_url=None,
-            state="error",
-            lang=lang,
-            message=t(lang, "oauth_invalid"),
+        return _verify_result_redirect(
+            request, lang=lang, outcome="error", reason="oauth_invalid"
         )
 
     lang = verified_state.lang if verified_state.lang in {"en", "tr"} else lang
@@ -297,46 +313,65 @@ async def discord_callback(
         await consume_oauth_nonce(verified_state.nonce)
     except OAuthNonceReplayError:
         logger.info("verification_callback code=oauth_state_invalid replay")
-        return _html_unavailable(
-            guild_name="this server",
-            icon_url=None,
-            state="error",
-            lang=lang,
-            message=t(lang, "oauth_invalid"),
+        return _verify_result_redirect(
+            request, lang=lang, outcome="error", reason="oauth_invalid"
         )
     except Exception:
         logger.exception("verification_callback code=oauth_state_invalid nonce_backend")
-        return _html_unavailable(
-            guild_name="this server",
-            icon_url=None,
-            state="error",
-            lang=lang,
-            message=t(lang, "oauth_invalid"),
+        return _verify_result_redirect(
+            request, lang=lang, outcome="error", reason="oauth_invalid"
         )
 
     try:
         token = await oauth_client.exchange_code(code=code)
+    except DiscordOAuthError as oauth_error:
+        logger.info(
+            "verification_callback code=oauth_token_failed operation=%s status=%s",
+            oauth_error.operation,
+            oauth_error.http_status,
+        )
+        return _verify_result_redirect(
+            request,
+            lang=lang,
+            outcome="error",
+            reason=_reason_from_oauth_error(oauth_error),
+        )
+
+    try:
         user = await oauth_client.get_current_user(access_token=token.access_token)
+    except DiscordOAuthError as oauth_error:
+        logger.info(
+            "verification_callback code=oauth_user_failed operation=%s status=%s",
+            oauth_error.operation,
+            oauth_error.http_status,
+        )
+        return _verify_result_redirect(
+            request,
+            lang=lang,
+            outcome="error",
+            reason=_reason_from_oauth_error(oauth_error),
+        )
+
+    try:
         user_guilds = await oauth_client.get_current_user_guilds(
             access_token=token.access_token,
         )
         account_age_days = get_discord_account_age_days(user.id)
     except InvalidDiscordSnowflakeError:
-        return _html_unavailable(
-            guild_name="this server",
-            icon_url=None,
-            state="error",
-            lang=lang,
-            message=t(lang, "oauth_invalid"),
+        return _verify_result_redirect(
+            request, lang=lang, outcome="error", reason="oauth_invalid"
         )
-    except DiscordOAuthError:
-        logger.info("verification_callback code=oauth_exchange_failed")
-        return _html_unavailable(
-            guild_name="this server",
-            icon_url=None,
-            state="error",
+    except DiscordOAuthError as oauth_error:
+        logger.info(
+            "verification_callback code=oauth_guilds_failed operation=%s status=%s",
+            oauth_error.operation,
+            oauth_error.http_status,
+        )
+        return _verify_result_redirect(
+            request,
             lang=lang,
-            message=message_for_setup_state("error", lang=lang),
+            outcome="error",
+            reason=_reason_from_oauth_error(oauth_error),
         )
 
     guild = await guild_service.get_by_discord_guild_id(verified_state.discord_guild_id)
@@ -347,21 +382,15 @@ async def discord_callback(
     )
 
     if guild is None:
-        return _html_unavailable(
-            guild_name=meta.name,
-            icon_url=meta.icon_url,
-            state="guild_not_found",
-            lang=lang,
+        return _verify_result_redirect(
+            request, lang=lang, outcome="error", reason="oauth_invalid"
         )
 
     configuration = await configuration_service.get_by_guild_id(guild.id)
     setup = derive_verification_setup_state(configuration)
     if configuration is None or setup.state != "active":
-        return _html_unavailable(
-            guild_name=meta.name,
-            icon_url=meta.icon_url,
-            state=setup.state,
-            lang=lang,
+        return _verify_result_redirect(
+            request, lang=lang, outcome="error", reason="internal_error"
         )
 
     user_guild_ids = frozenset(user_guild.id for user_guild in user_guilds)
@@ -371,12 +400,8 @@ async def discord_callback(
             user.id,
             verified_state.discord_guild_id,
         )
-        return _html_unavailable(
-            guild_name=meta.name,
-            icon_url=meta.icon_url,
-            state="disabled",
-            lang=lang,
-            message=t(lang, "not_in_guild"),
+        return _verify_result_redirect(
+            request, lang=lang, outcome="error", reason="not_in_guild"
         )
 
     if bot_client is not None:
@@ -387,12 +412,8 @@ async def discord_callback(
             )
         except DiscordBotAPIError as membership_error:
             if membership_error.status_code == 404:
-                return _html_unavailable(
-                    guild_name=meta.name,
-                    icon_url=meta.icon_url,
-                    state="disabled",
-                    lang=lang,
-                    message=t(lang, "not_in_guild"),
+                return _verify_result_redirect(
+                    request, lang=lang, outcome="error", reason="not_in_guild"
                 )
             logger.info(
                 "verification_callback code=guild_metadata_unavailable status=%s",
@@ -405,20 +426,12 @@ async def discord_callback(
             proxycheck_result = await proxycheck_client.check_ip(client_ip)
             vpn_or_proxy_detected = proxycheck_result.vpn_or_proxy_detected
         except InvalidProxycheckIPAddressError:
-            return _html_unavailable(
-                guild_name=meta.name,
-                icon_url=meta.icon_url,
-                state="error",
-                lang=lang,
-                message=message_for_setup_state("error", lang=lang),
+            return _verify_result_redirect(
+                request, lang=lang, outcome="error", reason="internal_error"
             )
         except ProxycheckError:
-            return _html_unavailable(
-                guild_name=meta.name,
-                icon_url=meta.icon_url,
-                state="error",
-                lang=lang,
-                message=message_for_setup_state("error", lang=lang),
+            return _verify_result_redirect(
+                request, lang=lang, outcome="error", reason="internal_error"
             )
 
     verification_result = await verification_service.verify(
@@ -462,18 +475,18 @@ async def discord_callback(
             high_risk_guild_detected=verification_result.high_risk_guild_detected,
         )
 
-    return HTMLResponse(
-        content=render_verification_result_page(
-            allowed=verification_result.allowed,
-            manual_review=verification_result.manual_review,
-            reason=verification_result.reason,
-            username=username,
-            guild_name=meta.name,
-            icon_url=meta.icon_url,
-            lang=lang,
-            role_grant_failed=role_grant_failed and verification_result.allowed,
-        ),
-        status_code=status.HTTP_200_OK,
+    if verification_result.manual_review:
+        outcome = "pending"
+    elif verification_result.allowed:
+        outcome = "granted"
+    else:
+        outcome = "denied"
+    reason = str(verification_result.reason)
+    if role_grant_failed and verification_result.allowed:
+        reason = "role_grant_failed"
+
+    return _verify_result_redirect(
+        request, lang=lang, outcome=outcome, reason=reason
     )
 
 

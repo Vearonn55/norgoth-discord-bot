@@ -254,10 +254,11 @@ export function RoleMenusPanel() {
       return;
     }
 
-    // For a newly authored embed, persist it to the central drafts, post it to
-    // the chosen channel so a live Discord message exists, then bind the menu to
-    // that delivery — no separate "Create" or "Publish embed" action needed.
-    if (sourceMode === "CREATE_NEW" && !editing.embed_message_id) {
+    let working = editing;
+    const targetChannel =
+      sourceMode === "CREATE_NEW" ? newMenuChannelId : working.channel_id;
+
+    if (sourceMode === "CREATE_NEW" && !working.embed_message_id) {
       if (!newEmbedDraft || !newEmbedDraft.name.trim()) {
         setSarError(d.errEmbedName);
         return;
@@ -267,7 +268,7 @@ export function RoleMenusPanel() {
         setSarError(embedErrors[0]);
         return;
       }
-      if (!newMenuChannelId) {
+      if (!targetChannel) {
         setSarError(d.errChooseChannel);
         return;
       }
@@ -283,37 +284,58 @@ export function RoleMenusPanel() {
 
       if (!created) {
         setSavingDraft(false);
+        setSarError(useEmbedMessagesStore.getState().error ?? d.errSaveDraft);
+        return;
+      }
+
+      working = {
+        ...working,
+        binding_type: "embed_message",
+        embed_message_id: created.id,
+        channel_id: targetChannel,
+      };
+      setEditing(working);
+    }
+
+    if (!working.embed_message_id) {
+      setSarError(d.errSaveDraft);
+      setSavingDraft(false);
+      return;
+    }
+    if (!targetChannel) {
+      setSarError(d.errChooseChannel);
+      setSavingDraft(false);
+      return;
+    }
+
+    // Idempotent: skip a second Discord post when this menu already has a
+    // live message in the chosen channel.
+    if (!working.message_id || working.channel_id !== targetChannel) {
+      setSavingDraft(true);
+      setSarError(null);
+      const delivered = await sendEmbed(
+        guildId,
+        working.embed_message_id,
+        targetChannel
+      );
+      setSavingDraft(false);
+      const delivery = delivered?.deliveries.find(
+        (item) => item.channel_id === targetChannel && item.discord_message_id
+      );
+      if (!delivery) {
         setSarError(
-          useEmbedMessagesStore.getState().error ??
-            d.errSaveDraft
+          useEmbedMessagesStore.getState().error ?? d.errPostEmbed
         );
         return;
       }
-
-      // Post the draft to the chosen channel to create the live delivery the
-      // role controls will attach to on publish.
-      const delivered = await sendEmbed(guildId, created.id, newMenuChannelId);
-      setSavingDraft(false);
-
-      const delivery = delivered?.deliveries.find(
-        (d) => d.channel_id === newMenuChannelId && d.discord_message_id
-      );
-      if (!delivery) {
-        setSarError(d.errPostEmbed);
-        return;
-      }
-
-      setEditing((current) =>
-        current
-          ? {
-              ...current,
-              binding_type: "embed_message",
-              embed_message_id: created.id,
-              embed_delivery_id: delivery.id,
-              channel_id: delivery.channel_id,
-            }
-          : current
-      );
+      working = {
+        ...working,
+        binding_type: "embed_message",
+        embed_delivery_id: delivery.id,
+        channel_id: delivery.channel_id,
+        message_id: delivery.discord_message_id,
+      };
+      setEditing(working);
     }
 
     await saveEditing(guildId);
@@ -408,7 +430,8 @@ export function RoleMenusPanel() {
           (editing.message_source === "text"
             ? !editing.text_content.trim() || !editing.channel_id
             : sourceMode === "NONE" ||
-              (sourceMode === "SELECT_EXISTING" && !editing.embed_delivery_id) ||
+              (sourceMode === "SELECT_EXISTING" &&
+                (!editing.embed_message_id || !editing.channel_id)) ||
               (sourceMode === "CREATE_NEW" &&
                 (!newEmbedDraft ||
                   !newEmbedDraft.name.trim() ||
@@ -416,6 +439,9 @@ export function RoleMenusPanel() {
                   validateEmbed(newEmbedDraft.embed).length > 0)))
         }
         saveLabel={d.saveMenu}
+        scrollable={false}
+        dialogClassName="norgoth-embed-create-modal"
+        bodyClassName="norgoth-embed-create-modal-body"
         onClose={() => {
           setEditing(null);
           resetSarState();
@@ -424,8 +450,8 @@ export function RoleMenusPanel() {
       >
         {editing ? (
           <div className="d-flex flex-column gap-4">
-            <div className="row g-3">
-              <div className="col-lg-7 d-flex flex-column gap-3">
+            <div className="row g-3 norgoth-embed-draft-creator">
+              <div className="col-lg-7 norgoth-embed-creator-editor d-flex flex-column gap-3">
                 <div className="d-flex align-items-center justify-content-between gap-2">
                   <CFormLabel className="mb-0 fw-medium">
                     {d.menuMessage}
@@ -533,7 +559,7 @@ export function RoleMenusPanel() {
                         guildId={guildId}
                         channelNames={channelNames}
                         embedMessageId={editing.embed_message_id}
-                        embedDeliveryId={editing.embed_delivery_id}
+                        channelId={editing.channel_id}
                         onChange={(
                           embedMessageId,
                           embedDeliveryId,
@@ -714,7 +740,7 @@ export function RoleMenusPanel() {
                 ) : null}
               </div>
 
-              <div className="col-lg-5">
+              <div className="col-lg-5 norgoth-embed-creator-preview">
                 <RoleAssignmentPreview
                   menu={editing}
                   embed={previewEmbed}

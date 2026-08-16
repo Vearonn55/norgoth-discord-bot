@@ -15,6 +15,7 @@ from uuid import UUID
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Date,
     DateTime,
     ForeignKey,
@@ -109,6 +110,34 @@ class ServerEventLogEntry(UUIDPrimaryKeyMixin, Base):
         JSONB, nullable=False, server_default=func.jsonb_build_object()
     )
     created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class InviteJoinEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Durable per-join invite attribution for a guild."""
+
+    __tablename__ = "invite_join_events"
+    __table_args__ = (
+        Index("ix_invite_join_events_guild_joined", "guild_id", "joined_at"),
+        Index("ix_invite_join_events_guild_member", "guild_id", "member_id"),
+        UniqueConstraint(
+            "guild_id",
+            "member_id",
+            "joined_at",
+            name="uq_invite_join_events_guild_member_joined",
+        ),
+    )
+
+    guild_id: Mapped[str] = mapped_column(DiscordSnowflake(), nullable=False)
+    member_id: Mapped[str] = mapped_column(DiscordSnowflake(), nullable=False)
+    inviter_id: Mapped[str | None] = mapped_column(DiscordSnowflake(), nullable=True)
+    code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    attribution: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="unknown"
+    )
+    rejoin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    joined_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 

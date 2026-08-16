@@ -217,6 +217,7 @@ class NorgothBot(commands.Bot):
         # Safety-net republish so dashboard channel/role pickers and the
         # leaderboard recover after Redis flushes without a bot restart.
         # Reads from the local guild/member cache only (no Discord REST cost).
+        # Also drops leftover XP for members who left while the bot was down.
         for guild in self.guilds:
             try:
                 await self.state.publish_guild_resources(
@@ -224,6 +225,9 @@ class NorgothBot(commands.Bot):
                     serialize_guild_resources(guild),
                 )
                 await self.sync_guild_members(guild)
+                leveling = self.get_cog("LevelingCog")
+                if leveling is not None:
+                    await leveling.reconcile_departed_xp(guild)
             except Exception:  # noqa: BLE001 - keep the loop alive
                 logger.exception(
                     "Failed to refresh cached resources for guild %s",

@@ -30,6 +30,17 @@ export async function POST(
   if (authorization) {
     headers.authorization = authorization;
   }
+  // CsrfOriginMiddleware requires an allowlisted Origin (or Referer) on
+  // cookie-authenticated POSTs. The browser sends Origin on this same-origin
+  // call; forwarding it is required because this route is not the rewrite proxy.
+  const origin = request.headers.get("origin");
+  if (origin) {
+    headers.origin = origin;
+  }
+  const referer = request.headers.get("referer");
+  if (referer) {
+    headers.referer = referer;
+  }
 
   let upstream: Response;
   try {

@@ -26,7 +26,7 @@ DEFAULT_REWRITE_HOSTS = {
     "twitter": "fxtwitter.com",
     "bluesky": "bskx.app",
     "tiktok": "vxtiktok.com",
-    "instagram": "ddinstagram.com",
+    "instagram": "instagram7.com",
     "reddit": "vxreddit.com",
     "pixiv": "phixiv.net",
     "youtube_shorts": "youtu.be",
@@ -48,7 +48,7 @@ class RewriteHosts(BaseModel):
     twitter: str = "fxtwitter.com"
     bluesky: str = "bskx.app"
     tiktok: str = "vxtiktok.com"
-    instagram: str = "ddinstagram.com"
+    instagram: str = "instagram7.com"
     reddit: str = "vxreddit.com"
     pixiv: str = "phixiv.net"
     youtube_shorts: str = "youtu.be"

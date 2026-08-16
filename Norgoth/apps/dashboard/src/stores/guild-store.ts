@@ -260,15 +260,34 @@ export const useGuildStore = create<GuildState>((set, get) => ({
         return;
       }
 
-      const healthResponse = await fetchWithTimeout(
-        apiUrl(`/bot/health`),
+      const serversResponse = await fetchWithTimeout(
+        apiUrl("/api/v1/sessions/servers"),
         { cache: "no-store", credentials: "include" },
         RESOURCE_TIMEOUT_MS,
       );
-      const health = healthResponse.ok ? await healthResponse.json() : null;
-      const guilds = health?.status?.guilds;
-
-      if (!Array.isArray(guilds) || guilds.length === 0) {
+      if (!serversResponse.ok) {
+        set({
+          error: "Could not load your Discord servers. Retry after signing in.",
+          guildId: null,
+          selectedGuild: null,
+          resources: null,
+          loading: false,
+        });
+        return;
+      }
+      const data = (await serversResponse.json()) as {
+        servers?: Array<{
+          id: string;
+          name?: string;
+          icon?: string | null;
+          icon_url?: string | null;
+          bot_installed?: boolean;
+        }>;
+      };
+      const installed = (data.servers ?? []).filter(
+        (server) => server.bot_installed !== false,
+      );
+      if (installed.length === 0) {
         set({
           error:
             "Bot is offline or not in any server yet. Start the bot and invite it to your server first.",
@@ -280,12 +299,7 @@ export const useGuildStore = create<GuildState>((set, get) => ({
         return;
       }
 
-      const first = guilds[0] as {
-        id?: unknown;
-        name?: unknown;
-        icon?: unknown;
-        icon_url?: unknown;
-      };
+      const first = installed[0];
       const iconHash = typeof first.icon === "string" ? first.icon : null;
       const fallbackIcon =
         typeof first.icon_url === "string" ? first.icon_url : null;

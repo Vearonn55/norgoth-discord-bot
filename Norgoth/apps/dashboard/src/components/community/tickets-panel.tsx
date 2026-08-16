@@ -18,7 +18,10 @@ import { RoleMultiPicker } from "@/components/ui/role-multi-picker";
 import { FeatureConfigurationModal } from "@/components/ui/feature-modal";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { TranscriptConversation } from "@/components/tickets/transcript-conversation";
-import { EmbedDraftCreator } from "@/components/embed-messages/embed-draft-creator";
+import {
+  EmbedDraftCreator,
+  type EmbedDraftValue,
+} from "@/components/embed-messages/embed-draft-creator";
 import { TicketPanelPreview } from "@/components/community/ticket-panel-preview";
 import { MessageSourceToggle } from "@/components/discord/message-source-toggle";
 import { RichMessageEditor } from "@/components/editors/rich-message-editor";
@@ -74,6 +77,7 @@ export function TicketsPanel() {
     useState<EmbedSourceMode>("NONE");
   const [draftSearch, setDraftSearch] = useState("");
   const [creatorKey, setCreatorKey] = useState(0);
+  const [createDraft, setCreateDraft] = useState<EmbedDraftValue | null>(null);
 
   useEffect(() => {
     if (!guildId) return;
@@ -434,9 +438,13 @@ export function TicketsPanel() {
           (editingPanel.message_source === "text" &&
             !editingPanel.text_content.trim())
         }
+        scrollable={false}
+        dialogClassName="norgoth-embed-create-modal"
+        bodyClassName="norgoth-embed-create-modal-body"
       >
         {editingPanel ? (
-          <div className="d-flex flex-column gap-3">
+          <div className="row g-4 align-items-start norgoth-embed-draft-creator">
+            <div className="col-12 col-lg-7 norgoth-embed-creator-editor d-flex flex-column gap-3">
             <CRow className="g-3">
               <CCol md={6}>
                 <CFormLabel>{d.panelName}</CFormLabel>
@@ -646,8 +654,10 @@ export function TicketsPanel() {
                       channels={channels}
                       mode="create"
                       compact
+                      hidePreview
                       createLabel={d.saveDraft}
                       cancelLabel={d.back}
+                      onDraftChange={setCreateDraft}
                       onCancel={() =>
                         setEmbedSourceMode(
                           editingPanel.embed_message_id
@@ -670,40 +680,51 @@ export function TicketsPanel() {
               )}
             </div>
 
-            {editingPanel.message_source === "text" ||
-            embedSourceMode !== "CREATE_NEW" ? (
+            </div>
+
+            <div className="col-12 col-lg-5 norgoth-embed-creator-preview">
               <TicketPanelPreview
                 mode={editingPanel.message_source}
                 content={
                   editingPanel.message_source === "text"
                     ? editingPanel.text_content
-                    : selectedDraft?.content
+                    : embedSourceMode === "CREATE_NEW"
+                      ? createDraft?.content
+                      : selectedDraft?.content
                 }
                 embed={
                   editingPanel.message_source === "embed"
-                    ? selectedDraft?.embed_json
+                    ? embedSourceMode === "CREATE_NEW"
+                      ? (createDraft?.embed ?? null)
+                      : (selectedDraft?.embed_json ?? null)
                     : null
                 }
                 buttonLabel={editingPanel.button_label}
                 embedLoading={
                   editingPanel.message_source === "embed" &&
+                  embedSourceMode !== "CREATE_NEW" &&
                   embedLoading &&
                   Boolean(editingPanel.embed_message_id)
                 }
                 embedMissing={
-                  editingPanel.message_source === "embed" && embedMissing
+                  editingPanel.message_source === "embed" &&
+                  embedSourceMode !== "CREATE_NEW" &&
+                  embedMissing
                 }
                 noDraft={
                   editingPanel.message_source === "embed" &&
+                  embedSourceMode !== "CREATE_NEW" &&
                   !editingPanel.embed_message_id
                 }
               />
-            ) : null}
+            </div>
 
             {editingPanel.channel_id ? null : (
-              <CAlert color="secondary" className="mb-0 py-2">
-                {d.chooseChannelBeforePublish}
-              </CAlert>
+              <div className="col-12">
+                <CAlert color="secondary" className="mb-0 py-2">
+                  {d.chooseChannelBeforePublish}
+                </CAlert>
+              </div>
             )}
           </div>
         ) : null}

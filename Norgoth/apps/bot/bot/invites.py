@@ -11,6 +11,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 import discord
+import httpx
 from discord import app_commands
 from discord.ext import commands
 
@@ -30,6 +31,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger("norgoth.bot.invites")
 
 RECENT_JOINS_CAP = 200
+TOMBSTONE_TTL_SECONDS = 600
 
 
 def invite_members_key(guild_id: int | str) -> str:
@@ -44,11 +46,47 @@ def invite_recent_key(guild_id: int | str) -> str:
     return f"norgoth:guild:{guild_id}:invites:recent"
 
 
+def invite_tombstone_key(guild_id: int | str, code: str) -> str:
+    return f"norgoth:guild:{guild_id}:invites:tombstone:{code}"
+
+
+def resolve_invite_delta(
+    previous: dict[str, int],
+    current: dict[str, int],
+) -> tuple[str | None, str]:
+    """Pick the invite code that explains a join, or an honest fallback.
+
+    Returns ``(code, attribution)`` where attribution is one of
+    ``attributed``, ``vanity``, ``deleted``, ``ambiguous``, ``unavailable``,
+    ``unknown``.
+    """
+
+    increased = [
+        code for code, uses in current.items() if uses > previous.get(code, 0)
+    ]
+    vanished = [code for code in previous if code not in current]
+    if len(increased) > 1 or (not increased and len(vanished) > 1):
+        return None, "ambiguous"
+    if len(increased) == 1:
+        code = increased[0]
+        if code == "vanity":
+            return "vanity", "vanity"
+        return code, "attributed"
+    if len(vanished) == 1:
+        code = vanished[0]
+        if code == "vanity":
+            return "vanity", "vanity"
+        return code, "deleted"
+    return None, "unknown"
+
+
 class InvitesCog(commands.Cog):
     def __init__(self, bot: "NorgothBot") -> None:
         self.bot = bot
         # code -> uses per guild; "vanity" is tracked as a pseudo-code.
         self._invite_cache: dict[int, dict[str, int]] = {}
+        # code -> (inviter_id, inviter_name) captured at create / list time.
+        self._invite_inviters: dict[int, dict[str, tuple[str | None, str | None]]] = {}
         self._guild_locks: dict[int, asyncio.Lock] = {}
         # Joins already attributed this session (guild_id, member_id).
         self._attributed: dict[tuple[int, int], tuple[str | None, str | None]] = {}
@@ -79,6 +117,12 @@ class InvitesCog(commands.Cog):
             return None
 
         uses = {invite.code: invite.uses or 0 for invite in invites}
+        inviters = self._invite_inviters.setdefault(guild.id, {})
+        for invite in invites:
+            if invite.inviter:
+                inviters[invite.code] = (str(invite.inviter.id), str(invite.inviter))
+            elif invite.code not in inviters:
+                inviters[invite.code] = (None, None)
 
         if "VANITY_URL" in guild.features:
             try:
@@ -112,13 +156,40 @@ class InvitesCog(commands.Cog):
 
         cache = self._invite_cache.setdefault(invite.guild.id, {})
         cache[invite.code] = invite.uses or 0
+        inviter_id = str(invite.inviter.id) if invite.inviter else None
+        inviter_name = str(invite.inviter) if invite.inviter else None
+        self._invite_inviters.setdefault(invite.guild.id, {})[invite.code] = (
+            inviter_id,
+            inviter_name,
+        )
 
     @commands.Cog.listener()
     async def on_invite_delete(self, invite: discord.Invite) -> None:
         if invite.guild is None:
             return
 
-        self._invite_cache.get(invite.guild.id, {}).pop(invite.code, None)
+        uses = self._invite_cache.get(invite.guild.id, {}).pop(invite.code, 0)
+        inviter_id, inviter_name = self._invite_inviters.get(
+            invite.guild.id, {}
+        ).pop(invite.code, (None, None))
+        if invite.inviter:
+            inviter_id = str(invite.inviter.id)
+            inviter_name = str(invite.inviter)
+        payload = json.dumps(
+            {
+                "uses": uses,
+                "inviter_id": inviter_id,
+                "inviter_name": inviter_name,
+            }
+        )
+        try:
+            await self.bot.state.redis.set(
+                invite_tombstone_key(invite.guild.id, invite.code),
+                payload,
+                ex=TOMBSTONE_TTL_SECONDS,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("Failed to persist invite tombstone")
 
     # ---- attribution ---------------------------------------------------
 
@@ -141,37 +212,52 @@ class InvitesCog(commands.Cog):
             inviter_id: str | None = None
             inviter_name: str | None = None
             code: str | None = None
+            attribution = "unavailable"
 
             current = await self.fetch_invite_uses(guild)
 
-            if current is not None:
+            if current is None:
+                attribution = "unavailable"
+            else:
                 previous = self._invite_cache.get(guild.id, {})
-
-                for invite_code, uses in current.items():
-                    if uses > previous.get(invite_code, 0):
-                        code = invite_code
-                        break
-
+                code, attribution = resolve_invite_delta(previous, current)
                 self._invite_cache[guild.id] = current
 
-                if code and code != "vanity":
-                    try:
-                        invites = await guild.invites()
-                        matched = next(
-                            (inv for inv in invites if inv.code == code),
-                            None,
-                        )
-                        if matched and matched.inviter:
-                            inviter_id = str(matched.inviter.id)
-                            inviter_name = str(matched.inviter)
-                    except discord.HTTPException:
-                        pass
+                if attribution == "deleted" and code:
+                    tombstone = await self._load_tombstone(guild.id, code)
+                    if tombstone:
+                        inviter_id = tombstone.get("inviter_id")
+                        inviter_name = tombstone.get("inviter_name")
+                        if inviter_id:
+                            attribution = "attributed"
+                elif attribution == "attributed" and code:
+                    inviter_id, inviter_name = self._invite_inviters.get(
+                        guild.id, {}
+                    ).get(code, (None, None))
+                    if not inviter_id:
+                        try:
+                            invites = await guild.invites()
+                            matched = next(
+                                (inv for inv in invites if inv.code == code),
+                                None,
+                            )
+                            if matched and matched.inviter:
+                                inviter_id = str(matched.inviter.id)
+                                inviter_name = str(matched.inviter)
+                                self._invite_inviters.setdefault(guild.id, {})[
+                                    code
+                                ] = (inviter_id, inviter_name)
+                        except discord.HTTPException:
+                            pass
+                    if not inviter_id:
+                        attribution = "unknown"
 
             await self.store_join(
                 member,
                 inviter_id=inviter_id,
                 inviter_name=inviter_name,
                 code=code,
+                attribution=attribution,
             )
 
             result = (inviter_id, code)
@@ -182,6 +268,18 @@ class InvitesCog(commands.Cog):
 
             return result
 
+    async def _load_tombstone(
+        self, guild_id: int, code: str
+    ) -> dict[str, Any] | None:
+        raw = await self.bot.state.redis.get(invite_tombstone_key(guild_id, code))
+        if not raw:
+            return None
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+        return parsed if isinstance(parsed, dict) else None
+
     async def store_join(
         self,
         member: discord.Member,
@@ -189,6 +287,7 @@ class InvitesCog(commands.Cog):
         inviter_id: str | None,
         inviter_name: str | None,
         code: str | None,
+        attribution: str = "unknown",
     ) -> dict[str, Any]:
         redis = self.bot.state.redis
         guild = member.guild
@@ -204,6 +303,7 @@ class InvitesCog(commands.Cog):
             "inviter_id": inviter_id,
             "inviter_name": inviter_name,
             "code": code,
+            "attribution": attribution,
             "rejoin": is_rejoin,
             "joined_at": now_iso(),
             "left_at": None,
@@ -237,7 +337,34 @@ class InvitesCog(commands.Cog):
                     rejoins=1 if is_rejoin else 0,
                 )
 
+        await self._ingest_invite_join(guild.id, record)
         return record
+
+    async def _ingest_invite_join(self, guild_id: int, record: dict[str, Any]) -> None:
+        base = getattr(self.bot.state, "_api_base_url", "") or ""
+        token = getattr(self.bot.state, "_bot_token", "") or ""
+        if not base or not token:
+            return
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                await client.post(
+                    f"{base}/internal/ingest/{guild_id}/invite-join",
+                    headers={
+                        "X-Norgoth-Internal-Token": token,
+                        "X-Norgoth-Bot-Token": token,
+                    },
+                    json={
+                        "member_id": record.get("member_id"),
+                        "inviter_id": record.get("inviter_id"),
+                        "code": record.get("code"),
+                        "attribution": record.get("attribution") or "unknown",
+                        "rejoin": bool(record.get("rejoin")),
+                        "joined_at": record.get("joined_at"),
+                        "inviter_name": record.get("inviter_name"),
+                    },
+                )
+        except Exception:  # noqa: BLE001
+            logger.debug("Invite join ingest failed for guild %s", guild_id, exc_info=True)
 
     async def _log_invite_event(
         self,

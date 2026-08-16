@@ -536,7 +536,7 @@ async def send_embed_message(
             await session.commit()
             raise HTTPException(
                 status_code=502,
-                detail=f"Discord rejected the message: {error}",
+                detail=_discord_send_error_code(error),
             ) from error
 
     delivery = EmbedMessageDelivery(
@@ -583,6 +583,21 @@ def _status_for_error(error: DiscordBotAPIError) -> str:
     if error.status_code == 403:
         return "permission_missing"
     return "error"
+
+
+def _discord_send_error_code(error: DiscordBotAPIError) -> str:
+    status = error.status_code
+    if status == 403:
+        return "permission_missing"
+    if status == 404:
+        return "unknown_channel"
+    if status == 400:
+        return "invalid_payload"
+    if status == 429:
+        return "rate_limited"
+    if status is None:
+        return "timeout"
+    return "bot_missing"
 
 
 @router.post("/guilds/{guild_id}/embed-messages/{message_id}/resync")

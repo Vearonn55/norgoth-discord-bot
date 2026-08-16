@@ -48,6 +48,13 @@ def honeypot_triggers_key(guild_id: int | str) -> str:
     return f"norgoth:guild:{guild_id}:honeypot:triggers"
 
 
+def honeypot_warning_lock_key(guild_id: int | str) -> str:
+    return f"norgoth:guild:{guild_id}:honeypot:warning-lock"
+
+
+WARNING_LOCK_TTL_SECONDS = 30
+
+
 class HoneypotCog(commands.Cog):
     def __init__(self, bot: "NorgothBot") -> None:
         self.bot = bot
@@ -58,11 +65,22 @@ class HoneypotCog(commands.Cog):
 
     async def get_config(self, guild_id: int) -> dict[str, Any]:
         stored = await self.bot.state.get_json(honeypot_key(guild_id))
+        if not stored:
+            stored = await self.bot.state._hydrate_feature_from_api(
+                guild_id, "honeypot"
+            )
+            if stored:
+                await self.bot.state.set_json(honeypot_key(guild_id), stored)
         return {**DEFAULT_CONFIG, **stored}
 
     async def save_config(self, guild_id: int, config: dict[str, Any]) -> None:
         config["updated_at"] = now_iso()
-        await self.bot.state.set_json(honeypot_key(guild_id), config)
+        await self.bot.state.persist_feature_config(
+            guild_id,
+            "honeypot",
+            config,
+            enabled=bool(config.get("enabled")),
+        )
 
     def is_exempt(self, member: discord.Member, config: dict[str, Any]) -> bool:
         if member.id == member.guild.owner_id:
@@ -94,11 +112,14 @@ class HoneypotCog(commands.Cog):
         if not config.get("post_pinned_warning"):
             return config
 
-        trap_ids = [str(cid) for cid in (config.get("trap_channel_ids") or []) if str(cid).isdigit()]
+        trap_ids = [
+            str(cid)
+            for cid in (config.get("trap_channel_ids") or [])
+            if str(cid).isdigit()
+        ]
         if not trap_ids:
             return config
 
-        # Prefer the first trap channel for the pinned warning.
         channel = guild.get_channel(int(trap_ids[0]))
         if not isinstance(channel, discord.TextChannel):
             return config
@@ -111,15 +132,42 @@ class HoneypotCog(commands.Cog):
         if not (perms.send_messages and perms.manage_messages):
             return config
 
+        redis = self.bot.state.redis
+        acquired = await redis.set(
+            honeypot_warning_lock_key(guild.id),
+            "1",
+            nx=True,
+            ex=WARNING_LOCK_TTL_SECONDS,
+        )
+        if not acquired:
+            return config
+
         warning_message_id = config.get("warning_message_id")
         warning_channel_id = config.get("warning_channel_id")
+        force_repost = bool(config.get("force_warning_repost"))
+
+        if (
+            warning_channel_id
+            and str(warning_channel_id) != str(channel.id)
+        ):
+            old_channel = guild.get_channel(int(warning_channel_id))
+            if isinstance(old_channel, discord.TextChannel) and warning_message_id:
+                try:
+                    old_message = await old_channel.fetch_message(
+                        int(warning_message_id)
+                    )
+                    if old_message.pinned:
+                        await old_message.unpin(reason="Honeypot warning moved")
+                    await old_message.delete()
+                except (discord.NotFound, discord.HTTPException, ValueError):
+                    pass
+            warning_message_id = None
+            config["warning_message_id"] = None
+            config["warning_channel_id"] = None
+            force_repost = True
 
         existing: discord.Message | None = None
-        if (
-            warning_message_id
-            and warning_channel_id
-            and str(warning_channel_id) == str(channel.id)
-        ):
+        if warning_message_id:
             try:
                 existing = await channel.fetch_message(int(warning_message_id))
             except (discord.NotFound, discord.HTTPException, ValueError):
@@ -137,14 +185,28 @@ class HoneypotCog(commands.Cog):
                     guild.id,
                     channel.id,
                 )
-                # Fall through to recreate below when edit fails.
             else:
                 if not existing.pinned:
                     try:
                         await existing.pin(reason="Norgoth honeypot warning")
                     except discord.HTTPException:
                         pass
+                if force_repost:
+                    config["force_warning_repost"] = False
+                    await self.save_config(guild.id, config)
+                logger.info(
+                    "honeypot warning skip-if-exists guild=%s channel=%s",
+                    guild.id,
+                    channel.id,
+                )
                 return config
+
+        if warning_message_id and existing is None and not force_repost:
+            logger.info(
+                "honeypot warning remains absent until Save/Repair guild=%s",
+                guild.id,
+            )
+            return config
 
         try:
             message = await channel.send(content=content, embed=embed)
@@ -159,50 +221,13 @@ class HoneypotCog(commands.Cog):
 
         config["warning_message_id"] = str(message.id)
         config["warning_channel_id"] = str(channel.id)
-        await self.save_config(guild.id, config)
-        return config
-
-    async def process_create_channel_request(
-        self,
-        guild: discord.Guild,
-        config: dict[str, Any],
-    ) -> dict[str, Any]:
-        request = config.get("create_channel_request")
-        if not isinstance(request, dict):
-            return config
-
-        name = str(request.get("name") or "honeypot").strip()[:100] or "honeypot"
-        me = guild.me
-        if me is None or not me.guild_permissions.manage_channels:
-            logger.warning(
-                "Cannot create honeypot channel in guild %s: missing Manage Channels",
-                guild.id,
-            )
-            return config
-
-        try:
-            channel = await guild.create_text_channel(
-                name=name,
-                reason="Norgoth honeypot trap channel",
-            )
-        except discord.HTTPException:
-            logger.exception("Failed to create honeypot channel in guild %s", guild.id)
-            return config
-
-        trap_ids = [str(cid) for cid in (config.get("trap_channel_ids") or [])]
-        channel_id = str(channel.id)
-        if channel_id not in trap_ids:
-            trap_ids.append(channel_id)
-
-        config["trap_channel_ids"] = trap_ids
-        config.pop("create_channel_request", None)
-        config = await self.ensure_pinned_warning(guild, config)
+        config["force_warning_repost"] = False
         await self.save_config(guild.id, config)
         logger.info(
-            "Created honeypot channel #%s (%s) in guild %s",
-            channel.name,
-            channel.id,
+            "honeypot warning posted-once guild=%s channel=%s message=%s",
             guild.id,
+            channel.id,
+            message.id,
         )
         return config
 
@@ -447,9 +472,6 @@ class HoneypotCog(commands.Cog):
                     continue
 
                 config = await self.get_config(guild.id)
-                if config.get("create_channel_request"):
-                    config = await self.process_create_channel_request(guild, config)
-
                 if config.get("enabled") and config.get("post_pinned_warning"):
                     await self.ensure_pinned_warning(guild, config)
             except Exception:  # noqa: BLE001

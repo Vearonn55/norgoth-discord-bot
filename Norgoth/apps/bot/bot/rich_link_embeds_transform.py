@@ -23,7 +23,7 @@ ALLOWED_REWRITE_HOSTS: dict[str, str] = {
     "twitter": "fxtwitter.com",
     "bluesky": "bskx.app",
     "tiktok": "vxtiktok.com",
-    "instagram": "ddinstagram.com",
+    "instagram": "instagram7.com",
     "reddit": "vxreddit.com",
     "pixiv": "phixiv.net",
     "youtube_shorts": "youtu.be",
@@ -57,7 +57,7 @@ PLATFORM_RULES: tuple[PlatformRule, ...] = (
     PlatformRule(
         key="instagram",
         exact_hosts=("instagram.com", "www.instagram.com"),
-        default_rewrite_host="ddinstagram.com",
+        default_rewrite_host="instagram7.com",
     ),
     PlatformRule(
         key="reddit",
@@ -219,7 +219,16 @@ def rewrite_url(
             new_host = candidate
         if not new_host:
             return None
-        return _build_rewritten(rule_key=rule.key, parsed=parsed, new_host=new_host)
+        rewritten = _build_rewritten(
+            rule_key=rule.key, parsed=parsed, new_host=new_host
+        )
+        if not rewritten or rewritten == url:
+            return None
+        if _normalize_host(urlparse(rewritten).hostname or "") == _normalize_host(
+            host
+        ):
+            return None
+        return rewritten
     return None
 
 

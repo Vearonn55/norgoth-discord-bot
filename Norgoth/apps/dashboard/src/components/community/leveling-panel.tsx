@@ -37,6 +37,7 @@ import { useFirstGuild } from "@/lib/use-first-guild";
 import { useModulesStore } from "@/stores/modules-store";
 import {
   useLevelingStore,
+  type LevelingCard,
   type LevelingConfig,
   XP_PER_MESSAGE_MIN,
   XP_PER_MESSAGE_MAX,
@@ -47,6 +48,7 @@ import {
   LEVEL_THRESHOLD_SCALE_MIN,
   LEVEL_THRESHOLD_SCALE_MAX,
   xpForLevel,
+  levelingCardDirty,
 } from "@/stores/leveling-store";
 
 export function LevelingPanel() {
@@ -57,8 +59,10 @@ export function LevelingPanel() {
   const { guildId, resources, loading, error, reload } = useFirstGuild();
 
   const config = useLevelingStore((s) => s.config);
+  const serverConfig = useLevelingStore((s) => s.serverConfig);
   const leaderboard = useLevelingStore((s) => s.leaderboard);
-  const saving = useLevelingStore((s) => s.saving);
+  const savingCard = useLevelingStore((s) => s.savingCard);
+  const lastSavedCard = useLevelingStore((s) => s.lastSavedCard);
   const feedback = useLevelingStore((s) => s.feedback);
   const feedbackIsError = useLevelingStore((s) => s.feedbackIsError);
   const newRewardLevel = useLevelingStore((s) => s.newRewardLevel);
@@ -73,7 +77,7 @@ export function LevelingPanel() {
   const setNewRewardRoleId = useLevelingStore((s) => s.setNewRewardRoleId);
   const setFeedback = useLevelingStore((s) => s.setFeedback);
   const loadData = useLevelingStore((s) => s.load);
-  const saveStore = useLevelingStore((s) => s.save);
+  const saveCard = useLevelingStore((s) => s.saveCard);
   const addReward = useLevelingStore((s) => s.addReward);
 
   const modules = useModulesStore((s) => s.modules);
@@ -93,9 +97,17 @@ export function LevelingPanel() {
     void loadModules(guildId);
   }, [guildId, loadData, loadModules]);
 
-  async function save() {
+  async function save(card: LevelingCard) {
     if (!guildId) return;
-    await saveStore(guildId);
+    await saveCard(guildId, card);
+  }
+
+  function cardSaveDisabled(card: LevelingCard) {
+    return (
+      !levelingEnabled ||
+      savingCard !== null ||
+      !levelingCardDirty(config, serverConfig, card)
+    );
   }
 
   const channels = resources?.channels ?? [];
@@ -155,6 +167,30 @@ export function LevelingPanel() {
     setNewRewardLevel(level);
     setNewRewardRoleId(roleId);
     setFeedback(formatDict(d.editingReward, { level }), false);
+  }
+
+  function renderCardSave(card: LevelingCard, label: string) {
+    const busy = savingCard === card;
+    return (
+      <div className="d-flex justify-content-end align-items-center gap-3 flex-wrap">
+        {lastSavedCard === card && feedback ? (
+          <CAlert
+            color={feedbackIsError ? "danger" : "success"}
+            className="mb-0 py-2 px-3 small"
+          >
+            {feedback}
+          </CAlert>
+        ) : null}
+        <Button
+          variant="primary"
+          onClick={() => void save(card)}
+          disabled={cardSaveDisabled(card)}
+          aria-busy={busy || undefined}
+        >
+          {busy ? d.saving : label}
+        </Button>
+      </div>
+    );
   }
 
   const filteredRewards = useMemo(() => {
@@ -456,6 +492,8 @@ export function LevelingPanel() {
               </p>
             </CCol>
           </CRow>
+
+          {renderCardSave("xp", d.saveXpConfig)}
         </div>
       </Card>
 
@@ -561,6 +599,7 @@ export function LevelingPanel() {
               />
             }
           />
+          {renderCardSave("announce", d.saveLevelUpMessage)}
         </div>
       </Card>
 
@@ -704,24 +743,7 @@ export function LevelingPanel() {
             </div>
           </div>
 
-          <div className="d-flex align-items-center gap-3 flex-wrap">
-            <Button
-              variant="primary"
-              onClick={() => void save()}
-              disabled={saving || !levelingEnabled}
-            >
-              {saving ? d.saving : d.saveLeveling}
-            </Button>
-
-            {feedback ? (
-              <CAlert
-                color={feedbackIsError ? "danger" : "success"}
-                className="mb-0 py-2 px-3 small"
-              >
-                {feedback}
-              </CAlert>
-            ) : null}
-          </div>
+          {renderCardSave("rewards", d.saveRoleRewards)}
         </div>
       </Card>
 

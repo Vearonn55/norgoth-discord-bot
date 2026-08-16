@@ -8,12 +8,13 @@ and are rolled up here periodically.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -23,6 +24,7 @@ from app.models.runtime_events import (
     AnalyticsDaily,
     HoneypotTrigger,
     InviteCounter,
+    InviteJoinEvent,
     MemberXp,
     ModerationLogEntry,
     RaidIncident,
@@ -177,6 +179,101 @@ async def ingest_invite_event(
         "leaves": counter.leaves,
         "rejoins": counter.rejoins,
     }
+
+
+class InviteJoinBody(BaseModel):
+    member_id: str = Field(pattern=SNOWFLAKE)
+    inviter_id: Optional[str] = Field(default=None, pattern=SNOWFLAKE)
+    code: Optional[str] = Field(default=None, max_length=64)
+    attribution: str = Field(default="unknown", max_length=32)
+    rejoin: bool = False
+    joined_at: Optional[datetime] = None
+    inviter_name: Optional[str] = Field(default=None, max_length=100)
+
+
+@router.post("/{guild_id}/invite-join")
+async def ingest_invite_join(
+    body: InviteJoinBody,
+    guild_id: str = Path(pattern=SNOWFLAKE),
+    session: AsyncSession = Depends(get_database_session),
+) -> dict[str, Any]:
+    event = InviteJoinEvent(
+        guild_id=guild_id,
+        member_id=body.member_id,
+        inviter_id=body.inviter_id,
+        code=body.code,
+        attribution=body.attribution,
+        rejoin=body.rejoin,
+        joined_at=body.joined_at or datetime.now(timezone.utc),
+    )
+    session.add(event)
+    if body.inviter_id and body.attribution == "attributed":
+        counter = (
+            await session.execute(
+                select(InviteCounter)
+                .where(
+                    InviteCounter.guild_id == guild_id,
+                    InviteCounter.inviter_id == body.inviter_id,
+                )
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if counter is None:
+            counter = InviteCounter(
+                guild_id=guild_id, inviter_id=body.inviter_id
+            )
+            session.add(counter)
+        if body.inviter_name is not None:
+            counter.name = body.inviter_name
+        counter.joins += 1
+        if body.rejoin:
+            counter.rejoins += 1
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        existing = (
+            await session.execute(
+                select(InviteJoinEvent).where(
+                    InviteJoinEvent.guild_id == guild_id,
+                    InviteJoinEvent.member_id == body.member_id,
+                    InviteJoinEvent.joined_at == (body.joined_at or event.joined_at),
+                )
+            )
+        ).scalar_one_or_none()
+        return {
+            "id": str(existing.id) if existing is not None else "",
+            "attribution": existing.attribution if existing is not None else body.attribution,
+            "duplicate": True,
+        }
+    return {"id": str(event.id), "attribution": event.attribution}
+
+
+class XpClearBody(BaseModel):
+    user_id: str = Field(pattern=SNOWFLAKE)
+
+
+@router.post("/{guild_id}/xp-clear")
+async def ingest_xp_clear(
+    body: XpClearBody,
+    guild_id: str = Path(pattern=SNOWFLAKE),
+    session: AsyncSession = Depends(get_database_session),
+) -> dict[str, Any]:
+    row = (
+        await session.execute(
+            select(MemberXp)
+            .where(MemberXp.guild_id == guild_id, MemberXp.user_id == body.user_id)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    deleted = False
+    if row is not None:
+        await session.delete(row)
+        await session.commit()
+        deleted = True
+    else:
+        await session.commit()
+    return {"user_id": body.user_id, "deleted": deleted}
 
 
 class XpRollupBody(BaseModel):

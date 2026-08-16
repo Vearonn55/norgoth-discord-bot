@@ -37,6 +37,10 @@ type FeatureConfigurationModalProps = {
   size?: "sm" | "lg" | "xl";
   /** Replaces the default footer actions entirely. */
   footer?: ReactNode;
+  /** CoreUI `modal-dialog-scrollable`. Disable for split-pane sticky preview. */
+  scrollable?: boolean;
+  dialogClassName?: string;
+  bodyClassName?: string;
 };
 
 /**
@@ -63,6 +67,9 @@ export function FeatureConfigurationModal({
   saveDisabled = false,
   size = "lg",
   footer,
+  scrollable = true,
+  dialogClassName,
+  bodyClassName,
 }: FeatureConfigurationModalProps) {
   const dict = useLocaleDict();
   const resolvedSave = saveLabel ?? dict.common.save;
@@ -94,8 +101,9 @@ export function FeatureConfigurationModal({
       onClose={onClose}
       size={size}
       alignment="center"
-      scrollable
+      scrollable={scrollable}
       backdrop
+      className={dialogClassName}
     >
       <CModalHeader style={accent ? { borderBottomColor: accent } : undefined}>
         <CModalTitle className="d-flex align-items-center gap-2">
@@ -109,7 +117,7 @@ export function FeatureConfigurationModal({
           {title}
         </CModalTitle>
       </CModalHeader>
-      <CModalBody>
+      <CModalBody className={bodyClassName}>
         {description ? (
           <p className="text-body-secondary small mb-3">{description}</p>
         ) : null}

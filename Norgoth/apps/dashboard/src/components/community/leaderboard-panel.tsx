@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { CAlert, CSpinner } from "@coreui/react";
 import { cilBarChart, cilStar } from "@coreui/icons";
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,26 +16,29 @@ import {
   SegmentedPanel,
 } from "@/components/ui/segmented-control";
 import { formatDict, useLocaleDict } from "@/lib/locale-dict";
+import {
+  parseLeaderboardMetric,
+} from "@/lib/leaderboard-url-state";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import {
   useLevelingStore,
   type LeaderboardMetric,
 } from "@/stores/leveling-store";
 
-function isMetricId(value: string | null): value is LeaderboardMetric {
-  return value === "text" || value === "voice" || value === "net_upvotes";
-}
-
 export function LeaderboardPanel() {
   const dict = useLocaleDict();
   const d = dict.leaderboardPage;
   const params = useParams();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const router = useRouter();
   const lang = typeof params?.lang === "string" ? params.lang : "en";
   const { guildId, loading, error, reload } = useFirstGuild();
 
   const leaderboard = useLevelingStore((s) => s.leaderboard);
-  const leaderboardMetric = useLevelingStore((s) => s.leaderboardMetric);
+  const leaderboardMetric = parseLeaderboardMetric(searchParams.get("metric"));
+  const leaderboardLoading = useLevelingStore((s) => s.leaderboardLoading);
+  const storeMetric = useLevelingStore((s) => s.leaderboardMetric);
   const leaderboardSearch = useLevelingStore((s) => s.leaderboardSearch);
   const leaderboardPage = useLevelingStore((s) => s.leaderboardPage);
   const setLeaderboardSearch = useLevelingStore((s) => s.setLeaderboardSearch);
@@ -55,13 +58,12 @@ export function LeaderboardPanel() {
     [d.tabText, d.tabVoice, d.tabNetUpvotes]
   );
 
-  // Deep-link from global search: ?metric=text|voice|net_upvotes
+  // URL is the source of truth so refresh / back / forward keep the tab.
   useEffect(() => {
-    const metric = searchParams.get("metric");
-    if (isMetricId(metric) && metric !== leaderboardMetric) {
-      setLeaderboardMetric(metric);
+    if (storeMetric !== leaderboardMetric) {
+      setLeaderboardMetric(leaderboardMetric);
     }
-  }, [leaderboardMetric, searchParams, setLeaderboardMetric]);
+  }, [leaderboardMetric, setLeaderboardMetric, storeMetric]);
 
   useEffect(() => {
     if (!guildId) return;
@@ -76,9 +78,15 @@ export function LeaderboardPanel() {
     );
   }, [leaderboard, leaderboardSearch]);
 
-  const onMetricChange = (metric: LeaderboardMetric) => {
-    setLeaderboardMetric(metric);
-  };
+  const onMetricChange = useCallback(
+    (metric: LeaderboardMetric) => {
+      setLeaderboardMetric(metric);
+      const next = new URLSearchParams(searchParams.toString());
+      next.set("metric", metric);
+      router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+    },
+    [pathname, router, searchParams, setLeaderboardMetric]
+  );
 
   if (loading) {
     return (
@@ -176,11 +184,12 @@ export function LeaderboardPanel() {
               <Button
                 variant="secondary"
                 size="sm"
+                disabled={leaderboardLoading}
                 onClick={() =>
                   guildId && void loadLeaderboard(guildId, leaderboardMetric)
                 }
               >
-                {d.refresh}
+                {leaderboardLoading ? d.loading : d.refresh}
               </Button>
             </div>
 

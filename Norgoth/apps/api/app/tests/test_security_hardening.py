@@ -157,6 +157,11 @@ def test_csrf_rejects_cross_origin_cookie_post() -> None:
         headers={"Origin": "https://www.norbot.io"},
     )
     assert allowed.status_code == 200
+    via_referer = client.post(
+        "/campaigns",
+        headers={"Referer": "https://www.norbot.io/en/community/feed-channels"},
+    )
+    assert via_referer.status_code == 200
 
 
 def test_spoofed_forwarded_for_ignored_from_untrusted_peer() -> None:

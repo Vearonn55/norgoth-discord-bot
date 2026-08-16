@@ -61,12 +61,10 @@ export function HoneypotPanel() {
   const load = useHoneypotStore((s) => s.load);
   const save = useHoneypotStore((s) => s.save);
   const loadTriggers = useHoneypotStore((s) => s.loadTriggers);
-  const requestCreateChannel = useHoneypotStore((s) => s.requestCreateChannel);
   const embedMessages = useEmbedMessagesStore((s) => s.messages);
   const loadEmbedMessages = useEmbedMessagesStore((s) => s.load);
   const honeypotInfo = useFeatureInfo("honeypot");
   const [draft, setDraft] = useState<HoneypotConfig | null>(null);
-  const [newChannelName, setNewChannelName] = useState("honeypot");
   const [activeModal, setActiveModal] = useState<HoneypotFeature | null>(null);
   const [editorSeed, setEditorSeed] = useState(0);
   const [embedSourceMode, setEmbedSourceMode] =
@@ -487,25 +485,6 @@ export function HoneypotPanel() {
                 );
               })}
             </ul>
-          </div>
-          <div className="d-flex gap-2 align-items-end">
-            <div className="flex-grow-1">
-              <CFormLabel>{d.createHoneypotChannel}</CFormLabel>
-              <CFormInput
-                value={newChannelName}
-                onChange={(e) => setNewChannelName(e.target.value)}
-              />
-            </div>
-            <Button
-              variant="secondary"
-              onClick={() =>
-                void requestCreateChannel(guildId, newChannelName).then(() =>
-                  load(guildId)
-                )
-              }
-            >
-              {d.create}
-            </Button>
           </div>
         </div>
       </FeatureConfigurationModal>

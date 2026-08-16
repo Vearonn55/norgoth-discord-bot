@@ -192,9 +192,10 @@ type VerificationState = {
     guildId: string,
     patch: VerificationStatePatch
   ) => Promise<{ ok: boolean; error?: string }>;
-  publishPanel: (guildId: string) => Promise<{ ok: boolean; error?: string }>;
+  publishPanel: (guildId: string, lang?: string) => Promise<{ ok: boolean; error?: string }>;
   saveAndPublish: (
-    guildId: string
+    guildId: string,
+    lang?: string
   ) => Promise<{ ok: boolean; error?: string }>;
   copyVerifyLink: (url: string) => Promise<void>;
   loadLogs: (guildId: string) => Promise<void>;
@@ -472,7 +473,7 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
       return { ok: false, error: "Could not reach the NorBot API." };
     }
   },
-  publishPanel: async (guildId) => {
+  publishPanel: async (guildId, lang = "en") => {
     const { config } = get();
 
     if (!canPublishOrCopy(config)) {
@@ -493,6 +494,7 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
           credentials: "include",
           body: JSON.stringify({
             channel_id: config.verification_channel_id,
+            lang,
           }),
         }
       );
@@ -520,10 +522,10 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
       set({ publishing: false });
     }
   },
-  saveAndPublish: async (guildId) => {
+  saveAndPublish: async (guildId, lang = "en") => {
     const saved = await get().save(guildId);
     if (!saved.ok) return saved;
-    return get().publishPanel(guildId);
+    return get().publishPanel(guildId, lang);
   },
   copyVerifyLink: async (url) => {
     if (!canPublishOrCopy(get().config)) {

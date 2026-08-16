@@ -44,6 +44,7 @@ class PublishVerificationPanelRequest(BaseModel):
         ),
         max_length=2000,
     )
+    lang: str = Field(default="en", max_length=8)
 
 
 @router.post("/guilds/{guild_id}/verification/publish-panel")
@@ -131,7 +132,10 @@ async def publish_verification_panel(
         or "http://127.0.0.1:8000"
     ).rstrip("/")
 
-    verify_url = f"{api_base}/api/v1/oauth/discord/authorize/{guild_id}"
+    locale = payload.lang if payload.lang in {"en", "tr"} else "en"
+    verify_url = (
+        f"{api_base}/api/v1/oauth/discord/authorize/{guild_id}?lang={locale}"
+    )
 
     message_payload = {
         "embeds": [

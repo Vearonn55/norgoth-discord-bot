@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { CNav, CNavItem, CNavLink } from "@coreui/react";
+import { useParams } from "next/navigation";
 import { FeatureConfigurationModal } from "@/components/ui/feature-modal";
 import { VerificationSettingsForm } from "@/components/verification/verification-settings-form";
 import { HighRiskServersSection } from "@/components/verification/high-risk-servers-section";
@@ -26,6 +27,8 @@ export function VerificationSettingsModal({
   onClose,
 }: VerificationSettingsModalProps) {
   const dict = useLocaleDict();
+  const params = useParams();
+  const lang = String(params?.lang || "en");
   const d = dict.verificationPage;
   const { guildId } = useFirstGuild();
   const [section, setSection] = useState<Section>("general");
@@ -68,7 +71,7 @@ export function VerificationSettingsModal({
         section === "general"
           ? async () => {
               if (!guildId || busy) return;
-              const result = await saveAndPublish(guildId);
+              const result = await saveAndPublish(guildId, lang);
               if (!result.ok) return;
               await loadConfig(guildId);
               onClose();

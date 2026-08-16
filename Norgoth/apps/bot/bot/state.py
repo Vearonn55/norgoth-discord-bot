@@ -214,6 +214,47 @@ class BotState:
             )
             return {}
 
+    async def persist_feature_config(
+        self,
+        guild_id: int,
+        feature_key: str,
+        config: dict[str, Any],
+        *,
+        enabled: bool | None = None,
+    ) -> None:
+        """Persist a feature snapshot to Postgres via the API, then Redis."""
+
+        await self.set_json(f"norgoth:guild:{guild_id}:{feature_key}", config)
+        if not self._api_base_url or not self._bot_token:
+            return
+        try:
+            payload: dict[str, Any] = {"config": config}
+            if enabled is not None:
+                payload["enabled"] = enabled
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.put(
+                    f"{self._api_base_url}/internal/config/{guild_id}/{feature_key}",
+                    headers={
+                        "X-Norgoth-Internal-Token": self._bot_token,
+                        "X-Norgoth-Bot-Token": self._bot_token,
+                    },
+                    json=payload,
+                )
+            if response.status_code >= 400:
+                logger.warning(
+                    "Config persist for %s/%s returned HTTP %s: %s",
+                    guild_id,
+                    feature_key,
+                    response.status_code,
+                    response.text[:200],
+                )
+        except httpx.HTTPError:
+            logger.exception(
+                "Config persist failed for guild %s feature %s",
+                guild_id,
+                feature_key,
+            )
+
     async def get_automation_config(self, guild_id: int) -> dict[str, Any]:
         raw = await self._redis.get(automation_key(guild_id))
 

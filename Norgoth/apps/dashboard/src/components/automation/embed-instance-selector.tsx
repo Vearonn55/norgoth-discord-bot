@@ -1,23 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { useParams } from "next/navigation";
 import { CFormLabel, CFormSelect } from "@coreui/react";
-import { Badge } from "@/components/ui/badge";
-import { formatDateTime } from "@/lib/datetime";
 import { useLocaleDict } from "@/lib/locale-dict";
 import {
   useEmbedMessagesStore,
   type EmbedMessage,
-  type EmbedMessageDelivery,
 } from "@/stores/embed-messages-store";
 
 type EmbedInstanceSelectorProps = {
   guildId: string;
   channelNames: Map<string, string>;
   embedMessageId: string | null | undefined;
-  embedDeliveryId: string | null | undefined;
+  channelId: string | null | undefined;
   onChange: (
     embedMessageId: string | null,
     embedDeliveryId: string | null,
@@ -25,22 +20,15 @@ type EmbedInstanceSelectorProps = {
   ) => void;
 };
 
-/** A published Embed Message delivery is selectable when it is live in Discord. */
-function isSelectableInstance(delivery: EmbedMessageDelivery): boolean {
-  return Boolean(delivery.discord_message_id);
-}
-
 export function EmbedInstanceSelector({
   guildId,
   channelNames,
   embedMessageId,
-  embedDeliveryId,
+  channelId,
   onChange,
 }: EmbedInstanceSelectorProps) {
   const dict = useLocaleDict();
   const d = dict.roleMenusPage;
-  const params = useParams();
-  const lang = String(params?.lang || "en");
 
   const messages = useEmbedMessagesStore((s) => s.messages);
   const loading = useEmbedMessagesStore((s) => s.loading);
@@ -65,19 +53,10 @@ export function EmbedInstanceSelector({
     );
   }, [messages, search]);
 
-  const instances = useMemo(
-    () => (selectedMessage?.deliveries ?? []).filter(isSelectableInstance),
-    [selectedMessage]
+  const channelOptions = useMemo(
+    () => Array.from(channelNames.entries()),
+    [channelNames]
   );
-
-  function instanceLabel(delivery: EmbedMessageDelivery): string {
-    const channel = channelNames.get(delivery.channel_id) ?? delivery.channel_id;
-    const when = formatDateTime(
-      delivery.published_at ?? delivery.created_at,
-      lang
-    );
-    return `#${channel} · ${when}`;
-  }
 
   return (
     <div className="d-flex flex-column gap-3">
@@ -93,7 +72,7 @@ export function EmbedInstanceSelector({
           value={embedMessageId ?? ""}
           onChange={(event) => {
             const id = event.target.value || null;
-            onChange(id, null, null);
+            onChange(id, null, channelId ?? null);
           }}
         >
           <option value="">{d.selectEmbedMessage}</option>
@@ -107,49 +86,30 @@ export function EmbedInstanceSelector({
         {loading ? (
           <p className="small text-body-secondary mt-1 mb-0">{d.loadingShort}</p>
         ) : null}
+        <p className="small text-body-secondary mt-1 mb-0">{d.templateHelp}</p>
       </div>
 
       {selectedMessage ? (
-        instances.length > 0 ? (
-          <div>
-            <CFormLabel>{d.publishedInstance}</CFormLabel>
-            <CFormSelect
-              value={embedDeliveryId ?? ""}
-              onChange={(event) => {
-                const deliveryId = event.target.value || null;
-                const delivery = instances.find((x) => x.id === deliveryId);
-                onChange(
-                  selectedMessage.id,
-                  deliveryId,
-                  delivery ? delivery.channel_id : null
-                );
-              }}
-            >
-              <option value="">{d.selectPublishedInstance}</option>
-              {instances.map((delivery) => (
-                <option key={delivery.id} value={delivery.id}>
-                  {instanceLabel(delivery)}
-                </option>
-              ))}
-            </CFormSelect>
-            <p className="small text-body-secondary mt-1 mb-0">{d.instanceHelp}</p>
-          </div>
-        ) : (
-          <div className="border rounded p-3 small d-flex flex-column gap-2">
-            <span className="text-warning fw-medium">{d.noPublishedInstance}</span>
-            <span className="text-body-secondary">{d.publishEmbedFirst}</span>
-            <Link
-              href={`/${lang}/messages/embed-messages/${selectedMessage.id}`}
-              className="text-decoration-none"
-            >
-              {d.openEmbedMessage}
-            </Link>
-          </div>
-        )
-      ) : null}
-
-      {embedDeliveryId ? (
-        <Badge variant="success">{d.instanceBound}</Badge>
+        <div>
+          <CFormLabel>{d.postToChannel}</CFormLabel>
+          <CFormSelect
+            value={channelId ?? ""}
+            onChange={(event) => {
+              onChange(
+                selectedMessage.id,
+                null,
+                event.target.value || null
+              );
+            }}
+          >
+            <option value="">{d.selectChannel}</option>
+            {channelOptions.map(([id, name]) => (
+              <option key={id} value={id}>
+                #{name}
+              </option>
+            ))}
+          </CFormSelect>
+        </div>
       ) : null}
     </div>
   );

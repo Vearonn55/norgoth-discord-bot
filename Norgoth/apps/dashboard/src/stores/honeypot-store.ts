@@ -29,7 +29,6 @@ type HoneypotState = {
   load: (guildId: string) => Promise<void>;
   save: (guildId: string, config: HoneypotConfig) => Promise<void>;
   loadTriggers: (guildId: string, offset?: number) => Promise<void>;
-  requestCreateChannel: (guildId: string, name: string) => Promise<void>;
 };
 
 const defaults: HoneypotConfig = {
@@ -155,22 +154,6 @@ export const useHoneypotStore = create<HoneypotState>((set) => ({
       set({ triggers: data.items ?? [], triggersTotal: data.total ?? 0 });
     } catch {
       // Optional surface: keep existing trigger list if loading fails.
-    }
-  },
-  requestCreateChannel: async (guildId, name) => {
-    try {
-      await fetchWithTimeout(
-        apiUrl(`/guilds/${guildId}/honeypot/create-channel`),
-        {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name }),
-        },
-        HONEYPOT_TIMEOUT_MS,
-      );
-    } catch {
-      set({ error: "Could not create the honeypot channel right now. Please retry." });
     }
   },
 }));

@@ -13,6 +13,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { NumberInput } from "@/components/ui/number-input";
+import { useParams } from "next/navigation";
 import { browserApiUrl } from "@/lib/api";
 import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import { useFirstGuild } from "@/lib/use-first-guild";
@@ -28,6 +29,8 @@ import {
  */
 export function VerificationSettingsForm() {
   const dict = useLocaleDict();
+  const params = useParams();
+  const lang = String(params?.lang || "en");
   const d = dict.verificationPage;
   const {
     guildId,
@@ -77,7 +80,9 @@ export function VerificationSettingsForm() {
 
   const channels = resources?.channels ?? [];
   const roles = (resources?.roles ?? []).filter((role) => !role.managed);
-  const verifyUrl = browserApiUrl(`/api/v1/oauth/discord/authorize/${guildId}`);
+  const verifyUrl = browserApiUrl(
+    `/api/v1/oauth/discord/authorize/${guildId}?lang=${encodeURIComponent(lang)}`
+  );
   const setupState = config.setup_state ?? "not_configured";
   const linkReady = canPublishOrCopy(config);
   const missing = config.missing_bindings ?? [];

@@ -41,7 +41,7 @@ class _FakeRedis:
     async def get(self, key: str) -> str | None:
         return self.strings.get(key)
 
-    async def set(self, key: str, value: str) -> bool:
+    async def set(self, key: str, value: str, **_kwargs: Any) -> bool:
         self.strings[key] = value
         return True
 

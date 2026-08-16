@@ -132,6 +132,21 @@ def _serialize_live_resources(
     }
 
 
+def build_bot_health_payload(
+    heartbeat: Any, status: dict[str, Any] | None
+) -> dict[str, Any]:
+    """Liveness-only health: never include guild inventory (public endpoint)."""
+
+    connected_flag = bool(status and status.get("connected"))
+    connected = bool(heartbeat) and connected_flag
+    return {
+        "connected": connected,
+        "stale": connected_flag and not bool(heartbeat),
+        "heartbeat_at": heartbeat,
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @router.get("/bot/health")
 async def get_bot_health() -> dict[str, Any]:
     redis_client = await get_redis()
@@ -142,13 +157,7 @@ async def get_bot_health() -> dict[str, Any]:
     finally:
         await redis_client.aclose()
 
-    connected = bool(heartbeat) and bool(status and status.get("connected"))
-
-    return {
-        "connected": connected,
-        "heartbeat_at": heartbeat,
-        "checked_at": datetime.now(timezone.utc).isoformat(),
-    }
+    return build_bot_health_payload(heartbeat, status)
 
 
 @router.get(

@@ -50,7 +50,7 @@ export type EmbedDraftCreatorProps = {
   /** Optional secondary action (e.g. Back to list / Cancel). */
   onCancel?: () => void;
   cancelLabel?: string;
-  /** Side-by-side preview+editor for modals / embedded hosts (preview left). */
+  /** Side-by-side editor+preview for modals / embedded hosts (editor left). */
   compact?: boolean;
   /**
    * Primary create-button label. Defaults to "Save Draft" for create mode and
@@ -297,10 +297,10 @@ export function EmbedDraftCreator({
       ) : null}
 
       <div className="row g-4 align-items-start">
+        <div className={editorColClass}>{formCard}</div>
         {showPreviewColumn ? (
           <div className={previewColClass}>{previewColumn}</div>
         ) : null}
-        <div className={editorColClass}>{formCard}</div>
       </div>
     </div>
   );

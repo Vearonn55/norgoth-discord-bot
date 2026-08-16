@@ -55,7 +55,7 @@ def test_instagram_reel() -> None:
         enabled_platforms=ENABLED,
         rewrite_hosts=HOSTS,
     )
-    assert out == "https://ddinstagram.com/reel/AbCdEf123/"
+    assert out == "https://instagram7.com/reel/AbCdEf123/"
 
 
 def test_instagram_profile_skipped() -> None:
@@ -205,6 +205,23 @@ def test_credentials_in_url_rejected() -> None:
         )
         is None
     )
+
+
+def test_instagram_disabled_skips() -> None:
+    platforms = {**ENABLED, "instagram": False}
+    assert (
+        rewrite_url(
+            "https://www.instagram.com/reel/AbCdEf123/",
+            enabled_platforms=platforms,
+            rewrite_hosts=HOSTS,
+        )
+        is None
+    )
+
+
+def test_allowlist_has_no_ddinstagram() -> None:
+    assert "ddinstagram" not in str(ALLOWED_REWRITE_HOSTS)
+    assert ALLOWED_REWRITE_HOSTS["instagram"] == "instagram7.com"
 
 
 def test_unapproved_rewrite_host_ignored() -> None:

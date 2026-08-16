@@ -239,10 +239,14 @@ export const useEmbedMessagesStore = create<EmbedMessagesState>((set) => ({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ channel_id: channelId }),
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      set({ error: await readError(response) });
+      return null;
+    }
     const updated = (await response.json()) as EmbedMessage;
     set((state) => ({
       messages: state.messages.map((m) => (m.id === id ? updated : m)),
+      error: null,
     }));
     return updated;
   },
