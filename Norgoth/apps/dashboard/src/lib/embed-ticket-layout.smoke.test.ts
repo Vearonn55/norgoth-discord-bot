@@ -15,15 +15,15 @@ const ticketsPath = resolve(root, "components/community/tickets-panel.tsx");
 const miniCardPath = resolve(root, "components/ui/mini-feature-card.tsx");
 
 describe("embed draft creator layout + save draft", () => {
-  it("renders preview column before the editor column", () => {
+  it("renders the editor column before the preview column", () => {
     const src = readFileSync(creatorPath, "utf8");
     const previewIdx = src.indexOf("norgoth-embed-creator-preview");
     const editorIdx = src.indexOf("norgoth-embed-creator-editor");
-    // In compact JSX, preview column is emitted before editor column.
+    // Editor left / preview right: formCard is emitted before previewColumn.
     const jsxPreview = src.indexOf("{previewColumn}");
     const jsxEditor = src.indexOf("{formCard}");
-    expect(jsxPreview).toBeGreaterThan(-1);
-    expect(jsxEditor).toBeGreaterThan(jsxPreview);
+    expect(jsxEditor).toBeGreaterThan(-1);
+    expect(jsxPreview).toBeGreaterThan(jsxEditor);
     expect(src).toContain("createLabel ?? d.saveDraft");
     expect(src).toContain("norgoth-embed-creator-preview");
     expect(previewIdx).toBeGreaterThan(-1);
