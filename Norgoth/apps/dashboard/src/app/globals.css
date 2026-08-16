@@ -274,6 +274,8 @@ body {
 .norgoth-sidebar .sidebar-footer {
   background: #080b11;
   border-top-color: rgba(180, 198, 230, 0.2) !important;
+  flex-shrink: 0;
+  width: 100%;
 }
 
 .norgoth-main {
@@ -1313,10 +1315,23 @@ body {
   overflow-y: auto;
 }
 
+.norgoth-sidebar-guild {
+  width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
 .norgoth-sidebar-guild:hover,
-.norgoth-sidebar-guild:focus-visible {
+.norgoth-sidebar-guild:focus-visible,
+.norgoth-sidebar-guild:active {
   background: rgba(241, 244, 250, 0.04);
-  outline: none;
+}
+
+.norgoth-sidebar-guild:focus-visible {
+  outline: 2px solid #6ea8fe;
+  outline-offset: -2px;
 }
 
 .norgoth-server-guild-card.is-selected {

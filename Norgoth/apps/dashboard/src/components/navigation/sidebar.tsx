@@ -342,11 +342,11 @@ function SidebarGuildFooter({
     <Link
       href={`/${lang}/servers`}
       scroll={false}
-      className="norgoth-sidebar-guild d-flex align-items-center gap-3 px-3 py-2 text-decoration-none text-reset"
+      className="norgoth-sidebar-guild d-flex align-items-center gap-3 px-3 py-2 text-decoration-none text-reset w-100"
       aria-label={`${labels.serverSelection}: ${name}`}
     >
       <GuildIcon url={iconUrl} name={name} size={40} />
-      <div className="min-w-0">
+      <div className="flex-grow-1 min-w-0">
         <div className="text-truncate small fw-medium" title={name}>
           {name}
         </div>
