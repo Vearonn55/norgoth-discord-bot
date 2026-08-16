@@ -29,7 +29,7 @@ Paste this whole document as system or project context. Follow these rules when 
 
 ### 0.3 Hard production truths (2026-08)
 
-1. **SSH to the VDS is not port 22.** Use `secrets.DEPLOY_PORT` (historically **35342**). Both `deploy-production.yml` and `deploy-test.yml` must pass `port: ${{ secrets.DEPLOY_PORT }}`.
+1. **SSH to the VDS is not port 22.** Use `secrets.DEPLOY_PORT` (historically **35342**). `deploy-production.yml`, `deploy-test.yml`, and `rehydrate-test-db.yml` must pass `port: ${{ secrets.DEPLOY_PORT }}`. Defaulting to 22 times out (`dial tcp …:22: i/o timeout`).
 2. **Manual compose on the VDS needs image env vars.** Actions export them; a bare `docker compose -f deploy/compose.yml -f deploy/compose.production.yml` fails with `NORBOT_*_IMAGE is missing`. Export:
    - `NORBOT_IMAGE_TAG` = SHA from `/opt/norbot/releases/CURRENT`
    - `NORBOT_API_IMAGE=ghcr.io/vearonn55/norbot-api`
@@ -445,7 +445,7 @@ Without those exports, overlay files use `${NORBOT_API_IMAGE:?}` and interpolati
 | `ci.yml` | PR + push `main`/`test` | Dashboard lint/test/build; API alembic+pytest (PG16+Redis, `NORGOTH_ENVIRONMENT=testing`); bot pytest (`pytest` + `pytest-asyncio` in bot `requirements.txt`); Docker build (no push) |
 | `deploy-test.yml` | push `test` | Build/push GHCR → SSH (`DEPLOY_PORT`) migrate + compose test + smoke + record-release |
 | `deploy-production.yml` | push `main` | Same + **pre-deploy DB backup** |
-| `rehydrate-test-db.yml` | weekly + dispatch | Guarded prod → test DB refresh |
+| `rehydrate-test-db.yml` | weekly + dispatch | SSH (`DEPLOY_PORT`) guarded prod → test DB refresh |
 
 Nginx: `www.norbot.io` → web `:3000`; `api.norbot.io` → API `:8000`; test hosts mirror on `:3001`/`:8001`.
 

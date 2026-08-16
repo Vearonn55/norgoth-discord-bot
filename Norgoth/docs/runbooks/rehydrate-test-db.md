@@ -17,7 +17,7 @@ export NORBOT_API_IMAGE=ghcr.io/<owner>/norbot-api
 /opt/norbot/scripts/rehydrate-test-db.sh
 ```
 
-GitHub Actions workflow `rehydrate-test-db.yml` invokes the same script over SSH (environment `test`).
+GitHub Actions workflow `rehydrate-test-db.yml` invokes the same script over SSH (environment `test`). It must pass `secrets.DEPLOY_PORT` (not 22); otherwise the runner dials port 22 and times out before the script starts.
 
 ## Sanitization
 

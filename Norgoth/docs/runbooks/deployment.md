@@ -27,7 +27,7 @@
    - `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_PORT`
    - `DEPLOY_PORT` must match the VDS SSH listen port (default **35342** from
      `setup-firewall.sh`). Required for **both** environments — without it,
-     deploy-test defaults to port 22 and times out.
+     deploy-test and rehydrate-test-db default to port 22 and time out.
 7. Optional: create `/opt/norbot/env/ghcr.pull.token` (mode 600) with a GHCR
    **pull-only** credential (`packages:read`) for **manual** `docker pull` /
    `rollback-app.sh` on the host. CI deploy logs in with a job-scoped
