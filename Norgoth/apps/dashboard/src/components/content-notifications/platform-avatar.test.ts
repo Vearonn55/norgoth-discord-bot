@@ -11,10 +11,7 @@ describe("PlatformAvatar", () => {
 
   it("falls back on image error", () => {
     const src = readFileSync(
-      resolve(
-        __dirname,
-        "../components/content-notifications/platform-avatar.tsx",
-      ),
+      resolve(__dirname, "platform-avatar.tsx"),
       "utf8",
     );
     expect(src).toContain("onError");
