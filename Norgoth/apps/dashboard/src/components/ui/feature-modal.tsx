@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import {
   CAlert,
   CModal,
@@ -71,6 +71,22 @@ export function FeatureConfigurationModal({
   const accent = category ? categoryAccent(category) : undefined;
   const isSaving = saving || saveState === "saving";
   const isSaved = saveState === "saved";
+  const openerRef = useRef<HTMLElement | null>(null);
+  const wasVisible = useRef(false);
+
+  useEffect(() => {
+    if (visible && !wasVisible.current) {
+      openerRef.current =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+    }
+    if (!visible && wasVisible.current) {
+      const opener = openerRef.current;
+      if (opener) queueMicrotask(() => opener.focus());
+    }
+    wasVisible.current = visible;
+  }, [visible]);
 
   return (
     <CModal

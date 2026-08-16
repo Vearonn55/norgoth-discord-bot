@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { apiUrl } from "@/lib/api";
+import { accountsListQuery, CN_PAGE_SIZE } from "@/lib/cn-url-state";
 
 export type ContentPlatform = "youtube" | "twitch" | "kick" | "x" | "tiktok";
 
@@ -102,26 +103,61 @@ export type ContentAnalytics = {
   delivery_success_rate: number;
   average_delivery_latency_ms: number;
   platform_distribution: Array<{ platform: string; count: number }>;
+  event_type_distribution?: Array<{ event_type: string; count: number }>;
+  status_distribution?: Array<{ status: string; count: number }>;
+  series?: Array<{ day: string; succeeded: number; failed: number }>;
+  recent_failures?: Array<{
+    last_error: string;
+    created_at: string | null;
+    platform: string;
+  }>;
+  range_start?: string;
+  range_end?: string;
   worker_online: boolean;
+};
+
+export type LoadAccountsOptions = {
+  platform?: string | null;
+  limit?: number;
+  offset?: number;
+};
+
+export type LoadHistoryOptions = {
+  platform?: string | null;
+  status?: string | null;
+  limit?: number;
+  offset?: number;
+};
+
+export type UpdateAccountPayload = {
+  destination_channel_id?: string;
+  ping_role_id?: string | null;
+  template_id?: string | null;
+  sender_style_id?: string | null;
+  event_types?: string[];
+  enabled?: boolean;
 };
 
 type ContentNotificationsState = {
   accounts: ContentAccount[];
+  accountsTotal: number;
+  lastAccountsQuery: LoadAccountsOptions;
   templates: NotificationTemplate[];
   styles: SenderStyle[];
   platforms: PlatformAvailability[];
   platformUsage: PlatformUsage[];
   history: DeliveryHistoryItem[];
+  historyTotal: number;
   analytics: ContentAnalytics | null;
   workerOnline: boolean;
   loading: boolean;
   saving: boolean;
   error: string | null;
-  loadAccounts: (guildId: string) => Promise<void>;
+  loadAccounts: (guildId: string, options?: LoadAccountsOptions) => Promise<void>;
   loadTemplates: (guildId: string) => Promise<void>;
   loadStyles: (guildId: string) => Promise<void>;
-  loadHistory: (guildId: string) => Promise<void>;
-  loadAnalytics: (guildId: string) => Promise<void>;
+  loadHistory: (guildId: string, options?: LoadHistoryOptions) => Promise<void>;
+  loadAnalytics: (guildId: string, days?: number) => Promise<void>;
   resolveAccount: (
     guildId: string,
     platform: ContentPlatform,
@@ -136,7 +172,14 @@ type ContentNotificationsState = {
       ping_role_id?: string | null;
       template_id?: string | null;
       sender_style_id?: string | null;
+      event_types?: string[];
+      enabled?: boolean;
     }
+  ) => Promise<void>;
+  updateAccount: (
+    guildId: string,
+    subscriptionId: string,
+    payload: UpdateAccountPayload
   ) => Promise<void>;
   deleteAccount: (guildId: string, subscriptionId: string) => Promise<void>;
   toggleAccount: (
@@ -147,6 +190,16 @@ type ContentNotificationsState = {
   testNotification: (guildId: string, subscriptionId: string) => Promise<void>;
   createTemplate: (
     guildId: string,
+    payload: {
+      name: string;
+      content: string;
+      platform_default_for?: string | null;
+      embed_json?: Record<string, unknown> | null;
+    }
+  ) => Promise<void>;
+  updateTemplate: (
+    guildId: string,
+    templateId: string,
     payload: {
       name: string;
       content: string;
@@ -174,28 +227,39 @@ function readApiErrorDetail(detail: unknown, fallback: string): string {
 export const useContentNotificationsStore = create<ContentNotificationsState>(
   (set, get) => ({
     accounts: [],
+    accountsTotal: 0,
+    lastAccountsQuery: { limit: CN_PAGE_SIZE, offset: 0 },
     templates: [],
     styles: [],
     platforms: [],
     platformUsage: [],
     history: [],
+    historyTotal: 0,
     analytics: null,
     workerOnline: false,
     loading: false,
     saving: false,
     error: null,
 
-    async loadAccounts(guildId) {
-      set({ loading: true, error: null });
+    async loadAccounts(guildId, options) {
+      const previous = get().lastAccountsQuery;
+      const query: LoadAccountsOptions = {
+        platform: options?.platform ?? previous.platform,
+        limit: options?.limit ?? previous.limit ?? CN_PAGE_SIZE,
+        offset: options?.offset ?? previous.offset ?? 0,
+      };
+      set({ loading: true, error: null, lastAccountsQuery: query });
       try {
+        const qs = accountsListQuery(query);
         const response = await fetch(
-          apiUrl(`/guilds/${guildId}/content-notifications/accounts`),
+          apiUrl(`/guilds/${guildId}/content-notifications/accounts?${qs}`),
           { cache: "no-store", credentials: "include" }
         );
         if (!response.ok) throw new Error("Failed to load accounts");
         const data = await response.json();
         set({
           accounts: data.accounts ?? [],
+          accountsTotal: Number(data.total ?? data.accounts?.length ?? 0),
           platforms: data.platforms ?? [],
           platformUsage: data.platform_usage ?? [],
           workerOnline: Boolean(data.worker_online),
@@ -214,7 +278,10 @@ export const useContentNotificationsStore = create<ContentNotificationsState>(
         apiUrl(`/guilds/${guildId}/content-notifications/templates`),
         { cache: "no-store", credentials: "include" }
       );
-      if (!response.ok) return;
+      if (!response.ok) {
+        set({ error: "Failed to load templates" });
+        return;
+      }
       const data = await response.json();
       set({ templates: data.templates ?? [] });
     },
@@ -224,27 +291,44 @@ export const useContentNotificationsStore = create<ContentNotificationsState>(
         apiUrl(`/guilds/${guildId}/content-notifications/sender-styles`),
         { cache: "no-store", credentials: "include" }
       );
-      if (!response.ok) return;
+      if (!response.ok) {
+        set({ error: "Failed to load sender styles" });
+        return;
+      }
       const data = await response.json();
       set({ styles: data.styles ?? [] });
     },
 
-    async loadHistory(guildId) {
+    async loadHistory(guildId, options) {
+      const params = new URLSearchParams();
+      params.set("limit", String(options?.limit ?? 50));
+      params.set("offset", String(options?.offset ?? 0));
+      if (options?.platform) params.set("platform", options.platform);
+      if (options?.status) params.set("status", options.status);
       const response = await fetch(
-        apiUrl(`/guilds/${guildId}/content-notifications/history?limit=100`),
+        apiUrl(`/guilds/${guildId}/content-notifications/history?${params}`),
         { cache: "no-store", credentials: "include" }
       );
-      if (!response.ok) return;
+      if (!response.ok) {
+        set({ error: "Failed to load history" });
+        return;
+      }
       const data = await response.json();
-      set({ history: data.items ?? [] });
+      set({
+        history: data.items ?? [],
+        historyTotal: Number(data.total ?? data.items?.length ?? 0),
+      });
     },
 
-    async loadAnalytics(guildId) {
+    async loadAnalytics(guildId, days = 30) {
       const response = await fetch(
-        apiUrl(`/guilds/${guildId}/content-notifications/analytics`),
+        apiUrl(`/guilds/${guildId}/content-notifications/analytics?days=${days}`),
         { cache: "no-store", credentials: "include" }
       );
-      if (!response.ok) return;
+      if (!response.ok) {
+        set({ error: "Failed to load analytics", analytics: null });
+        return;
+      }
       const data = await response.json();
       set({ analytics: data });
     },
@@ -261,7 +345,9 @@ export const useContentNotificationsStore = create<ContentNotificationsState>(
       );
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.detail || "Could not resolve account");
+        throw new Error(
+          readApiErrorDetail(data.detail, "Could not resolve account")
+        );
       }
       return data as ResolvedCreator;
     },
@@ -288,6 +374,35 @@ export const useContentNotificationsStore = create<ContentNotificationsState>(
         set({
           saving: false,
           error: error instanceof Error ? error.message : "Save failed",
+        });
+        throw error;
+      }
+    },
+
+    async updateAccount(guildId, subscriptionId, payload) {
+      set({ saving: true, error: null });
+      try {
+        const response = await fetch(
+          apiUrl(
+            `/guilds/${guildId}/content-notifications/accounts/${subscriptionId}`
+          ),
+          {
+            method: "PATCH",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          }
+        );
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(readApiErrorDetail(data.detail, "Update failed"));
+        }
+        await get().loadAccounts(guildId);
+        set({ saving: false });
+      } catch (error) {
+        set({
+          saving: false,
+          error: error instanceof Error ? error.message : "Update failed",
         });
         throw error;
       }
@@ -351,6 +466,25 @@ export const useContentNotificationsStore = create<ContentNotificationsState>(
         }
       );
       if (!response.ok) throw new Error("Could not create template");
+      await get().loadTemplates(guildId);
+    },
+
+    async updateTemplate(guildId, templateId, payload) {
+      const response = await fetch(
+        apiUrl(
+          `/guilds/${guildId}/content-notifications/templates/${templateId}`
+        ),
+        {
+          method: "PUT",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      );
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(readApiErrorDetail(data.detail, "Update failed"));
+      }
       await get().loadTemplates(guildId);
     },
 

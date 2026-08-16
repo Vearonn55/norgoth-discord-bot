@@ -28,3 +28,16 @@ export function localizeSubscriptionStatus(
   };
   return map[status] ?? status.replaceAll("_", " ");
 }
+
+export function localizeEventType(
+  eventType: string,
+  copy: ContentNotificationsCopy,
+): string {
+  const map: Record<string, string> = {
+    STREAM_STARTED: copy.eventSTREAM_STARTED,
+    STREAM_ENDED: copy.eventSTREAM_ENDED,
+    VIDEO_PUBLISHED: copy.eventVIDEO_PUBLISHED,
+    POST_PUBLISHED: copy.eventPOST_PUBLISHED,
+  };
+  return map[eventType] ?? eventType.replaceAll("_", " ");
+}

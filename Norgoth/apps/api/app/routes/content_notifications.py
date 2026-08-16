@@ -43,6 +43,10 @@ from app.models.content_notifications import (
     PlatformMonitorCursor,
     PlatformSubscription,
 )
+from app.services.content_notifications.avatar import (
+    parse_account_platform_filter,
+    refresh_stale_avatars,
+)
 from app.services.content_notifications.fanout import (
     ensure_source,
     event_from_row,
@@ -270,15 +274,56 @@ async def resolve_account(
 async def list_accounts(
     guild_id: str,
     session: AsyncSession = Depends(get_database_session),
+    platform: Optional[str] = Query(default=None),
+    limit: int = Query(default=10, ge=1, le=50),
+    offset: int = Query(default=0, ge=0),
 ) -> dict[str, Any]:
+    try:
+        platform_filter = parse_account_platform_filter(platform)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "invalid_platform",
+                "message": "Platform filter must be youtube, twitch, kick, x, or all.",
+            },
+        ) from None
+
+    filters = [GuildContentSubscription.guild_id == guild_id]
+    count_stmt = select(func.count()).select_from(GuildContentSubscription)
+    list_stmt = select(GuildContentSubscription)
+    if platform_filter:
+        count_stmt = count_stmt.join(
+            ContentCreatorSource,
+            ContentCreatorSource.id == GuildContentSubscription.source_id,
+        ).where(
+            *filters,
+            ContentCreatorSource.platform == platform_filter,
+        )
+        list_stmt = list_stmt.join(
+            ContentCreatorSource,
+            ContentCreatorSource.id == GuildContentSubscription.source_id,
+        ).where(
+            *filters,
+            ContentCreatorSource.platform == platform_filter,
+        )
+    else:
+        count_stmt = count_stmt.where(*filters)
+        list_stmt = list_stmt.where(*filters)
+
+    total = int((await session.scalar(count_stmt)) or 0)
     rows = (
         await session.scalars(
-            select(GuildContentSubscription)
-            .where(GuildContentSubscription.guild_id == guild_id)
-            .options(selectinload(GuildContentSubscription.source))
+            list_stmt.options(selectinload(GuildContentSubscription.source))
             .order_by(GuildContentSubscription.created_at.desc())
+            .offset(offset)
+            .limit(limit)
         )
     ).all()
+    await refresh_stale_avatars(
+        session, [row.source for row in rows if row.source is not None]
+    )
+    await session.commit()
     usage = await guild_platform_usage(session, guild_id=guild_id)
     usage_by_platform = {item["platform"]: item for item in usage}
     platforms = platform_availability()
@@ -295,6 +340,9 @@ async def list_accounts(
         row.update(stats)
     return {
         "accounts": [_serialize_subscription(row) for row in rows],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
         "worker_online": await worker_online(),
         "platforms": platforms,
         "platform_usage": usage,
@@ -471,16 +519,17 @@ async def update_account(
     if sub is None:
         raise HTTPException(status_code=404, detail="Subscription not found")
 
+    fields_set = body.model_fields_set
     if body.destination_channel_id is not None:
         sub.destination_channel_id = body.destination_channel_id
-    if body.ping_role_id is not None:
+    if "ping_role_id" in fields_set:
         sub.ping_role_id = body.ping_role_id or None
-    if body.template_id is not None:
+    if "template_id" in fields_set:
         await _assert_guild_owned_template(
             session, guild_id=guild_id, template_id=body.template_id
         )
         sub.template_id = body.template_id
-    if body.sender_style_id is not None:
+    if "sender_style_id" in fields_set:
         await _assert_guild_owned_sender_style(
             session, guild_id=guild_id, sender_style_id=body.sender_style_id
         )
@@ -627,13 +676,15 @@ async def update_template(
     session: AsyncSession = Depends(get_database_session),
 ) -> dict[str, Any]:
     row = await session.scalar(
-        select(NotificationTemplate).where(
-            NotificationTemplate.id == template_id,
-            NotificationTemplate.guild_id == guild_id,
-        )
+        select(NotificationTemplate).where(NotificationTemplate.id == template_id)
     )
     if row is None:
         raise HTTPException(status_code=404, detail="Template not found")
+    if row.guild_id != guild_id:
+        raise HTTPException(
+            status_code=400,
+            detail="template_id does not belong to this guild.",
+        )
     row.name = body.name
     row.platform_default_for = body.platform_default_for
     row.content = body.content
@@ -1027,6 +1078,26 @@ async def delivery_history(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> dict[str, Any]:
+    filters = [GuildContentSubscription.guild_id == guild_id]
+    if platform:
+        filters.append(NormalizedContentEventRow.platform == platform)
+    if status:
+        filters.append(NotificationJob.status == status)
+
+    count_stmt = (
+        select(func.count(NotificationJob.id))
+        .join(
+            GuildContentSubscription,
+            GuildContentSubscription.id == NotificationJob.subscription_id,
+        )
+        .join(
+            NormalizedContentEventRow,
+            NormalizedContentEventRow.id == NotificationJob.event_id,
+        )
+        .where(*filters)
+    )
+    total = int((await session.scalar(count_stmt)) or 0)
+
     query = (
         select(NotificationJob, GuildContentSubscription, NormalizedContentEventRow)
         .join(
@@ -1037,15 +1108,11 @@ async def delivery_history(
             NormalizedContentEventRow,
             NormalizedContentEventRow.id == NotificationJob.event_id,
         )
-        .where(GuildContentSubscription.guild_id == guild_id)
+        .where(*filters)
         .order_by(NotificationJob.created_at.desc())
         .offset(offset)
         .limit(limit)
     )
-    if platform:
-        query = query.where(NormalizedContentEventRow.platform == platform)
-    if status:
-        query = query.where(NotificationJob.status == status)
 
     rows = (await session.execute(query)).all()
     items = []
@@ -1066,54 +1133,42 @@ async def delivery_history(
                 "destination_channel_id": sub.destination_channel_id,
             }
         )
-    return {"items": items, "limit": limit, "offset": offset}
+    return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
 @router.get("/guilds/{guild_id}/content-notifications/analytics")
 async def analytics(
     guild_id: str,
     session: AsyncSession = Depends(get_database_session),
+    days: int = Query(default=30, ge=1, le=90),
 ) -> dict[str, Any]:
+    now = datetime.now(timezone.utc)
+    range_start = now - timedelta(days=days)
+    guild_join = (
+        GuildContentSubscription,
+        GuildContentSubscription.id == NotificationJob.subscription_id,
+    )
+    guild_scope = GuildContentSubscription.guild_id == guild_id
+
     total = await session.scalar(
         select(func.count(NotificationJob.id))
-        .join(
-            GuildContentSubscription,
-            GuildContentSubscription.id == NotificationJob.subscription_id,
-        )
-        .where(GuildContentSubscription.guild_id == guild_id)
+        .join(*guild_join)
+        .where(guild_scope)
     )
     succeeded = await session.scalar(
         select(func.count(NotificationJob.id))
-        .join(
-            GuildContentSubscription,
-            GuildContentSubscription.id == NotificationJob.subscription_id,
-        )
-        .where(
-            GuildContentSubscription.guild_id == guild_id,
-            NotificationJob.status == "succeeded",
-        )
+        .join(*guild_join)
+        .where(guild_scope, NotificationJob.status == "succeeded")
     )
     failed = await session.scalar(
         select(func.count(NotificationJob.id))
-        .join(
-            GuildContentSubscription,
-            GuildContentSubscription.id == NotificationJob.subscription_id,
-        )
-        .where(
-            GuildContentSubscription.guild_id == guild_id,
-            NotificationJob.status.in_(["failed", "dead"]),
-        )
+        .join(*guild_join)
+        .where(guild_scope, NotificationJob.status.in_(["failed", "dead"]))
     )
     avg_latency = await session.scalar(
         select(func.avg(NotificationJob.latency_ms))
-        .join(
-            GuildContentSubscription,
-            GuildContentSubscription.id == NotificationJob.subscription_id,
-        )
-        .where(
-            GuildContentSubscription.guild_id == guild_id,
-            NotificationJob.latency_ms.is_not(None),
-        )
+        .join(*guild_join)
+        .where(guild_scope, NotificationJob.latency_ms.is_not(None))
     )
     platform_rows = (
         await session.execute(
@@ -1125,12 +1180,74 @@ async def analytics(
                 NotificationJob,
                 NotificationJob.event_id == NormalizedContentEventRow.id,
             )
-            .join(
-                GuildContentSubscription,
-                GuildContentSubscription.id == NotificationJob.subscription_id,
-            )
-            .where(GuildContentSubscription.guild_id == guild_id)
+            .join(*guild_join)
+            .where(guild_scope)
             .group_by(NormalizedContentEventRow.platform)
+        )
+    ).all()
+    event_type_rows = (
+        await session.execute(
+            select(
+                NormalizedContentEventRow.event_type,
+                func.count(NotificationJob.id),
+            )
+            .join(
+                NotificationJob,
+                NotificationJob.event_id == NormalizedContentEventRow.id,
+            )
+            .join(*guild_join)
+            .where(guild_scope)
+            .group_by(NormalizedContentEventRow.event_type)
+        )
+    ).all()
+    status_rows = (
+        await session.execute(
+            select(NotificationJob.status, func.count(NotificationJob.id))
+            .join(*guild_join)
+            .where(guild_scope)
+            .group_by(NotificationJob.status)
+        )
+    ).all()
+    day_expr = func.date_trunc("day", NotificationJob.created_at)
+    series_rows = (
+        await session.execute(
+            select(
+                day_expr.label("day"),
+                func.count(NotificationJob.id)
+                .filter(NotificationJob.status == "succeeded")
+                .label("succeeded"),
+                func.count(NotificationJob.id)
+                .filter(NotificationJob.status.in_(["failed", "dead"]))
+                .label("failed"),
+            )
+            .join(*guild_join)
+            .where(
+                guild_scope,
+                NotificationJob.created_at >= range_start,
+            )
+            .group_by(day_expr)
+            .order_by(day_expr)
+        )
+    ).all()
+    failure_rows = (
+        await session.execute(
+            select(
+                NotificationJob.last_error,
+                NotificationJob.created_at,
+                NormalizedContentEventRow.platform,
+            )
+            .join(*guild_join)
+            .join(
+                NormalizedContentEventRow,
+                NormalizedContentEventRow.id == NotificationJob.event_id,
+            )
+            .where(
+                guild_scope,
+                NotificationJob.status.in_(["failed", "dead"]),
+                NotificationJob.last_error.is_not(None),
+            )
+            .order_by(NotificationJob.created_at.desc())
+            .limit(5)
         )
     ).all()
 
@@ -1147,6 +1264,32 @@ async def analytics(
             {"platform": platform, "count": int(count)}
             for platform, count in platform_rows
         ],
+        "event_type_distribution": [
+            {"event_type": event_type, "count": int(count)}
+            for event_type, count in event_type_rows
+        ],
+        "status_distribution": [
+            {"status": status, "count": int(count)}
+            for status, count in status_rows
+        ],
+        "series": [
+            {
+                "day": day.date().isoformat() if hasattr(day, "date") else str(day)[:10],
+                "succeeded": int(ok or 0),
+                "failed": int(bad or 0),
+            }
+            for day, ok, bad in series_rows
+        ],
+        "recent_failures": [
+            {
+                "last_error": (error or "")[:240],
+                "created_at": created.isoformat() if created else None,
+                "platform": plat,
+            }
+            for error, created, plat in failure_rows
+        ],
+        "range_start": range_start.isoformat(),
+        "range_end": now.isoformat(),
         "worker_online": await worker_online(),
     }
 

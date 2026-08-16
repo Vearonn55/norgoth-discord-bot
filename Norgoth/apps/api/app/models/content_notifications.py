@@ -40,7 +40,11 @@ class ContentCreatorSource(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     username: Mapped[str] = mapped_column(String(200), nullable=False, default="")
     display_name: Mapped[str] = mapped_column(String(200), nullable=False, default="")
     profile_url: Mapped[str] = mapped_column(String(500), nullable=False, default="")
-    avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    avatar_checked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     canonical_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(
         "metadata",

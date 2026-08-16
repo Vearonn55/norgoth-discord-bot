@@ -22,6 +22,10 @@ from app.models.content_notifications import (
     NormalizedContentEventRow,
     NotificationJob,
 )
+from app.services.content_notifications.avatar import (
+    normalize_https_avatar_url,
+    persistable_source_avatar,
+)
 
 logger = logging.getLogger("norgoth.content.fanout")
 
@@ -109,6 +113,10 @@ async def persist_and_fanout(
 
     row = await session.get(NormalizedContentEventRow, event_id)
     source.last_event_at = datetime.now(timezone.utc)
+    event_avatar = persistable_source_avatar(source.platform, event.creator_avatar)
+    if event_avatar:
+        source.avatar_url = event_avatar
+        source.avatar_checked_at = datetime.now(timezone.utc)
 
     subscriptions = (
         await session.scalars(
@@ -196,12 +204,15 @@ async def ensure_source(
             ContentCreatorSource.platform_creator_id == platform_creator_id,
         )
     )
+    normalized_avatar = normalize_https_avatar_url(avatar_url)
+    now = datetime.now(timezone.utc)
     if existing:
         existing.username = username or existing.username
         existing.display_name = display_name or existing.display_name
         existing.profile_url = profile_url or existing.profile_url
-        if avatar_url:
-            existing.avatar_url = avatar_url
+        if normalized_avatar:
+            existing.avatar_url = normalized_avatar
+            existing.avatar_checked_at = now
         if canonical_url:
             existing.canonical_url = canonical_url
         if metadata:
@@ -215,7 +226,8 @@ async def ensure_source(
         username=username,
         display_name=display_name,
         profile_url=profile_url,
-        avatar_url=avatar_url,
+        avatar_url=normalized_avatar,
+        avatar_checked_at=now if normalized_avatar else None,
         canonical_url=canonical_url,
         metadata_json=metadata or {},
         monitor_status=monitor_status,

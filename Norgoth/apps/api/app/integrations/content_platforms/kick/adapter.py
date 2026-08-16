@@ -186,12 +186,7 @@ class KickAdapter(ContentPlatformAdapter):
             or (channel.get("user") or {}).get("name")
             or username
         )
-        stream = channel.get("stream") if isinstance(channel.get("stream"), dict) else {}
-        avatar = (
-            channel.get("profile_picture")
-            or stream.get("thumbnail")
-            or channel.get("banner_picture")
-        )
+        avatar = channel.get("profile_picture")
         return ResolvedCreator(
             platform=PlatformType.KICK,
             platform_creator_id=user_id,

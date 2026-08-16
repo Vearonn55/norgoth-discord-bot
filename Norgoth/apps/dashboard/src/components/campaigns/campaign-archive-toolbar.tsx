@@ -5,6 +5,7 @@ import { CCol, CRow } from "@coreui/react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { apiUrl } from "@/lib/api";
+import { useLocaleDict } from "@/lib/locale-dict";
 
 type CampaignRecord = {
   id: string;
@@ -48,6 +49,7 @@ function csvEscape(value: string | number): string {
 
 /** Live archive metrics + a real CSV export of all campaign records. */
 export function CampaignArchiveToolbar() {
+  const d = useLocaleDict().campaignHistoryPage;
   const [campaigns, setCampaigns] = useState<CampaignRecord[]>([]);
   const [exporting, setExporting] = useState(false);
 
@@ -128,30 +130,32 @@ export function CampaignArchiveToolbar() {
           onClick={exportCsv}
           disabled={exporting || campaigns.length === 0}
         >
-          {exporting ? "Exporting…" : `Export CSV (${campaigns.length})`}
+          {exporting
+            ? d.exporting
+            : `${d.exportCsv} (${campaigns.length})`}
         </Button>
       </div>
 
       <CRow className="g-3">
         <CCol md={6} xl={3}>
-          <MetricCard label="Archived Campaigns" value={archived.length} />
+          <MetricCard label={d.metricArchived} value={archived.length} />
         </CCol>
         <CCol md={6} xl={3}>
           <MetricCard
-            label="Delivered Messages"
+            label={d.metricDelivered}
             value={delivered}
             tone="success"
           />
         </CCol>
         <CCol md={6} xl={3}>
           <MetricCard
-            label="Failed Deliveries"
+            label={d.metricFailed}
             value={failed}
             tone="warning"
           />
         </CCol>
         <CCol md={6} xl={3}>
-          <MetricCard label="Retry Events" value={retries} tone="info" />
+          <MetricCard label={d.metricRetries} value={retries} tone="info" />
         </CCol>
       </CRow>
     </div>

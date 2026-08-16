@@ -26,6 +26,7 @@ type TrendChartProps = {
   height?: number;
   variant?: "area" | "line";
   emptyMessage?: string;
+  isAnimationActive?: boolean;
 };
 
 export function TrendChart({
@@ -35,6 +36,7 @@ export function TrendChart({
   height = 240,
   variant = "area",
   emptyMessage = "No data in this range.",
+  isAnimationActive = true,
 }: TrendChartProps) {
   if (!data.length) {
     return (
@@ -84,6 +86,7 @@ export function TrendChart({
                 stroke={s.color}
                 strokeWidth={2}
                 dot={false}
+                isAnimationActive={isAnimationActive}
               />
             ) : (
               <Area
@@ -95,6 +98,7 @@ export function TrendChart({
                 fill={s.color}
                 fillOpacity={0.15}
                 strokeWidth={2}
+                isAnimationActive={isAnimationActive}
               />
             )
           )}
