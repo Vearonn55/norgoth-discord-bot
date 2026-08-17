@@ -12,14 +12,14 @@ describe("RSS feeds dashboard copy", () => {
     expect(tr.rssFeedsPage.probeInvalidDocument).toBeTruthy();
     expect(en.rssFeedsPage.limitReached).toBeTruthy();
     const panel = readFileSync(
-      resolve(__dirname, "../components/messages/rss-feeds-panel.tsx"),
+      resolve(__dirname, "rss-feeds-panel.tsx"),
       "utf8",
     );
     expect(panel).toContain("rssErrorMessage");
     expect(panel).toContain("formatDict(d.infoBanner");
     expect(panel).toContain("emptyFeedWarning");
     const store = readFileSync(
-      resolve(__dirname, "../stores/rss-feeds-store.ts"),
+      resolve(__dirname, "../../stores/rss-feeds-store.ts"),
       "utf8",
     );
     expect(store).toContain("maxFeeds: 15");
