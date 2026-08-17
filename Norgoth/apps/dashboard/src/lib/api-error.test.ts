@@ -40,6 +40,8 @@ describe("readApiError", () => {
       requestId: null,
     });
   });
+
+  it("falls back for empty bodies", async () => {
     const response = new Response("", { status: 502 });
     await expect(readApiError(response)).resolves.toEqual({
       code: "http_error",
