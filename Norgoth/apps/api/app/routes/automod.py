@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 from typing import Any, List, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.api.v1.dependencies_auth import guild_manager_dependency
+from app.api.v1.discord_http import http_detail
 from app.services.campaign_store import get_redis, now_iso
 from app.services.feature_config_store import read_raw, save_config
 
@@ -19,9 +20,70 @@ router = APIRouter(
 
 AutomodAction = Literal["delete", "warn", "timeout"]
 
+_ID_LIST_KEYS = (
+    "exempt_channel_ids",
+    "exempt_role_ids",
+    "image_only_channel_ids",
+    "link_only_channel_ids",
+)
+
 
 def automod_key(guild_id: str) -> str:
     return f"norgoth:guild:{guild_id}:automod"
+
+
+def snowflake_list(values: list[str] | None) -> list[str]:
+    """Keep unique Discord snowflakes in first-seen order."""
+
+    seen: dict[str, None] = {}
+    for value in values or []:
+        if isinstance(value, str) and value.isdigit() and 5 <= len(value) <= 25:
+            seen.setdefault(value, None)
+    return list(seen)
+
+
+def sanitize_automod_id_lists(payload: dict[str, Any]) -> dict[str, Any]:
+    for key in _ID_LIST_KEYS:
+        payload[key] = snowflake_list(payload.get(key) or [])
+    return payload
+
+
+def validate_format_channel_rules(payload: dict[str, Any]) -> None:
+    """Reject unusable enabled states and Image Only / Link Only overlap."""
+
+    image_ids = list(payload.get("image_only_channel_ids") or [])
+    link_ids = list(payload.get("link_only_channel_ids") or [])
+
+    if payload.get("image_only_enabled") and not image_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=http_detail(
+                "automod_image_only_channels_required",
+                "Enable Image Only Channel only after selecting at least one channel.",
+            ),
+        )
+
+    if payload.get("link_only_enabled") and not link_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=http_detail(
+                "automod_link_only_channels_required",
+                "Enable Link Only Channel only after selecting at least one channel.",
+            ),
+        )
+
+    overlap = [channel_id for channel_id in image_ids if channel_id in set(link_ids)]
+    if overlap:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                **http_detail(
+                    "automod_channel_rule_conflict",
+                    "A channel cannot be both Image Only and Link Only.",
+                ),
+                "channel_ids": overlap,
+            },
+        )
 
 
 class ModerationScope(BaseModel):
@@ -66,6 +128,14 @@ class AutomodConfig(BaseModel):
     exempt_channel_ids: List[str] = Field(default_factory=list, max_length=50)
     exempt_role_ids: List[str] = Field(default_factory=list, max_length=50)
 
+    image_only_enabled: bool = False
+    image_only_channel_ids: List[str] = Field(default_factory=list, max_length=50)
+    image_only_action: AutomodAction = "delete"
+
+    link_only_enabled: bool = False
+    link_only_channel_ids: List[str] = Field(default_factory=list, max_length=50)
+    link_only_action: AutomodAction = "delete"
+
 
 @router.get("/guilds/{guild_id}/automod")
 async def get_automod_config(guild_id: str) -> dict[str, Any]:
@@ -104,6 +174,8 @@ async def update_automod_config(
     payload["prohibited_words"] = [
         word.strip() for word in payload["prohibited_words"] if word.strip()
     ]
+    sanitize_automod_id_lists(payload)
+    validate_format_channel_rules(payload)
     payload["updated_at"] = now_iso()
 
     redis_client = await get_redis()

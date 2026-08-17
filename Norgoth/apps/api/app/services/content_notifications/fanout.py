@@ -22,10 +22,7 @@ from app.models.content_notifications import (
     NormalizedContentEventRow,
     NotificationJob,
 )
-from app.services.content_notifications.avatar import (
-    normalize_https_avatar_url,
-    persistable_source_avatar,
-)
+from app.services.content_notifications.avatar import persistable_source_avatar
 
 logger = logging.getLogger("norgoth.content.fanout")
 
@@ -204,15 +201,15 @@ async def ensure_source(
             ContentCreatorSource.platform_creator_id == platform_creator_id,
         )
     )
-    normalized_avatar = normalize_https_avatar_url(avatar_url)
+    normalized_avatar = persistable_source_avatar(platform, avatar_url)
     now = datetime.now(timezone.utc)
     if existing:
         existing.username = username or existing.username
         existing.display_name = display_name or existing.display_name
         existing.profile_url = profile_url or existing.profile_url
+        existing.avatar_checked_at = now
         if normalized_avatar:
             existing.avatar_url = normalized_avatar
-            existing.avatar_checked_at = now
         if canonical_url:
             existing.canonical_url = canonical_url
         if metadata:
@@ -227,7 +224,7 @@ async def ensure_source(
         display_name=display_name,
         profile_url=profile_url,
         avatar_url=normalized_avatar,
-        avatar_checked_at=now if normalized_avatar else None,
+        avatar_checked_at=now,
         canonical_url=canonical_url,
         metadata_json=metadata or {},
         monitor_status=monitor_status,

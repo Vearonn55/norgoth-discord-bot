@@ -16,5 +16,6 @@ describe("PlatformAvatar", () => {
     );
     expect(src).toContain("onError");
     expect(src).toContain("alt={displayName}");
+    expect(src).toContain('referrerPolicy="no-referrer"');
   });
 });

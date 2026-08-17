@@ -22,6 +22,7 @@ from app.models.content_notifications import (
     NotificationSenderStyle,
     NotificationTemplate,
 )
+from app.services.content_notifications.avatar import persistable_webhook_avatar
 from app.services.content_notifications.fanout import event_from_row
 from app.services.content_notifications.payload_builder import build_discord_payload
 from app.services.content_notifications.tag_registry import DEFAULT_TEMPLATES
@@ -36,6 +37,24 @@ logger = logging.getLogger("norgoth.content.delivery")
 
 MAX_ATTEMPTS = 5
 BASE_BACKOFF_SECONDS = 10
+
+
+def sender_webhook_identity(
+    sender: NotificationSenderStyle | None,
+) -> tuple[str | None, str | None]:
+    """Return (username, avatar_url) overrides for Discord webhook execute."""
+
+    if sender is None:
+        return None, None
+    username = sender.display_name or None
+    raw = sender.avatar_url
+    avatar_url = persistable_webhook_avatar(raw)
+    if raw and not avatar_url:
+        logger.warning(
+            "cn_sender_avatar_omitted style_id=%s reason=invalid_url",
+            sender.id,
+        )
+    return username, avatar_url
 
 
 async def process_job(
@@ -90,8 +109,7 @@ async def process_job(
     )
     embed_template = template.embed_json if template else None
     sender = subscription.sender_style
-    username = sender.display_name if sender else None
-    avatar_url = sender.avatar_url if sender else None
+    username, avatar_url = sender_webhook_identity(sender)
 
     payload = build_discord_payload(
         content_template=content_template,

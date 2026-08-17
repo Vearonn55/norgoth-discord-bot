@@ -56,6 +56,7 @@ export function PlatformAvatar({
       height={size}
       className="rounded-circle"
       style={{ objectFit: "cover", width: size, height: size }}
+      referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
     />
   );

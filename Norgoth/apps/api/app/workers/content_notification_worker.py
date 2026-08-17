@@ -179,6 +179,32 @@ async def renew_websub_leases(session_factory) -> None:
         await session.commit()
 
 
+async def backfill_null_avatars(session_factory) -> None:
+    """Refresh a bounded batch of sources that never stored a profile image."""
+
+    from app.services.content_notifications.avatar import (
+        AVATAR_REFRESH_PER_REQUEST,
+        FUNCTIONAL_PLATFORMS,
+        refresh_stale_avatars,
+    )
+
+    async with session_factory() as session:
+        sources = (
+            await session.scalars(
+                select(ContentCreatorSource)
+                .where(
+                    ContentCreatorSource.avatar_url.is_(None),
+                    ContentCreatorSource.platform.in_(tuple(FUNCTIONAL_PLATFORMS)),
+                )
+                .limit(AVATAR_REFRESH_PER_REQUEST)
+            )
+        ).all()
+        if not sources:
+            return
+        await refresh_stale_avatars(session, sources)
+        await session.commit()
+
+
 async def worker_loop() -> None:
     settings = get_settings()
     configure = logging.getLogger()
@@ -236,6 +262,12 @@ async def worker_loop() -> None:
                     await renew_websub_leases(session_factory)
                 except Exception:  # noqa: BLE001
                     logger.exception("Lease renewal failed")
+
+            if ticks % 60 == 0:
+                try:
+                    await backfill_null_avatars(session_factory)
+                except Exception:  # noqa: BLE001
+                    logger.exception("Avatar backfill failed")
 
 
 def main() -> None:

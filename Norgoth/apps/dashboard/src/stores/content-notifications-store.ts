@@ -212,6 +212,11 @@ type ContentNotificationsState = {
     guildId: string,
     payload: { display_name: string; avatar_url?: string | null }
   ) => Promise<void>;
+  updateStyle: (
+    guildId: string,
+    styleId: string,
+    payload: { display_name: string; avatar_url?: string | null }
+  ) => Promise<void>;
   deleteStyle: (guildId: string, styleId: string) => Promise<void>;
 };
 
@@ -222,6 +227,24 @@ function readApiErrorDetail(detail: unknown, fallback: string): string {
     if (typeof message === "string" && message.trim()) return message;
   }
   return fallback;
+}
+
+function readApiErrorCode(detail: unknown): string | null {
+  if (detail && typeof detail === "object" && "code" in detail) {
+    const code = (detail as { code?: unknown }).code;
+    if (typeof code === "string" && code.trim()) return code;
+  }
+  return null;
+}
+
+export class ContentNotificationApiError extends Error {
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = "ContentNotificationApiError";
+    this.code = code;
+  }
 }
 
 export const useContentNotificationsStore = create<ContentNotificationsState>(
@@ -345,8 +368,9 @@ export const useContentNotificationsStore = create<ContentNotificationsState>(
       );
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(
-          readApiErrorDetail(data.detail, "Could not resolve account")
+        throw new ContentNotificationApiError(
+          readApiErrorCode(data.detail) || "resolve_failed",
+          readApiErrorDetail(data.detail, "Could not resolve account"),
         );
       }
       return data as ResolvedCreator;
@@ -489,13 +513,22 @@ export const useContentNotificationsStore = create<ContentNotificationsState>(
     },
 
     async deleteTemplate(guildId, templateId) {
-      await fetch(
+      const response = await fetch(
         apiUrl(
           `/guilds/${guildId}/content-notifications/templates/${templateId}`
         ),
         { method: "DELETE", credentials: "include" }
       );
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(readApiErrorDetail(data.detail, "Delete failed"));
+      }
       await get().loadTemplates(guildId);
+      try {
+        await get().loadAccounts(guildId);
+      } catch {
+        // Template list is already refreshed; accounts can retry on next page load.
+      }
     },
 
     async createStyle(guildId, payload) {
@@ -508,17 +541,43 @@ export const useContentNotificationsStore = create<ContentNotificationsState>(
           body: JSON.stringify(payload),
         }
       );
-      if (!response.ok) throw new Error("Could not create sender style");
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(readApiErrorDetail(data.detail, "Could not create sender style"));
+      }
+      await get().loadStyles(guildId);
+    },
+
+    async updateStyle(guildId, styleId, payload) {
+      const response = await fetch(
+        apiUrl(
+          `/guilds/${guildId}/content-notifications/sender-styles/${styleId}`
+        ),
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(readApiErrorDetail(data.detail, "Could not update sender style"));
+      }
       await get().loadStyles(guildId);
     },
 
     async deleteStyle(guildId, styleId) {
-      await fetch(
+      const response = await fetch(
         apiUrl(
           `/guilds/${guildId}/content-notifications/sender-styles/${styleId}`
         ),
         { method: "DELETE", credentials: "include" }
       );
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(readApiErrorDetail(data.detail, "Delete failed"));
+      }
       await get().loadStyles(guildId);
     },
   })

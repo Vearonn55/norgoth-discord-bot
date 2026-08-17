@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { apiUrl } from "@/lib/api";
+import { readApiError } from "@/lib/api-error";
 
 export type AutomodAction = "delete" | "warn" | "timeout";
 
@@ -32,6 +33,12 @@ export type AutomodConfig = {
   exempt_manage_messages: boolean;
   exempt_channel_ids: string[];
   exempt_role_ids: string[];
+  image_only_enabled: boolean;
+  image_only_channel_ids: string[];
+  image_only_action: AutomodAction;
+  link_only_enabled: boolean;
+  link_only_channel_ids: string[];
+  link_only_action: AutomodAction;
 };
 
 export const DEFAULT_AUTOMOD_CONFIG: AutomodConfig = {
@@ -55,6 +62,12 @@ export const DEFAULT_AUTOMOD_CONFIG: AutomodConfig = {
   exempt_manage_messages: true,
   exempt_channel_ids: [],
   exempt_role_ids: [],
+  image_only_enabled: false,
+  image_only_channel_ids: [],
+  image_only_action: "delete",
+  link_only_enabled: false,
+  link_only_channel_ids: [],
+  link_only_action: "delete",
 };
 
 type AutomodState = {
@@ -65,6 +78,7 @@ type AutomodState = {
   wordPage: number;
   saving: boolean;
   saveError: string | null;
+  saveErrorCode: string | null;
   savedAt: string | null;
   setConfig: (
     config: AutomodConfig | ((current: AutomodConfig) => AutomodConfig)
@@ -86,6 +100,7 @@ export const useAutomodStore = create<AutomodState>((set, get) => ({
   wordPage: 1,
   saving: false,
   saveError: null,
+  saveErrorCode: null,
   savedAt: null,
   setConfig: (config) =>
     set((state) => ({
@@ -109,11 +124,14 @@ export const useAutomodStore = create<AutomodState>((set, get) => ({
         });
       }
     } catch {
-      set({ saveError: "Could not load the automod configuration." });
+      set({
+        saveError: "Could not load the automod configuration.",
+        saveErrorCode: "http_error",
+      });
     }
   },
   save: async (guildId) => {
-    set({ saving: true, saveError: null });
+    set({ saving: true, saveError: null, saveErrorCode: null });
     try {
       const { config } = get();
       const response = await fetch(apiUrl(`/guilds/${guildId}/automod`), {
@@ -123,16 +141,22 @@ export const useAutomodStore = create<AutomodState>((set, get) => ({
       });
 
       if (!response.ok) {
-        set({ saveError: `Save failed: ${await response.text()}` });
+        const err = await readApiError(response);
+        set({ saveError: err.message, saveErrorCode: err.code });
         return;
       }
 
       set({
         savedSnapshot: JSON.stringify(config),
         savedAt: new Date().toLocaleTimeString(),
+        saveError: null,
+        saveErrorCode: null,
       });
     } catch {
-      set({ saveError: "Save failed: could not reach the API." });
+      set({
+        saveError: "Save failed: could not reach the API.",
+        saveErrorCode: "http_error",
+      });
     } finally {
       set({ saving: false });
     }

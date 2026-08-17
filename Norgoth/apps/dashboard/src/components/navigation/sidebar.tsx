@@ -149,6 +149,26 @@ const SIDEBAR_DEFS: SidebarGroupDef[] = [
     ],
   },
   {
+    titleKey: "groupSecurity",
+    items: [
+      {
+        labelKey: "autoModeration",
+        href: "/security/auto-moderation",
+        icon: cilBan,
+      },
+      {
+        labelKey: "raidProtection",
+        href: "/security/raid-protection",
+        icon: cilShieldAlt,
+      },
+      {
+        labelKey: "honeypot",
+        href: "/security/honeypot",
+        icon: cilBug,
+      },
+    ],
+  },
+  {
     titleKey: "groupMessages",
     items: [
       { labelKey: "campaigns", href: "/campaigns", icon: cilSend },
@@ -183,26 +203,6 @@ const SIDEBAR_DEFS: SidebarGroupDef[] = [
         labelKey: "discordLogs",
         href: "/audit/discord-logs",
         icon: cilHistory,
-      },
-    ],
-  },
-  {
-    titleKey: "groupSecurity",
-    items: [
-      {
-        labelKey: "autoModeration",
-        href: "/security/auto-moderation",
-        icon: cilBan,
-      },
-      {
-        labelKey: "raidProtection",
-        href: "/security/raid-protection",
-        icon: cilShieldAlt,
-      },
-      {
-        labelKey: "honeypot",
-        href: "/security/honeypot",
-        icon: cilBug,
       },
     ],
   },
@@ -253,6 +253,7 @@ export default function Sidebar({ lang: propLang, dict }: SidebarProps) {
 
   const groups = useMemo(() => {
     return SIDEBAR_DEFS.map((group) => ({
+      titleKey: group.titleKey,
       title: labels[group.titleKey],
       items: group.items.map((item) => ({
         label: labels[item.labelKey],
@@ -298,7 +299,7 @@ export default function Sidebar({ lang: propLang, dict }: SidebarProps) {
 
       <CSidebarNav ref={navRef} className="norgoth-sidebar-scroll norgoth-scrollbar">
         {groups.map((group) => (
-          <div key={group.title}>
+          <div key={group.titleKey}>
             <CNavTitle>{group.title}</CNavTitle>
             {group.items.map((item) => {
               const href = `/${lang}${item.href}`;
@@ -308,7 +309,7 @@ export default function Sidebar({ lang: propLang, dict }: SidebarProps) {
                   : pathname === href || pathname.startsWith(`${href}/`);
 
               return (
-                <CNavItem key={`${group.title}-${item.href}`}>
+                <CNavItem key={`${group.titleKey}-${item.href}`}>
                   <CNavLink as={Link} href={href} active={active} scroll={false}>
                     <CIcon icon={item.icon} className="nav-icon me-2" />
                     {item.label}

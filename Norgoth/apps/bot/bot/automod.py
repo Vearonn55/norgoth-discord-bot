@@ -1,4 +1,5 @@
-"""Rule-based auto-moderation: prohibited words, spam, invites, mass mentions.
+"""Rule-based auto-moderation: prohibited words, spam, invites, mass mentions,
+image-only and link-only channels.
 
 No AI involved — every rule is an explicit, dashboard-configured check.
 Requires the Message Content intent.
@@ -14,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 import discord
 from discord.ext import commands
 
+from bot.automod_content import is_image_only_compliant, is_link_only_compliant
 from bot.state import now_iso
 
 if TYPE_CHECKING:
@@ -47,7 +49,17 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "exempt_manage_messages": True,
     "exempt_channel_ids": [],
     "exempt_role_ids": [],
+    "image_only_enabled": False,
+    "image_only_channel_ids": [],
+    "image_only_action": "delete",
+    "link_only_enabled": False,
+    "link_only_channel_ids": [],
+    "link_only_action": "delete",
 }
+
+FORMAT_RULES = frozenset({"image only channel", "link only channel"})
+SEEN_TTL_SECONDS = 60
+WARN_COOLDOWN_SECONDS = 30
 
 
 def automod_key(guild_id: int | str) -> str:
@@ -83,7 +95,14 @@ class AutoModCog(commands.Cog):
 
     async def get_config(self, guild_id: int) -> dict[str, Any]:
         stored = await self.bot.state.get_json(automod_key(guild_id))
-        return {**DEFAULT_CONFIG, **stored}
+        if not stored:
+            hydrated = await self.bot.state._hydrate_feature_from_api(
+                guild_id, "automod"
+            )
+            if hydrated:
+                await self.bot.state.set_json(automod_key(guild_id), hydrated)
+                stored = hydrated
+        return {**DEFAULT_CONFIG, **(stored or {})}
 
     def get_patterns(self, guild_id: int, words: list[str]) -> list[re.Pattern[str]]:
         cache_key = tuple(words)
@@ -113,6 +132,40 @@ class AutoModCog(commands.Cog):
             return "voice_text", channel.id
         return "text", channel.id
 
+    def _apply_channel_id(self, message: discord.Message) -> str:
+        _scope, apply_id = self._scope_for_channel(message.channel)
+        return str(apply_id)
+
+    def _channel_ids_for_message(self, message: discord.Message) -> set[str]:
+        ids = {str(message.channel.id)}
+        parent_id = getattr(message.channel, "parent_id", None)
+        if parent_id:
+            ids.add(str(parent_id))
+        ids.add(self._apply_channel_id(message))
+        return ids
+
+    async def _claim_violation(
+        self,
+        message: discord.Message,
+        rule: str,
+    ) -> bool:
+        """Return True if this instance should apply the action."""
+
+        guild = message.guild
+        if guild is None:
+            return False
+        edited = getattr(message, "edited_at", None)
+        stamp = int(edited.timestamp()) if edited else 0
+        key = f"norgoth:guild:{guild.id}:automod:seen:{message.id}:{stamp}:{rule}"
+        try:
+            claimed = await self.bot.state.redis.set(
+                key, "1", nx=True, ex=SEEN_TTL_SECONDS
+            )
+            return bool(claimed)
+        except Exception:  # noqa: BLE001
+            logger.debug("Automod seen-claim unavailable", exc_info=True)
+            return True
+
     def is_exempt(self, message: discord.Message, config: dict[str, Any]) -> bool:
         member = message.author
 
@@ -127,11 +180,7 @@ class AutoModCog(commands.Cog):
         # Exemptions match the channel itself AND (for threads) its parent, so a
         # parent-channel exemption transparently covers its threads.
         exempt_channels = set(config.get("exempt_channel_ids") or [])
-        channel_ids = {str(message.channel.id)}
-        parent_id = getattr(message.channel, "parent_id", None)
-        if parent_id:
-            channel_ids.add(str(parent_id))
-        if exempt_channels & channel_ids:
+        if exempt_channels & self._channel_ids_for_message(message):
             return True
 
         exempt_roles = set(config.get("exempt_role_ids") or [])
@@ -199,27 +248,32 @@ class AutoModCog(commands.Cog):
     ) -> None:
         member = message.author
         detail_parts = [f"rule: {rule}", f"action: {action}"]
+        missing_manage_messages = False
 
         try:
             await message.delete()
+        except discord.NotFound:
+            detail_parts.append("already deleted")
+        except discord.Forbidden:
+            missing_manage_messages = True
+            detail_parts.append("delete failed (missing permission)")
+            logger.warning(
+                "Automod missing Manage Messages for message %s in guild %s",
+                message.id,
+                message.guild.id if message.guild else "?",
+            )
         except discord.HTTPException:
             logger.warning(
                 "Automod could not delete message %s in guild %s",
                 message.id,
                 message.guild.id if message.guild else "?",
             )
+            detail_parts.append("delete failed (Discord error)")
 
-        if action in ("warn", "timeout"):
-            try:
-                warning = await message.channel.send(
-                    f"{member.mention} your message was removed by "
-                    f"auto-moderation ({rule}).",
-                    delete_after=8,
-                )
+        if action in ("warn", "timeout") and not missing_manage_messages:
+            warned = await self._send_warning(message, member, rule)
+            if warned:
                 detail_parts.append(f"warned in #{getattr(message.channel, 'name', '?')}")
-                del warning
-            except discord.HTTPException:
-                pass
 
         if action == "timeout" and isinstance(member, discord.Member):
             minutes = max(int(config.get("timeout_minutes") or 10), 1)
@@ -236,6 +290,44 @@ class AutoModCog(commands.Cog):
                 detail_parts.append("timeout failed (Discord error)")
 
         await self.log_automod_action(message, rule, ", ".join(detail_parts))
+
+    async def _send_warning(
+        self,
+        message: discord.Message,
+        member: discord.abc.User,
+        rule: str,
+    ) -> bool:
+        guild = message.guild
+        if guild is None:
+            return False
+        cooldown_key = (
+            f"norgoth:guild:{guild.id}:automod:warn:"
+            f"{message.channel.id}:{member.id}:{rule}"
+        )
+        try:
+            acquired = await self.bot.state.redis.set(
+                cooldown_key, "1", nx=True, ex=WARN_COOLDOWN_SECONDS
+            )
+            if not acquired:
+                return False
+        except Exception:  # noqa: BLE001
+            logger.debug("Automod warn cooldown unavailable", exc_info=True)
+
+        mentions = discord.AllowedMentions(
+            everyone=False,
+            roles=False,
+            users=[member],
+        )
+        try:
+            await message.channel.send(
+                f"{member.mention} your message was removed by "
+                f"auto-moderation ({rule}).",
+                allowed_mentions=mentions,
+                delete_after=8,
+            )
+            return True
+        except discord.HTTPException:
+            return False
 
     async def log_automod_action(
         self,
@@ -314,7 +406,7 @@ class AutoModCog(commands.Cog):
         )
         embed.add_field(name="Detail", value=detail[:1024], inline=False)
 
-        if message.content:
+        if message.content and rule not in FORMAT_RULES:
             embed.add_field(
                 name="Message",
                 value=message.content[:512],
@@ -339,6 +431,27 @@ class AutoModCog(commands.Cog):
         """
 
         content = message.content or ""
+        apply_ids = self._channel_ids_for_message(message)
+
+        if config.get("image_only_enabled"):
+            image_channels = {
+                str(channel_id)
+                for channel_id in (config.get("image_only_channel_ids") or [])
+            }
+            if apply_ids & image_channels and not is_image_only_compliant(message):
+                return "image only channel", str(
+                    config.get("image_only_action") or "delete"
+                )
+
+        if config.get("link_only_enabled"):
+            link_channels = {
+                str(channel_id)
+                for channel_id in (config.get("link_only_channel_ids") or [])
+            }
+            if apply_ids & link_channels and not is_link_only_compliant(message):
+                return "link only channel", str(
+                    config.get("link_only_action") or "delete"
+                )
 
         # Prohibited words
         words = config.get("prohibited_words") or []
@@ -373,8 +486,7 @@ class AutoModCog(commands.Cog):
 
         return None
 
-    @commands.Cog.listener()
-    async def on_message(self, message: discord.Message) -> None:
+    async def _process_message(self, message: discord.Message) -> None:
         if message.guild is None or message.author.bot:
             return
 
@@ -401,6 +513,58 @@ class AutoModCog(commands.Cog):
             logger.exception("Automod evaluation failed")
             return
 
-        if result is not None:
-            rule, action = result
-            await self.apply_action(message, rule, action, config)
+        if result is None:
+            return
+
+        rule, action = result
+        if not await self._claim_violation(message, rule):
+            return
+        await self.apply_action(message, rule, action, config)
+
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message) -> None:
+        await self._process_message(message)
+
+    @commands.Cog.listener()
+    async def on_message_edit(
+        self,
+        _before: discord.Message,
+        after: discord.Message,
+    ) -> None:
+        await self._process_message(after)
+
+    @commands.Cog.listener()
+    async def on_raw_message_edit(
+        self,
+        payload: discord.RawMessageUpdateEvent,
+    ) -> None:
+        if payload.cached_message is not None:
+            return
+        data = payload.data or {}
+        if "content" not in data and "attachments" not in data:
+            return
+        channel = self.bot.get_channel(payload.channel_id)
+        if channel is None:
+            try:
+                channel = await self.bot.fetch_channel(payload.channel_id)
+            except discord.HTTPException:
+                return
+        if not isinstance(
+            channel,
+            (discord.TextChannel, discord.Thread, discord.VoiceChannel, discord.StageChannel),
+        ):
+            return
+        try:
+            message = await channel.fetch_message(payload.message_id)
+        except discord.NotFound:
+            return
+        except discord.Forbidden:
+            logger.warning(
+                "Automod could not fetch edited message %s in channel %s",
+                payload.message_id,
+                payload.channel_id,
+            )
+            return
+        except discord.HTTPException:
+            return
+        await self._process_message(message)

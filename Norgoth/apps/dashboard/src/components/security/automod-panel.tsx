@@ -10,7 +10,7 @@ import {
   CRow,
   CSpinner,
 } from "@coreui/react";
-import { cilBan, cilLink, cilShieldAlt, cilSpeedometer } from "@coreui/icons";
+import { cilBan, cilExternalLink, cilImage, cilLink, cilShieldAlt, cilSpeedometer } from "@coreui/icons";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -34,7 +34,13 @@ import {
   type AutomodAction,
 } from "@/stores/automod-store";
 
-type AutomodFeature = "words" | "spam" | "invites" | "exemptions";
+type AutomodFeature =
+  | "words"
+  | "spam"
+  | "invites"
+  | "image_only"
+  | "link_only"
+  | "exemptions";
 
 export function AutomodPanel() {
   const dict = useLocaleDict();
@@ -48,6 +54,7 @@ export function AutomodPanel() {
   const wordPage = useAutomodStore((s) => s.wordPage);
   const saving = useAutomodStore((s) => s.saving);
   const saveError = useAutomodStore((s) => s.saveError);
+  const saveErrorCode = useAutomodStore((s) => s.saveErrorCode);
   const savedAt = useAutomodStore((s) => s.savedAt);
   const setConfig = useAutomodStore((s) => s.setConfig);
   const setWordInput = useAutomodStore((s) => s.setWordInput);
@@ -98,16 +105,43 @@ export function AutomodPanel() {
     if (!useAutomodStore.getState().saveError) setActiveModal(null);
   }
 
-  function toggleId(list: "exempt_channel_ids" | "exempt_role_ids", id: string) {
+  function toggleId(
+    list:
+      | "exempt_channel_ids"
+      | "exempt_role_ids"
+      | "image_only_channel_ids"
+      | "link_only_channel_ids",
+    id: string,
+  ) {
     setConfig((current) => {
       const values = current[list];
-      return {
-        ...current,
-        [list]: values.includes(id)
-          ? values.filter((item) => item !== id)
-          : [...values, id],
-      };
+      const next = values.includes(id)
+        ? values.filter((item) => item !== id)
+        : [...values, id];
+      const updates: Partial<typeof current> = { [list]: next };
+      if (list === "image_only_channel_ids" && next.length === 0) {
+        updates.image_only_enabled = false;
+      }
+      if (list === "link_only_channel_ids" && next.length === 0) {
+        updates.link_only_enabled = false;
+      }
+      return { ...current, ...updates };
     });
+  }
+
+  function toggleFormatChannel(
+    list: "image_only_channel_ids" | "link_only_channel_ids",
+    id: string,
+  ) {
+    const other =
+      list === "image_only_channel_ids"
+        ? "link_only_channel_ids"
+        : "image_only_channel_ids";
+    const current = useAutomodStore.getState().config;
+    if (!current[list].includes(id) && current[other].includes(id)) {
+      return;
+    }
+    toggleId(list, id);
   }
 
   const filteredWords = useMemo(() => {
@@ -146,10 +180,14 @@ export function AutomodPanel() {
 
   const channels = resources?.channels ?? [];
   const roles = (resources?.roles ?? []).filter((role) => !role.managed);
+  const formatRulesOn =
+    (config.image_only_enabled && config.image_only_channel_ids.length > 0) ||
+    (config.link_only_enabled && config.link_only_channel_ids.length > 0);
   const showEmptyRulesBanner =
     config.enabled &&
     config.prohibited_words.length === 0 &&
-    !config.block_invites;
+    !config.block_invites &&
+    !formatRulesOn;
 
   const wordCount = config.prohibited_words.length;
   const spamOn = config.spam_enabled || config.duplicate_enabled;
@@ -158,6 +196,14 @@ export function AutomodPanel() {
     config.exempt_channel_ids.length > 0 ||
     config.exempt_role_ids.length > 0 ||
     config.exempt_manage_messages;
+  const localizedSaveError =
+    saveErrorCode === "automod_channel_rule_conflict"
+      ? d.conflictChannels
+      : saveErrorCode === "automod_image_only_channels_required"
+        ? d.imageOnlyEnableNeedsChannel
+        : saveErrorCode === "automod_link_only_channels_required"
+          ? d.linkOnlyEnableNeedsChannel
+          : saveError;
 
   return (
     <div className="d-flex flex-column gap-4">
@@ -305,6 +351,46 @@ export function AutomodPanel() {
           </div>
           <div className="col">
             <MiniFeatureCard
+              icon={cilImage}
+              name={d.imageOnlyTitle}
+              description={d.imageOnlyCardDesc}
+              category="moderation"
+              enabled={config.image_only_enabled}
+              onToggle={(checked) => {
+                if (checked && config.image_only_channel_ids.length === 0) {
+                  setActiveModal("image_only");
+                  return;
+                }
+                setConfig((current) => ({
+                  ...current,
+                  image_only_enabled: checked,
+                }));
+              }}
+              onClick={() => setActiveModal("image_only")}
+            />
+          </div>
+          <div className="col">
+            <MiniFeatureCard
+              icon={cilExternalLink}
+              name={d.linkOnlyTitle}
+              description={d.linkOnlyCardDesc}
+              category="moderation"
+              enabled={config.link_only_enabled}
+              onToggle={(checked) => {
+                if (checked && config.link_only_channel_ids.length === 0) {
+                  setActiveModal("link_only");
+                  return;
+                }
+                setConfig((current) => ({
+                  ...current,
+                  link_only_enabled: checked,
+                }));
+              }}
+              onClick={() => setActiveModal("link_only")}
+            />
+          </div>
+          <div className="col">
+            <MiniFeatureCard
               icon={cilShieldAlt}
               name={d.exemptionsTitle}
               description={d.exemptionsCardDesc}
@@ -331,9 +417,9 @@ export function AutomodPanel() {
                 {formatDict(d.savedAt, { time: savedAt })}
               </span>
             ) : null}
-            {saveError ? (
+            {localizedSaveError ? (
               <CAlert color="danger" className="mb-0 py-2">
-                {saveError}
+                {localizedSaveError}
               </CAlert>
             ) : null}
           </>
@@ -355,7 +441,7 @@ export function AutomodPanel() {
         category="moderation"
         icon={cilBan}
         saving={saving}
-        error={saveError}
+        error={localizedSaveError}
         onClose={() => setActiveModal(null)}
         onSave={handleModalSave}
       >
@@ -428,7 +514,7 @@ export function AutomodPanel() {
         category="moderation"
         icon={cilSpeedometer}
         saving={saving}
-        error={saveError}
+        error={localizedSaveError}
         onClose={() => setActiveModal(null)}
         onSave={handleModalSave}
       >
@@ -517,7 +603,7 @@ export function AutomodPanel() {
         category="moderation"
         icon={cilLink}
         saving={saving}
-        error={saveError}
+        error={localizedSaveError}
         onClose={() => setActiveModal(null)}
         onSave={handleModalSave}
       >
@@ -593,13 +679,83 @@ export function AutomodPanel() {
       </FeatureConfigurationModal>
 
       <FeatureConfigurationModal
+        visible={activeModal === "image_only"}
+        title={d.imageOnlyTitle}
+        description={d.imageOnlyModalDesc}
+        category="moderation"
+        icon={cilImage}
+        saving={saving}
+        error={localizedSaveError}
+        onClose={() => setActiveModal(null)}
+        onSave={handleModalSave}
+      >
+        <div className="d-flex flex-column gap-3">
+          <p className="mb-0 small text-body-secondary">
+            {d.imageOnlyPermissionNote}
+          </p>
+          <FormatChannelPicker
+            label={d.imageOnlyChannels}
+            selectedIds={config.image_only_channel_ids}
+            blockedIds={config.link_only_channel_ids}
+            channels={channels}
+            unavailableLabel={dict.common.channelUnavailable}
+            conflictHint={d.formatChannelConflictHint}
+            onToggle={(id) => toggleFormatChannel("image_only_channel_ids", id)}
+          />
+          <ActionSelect
+            label={d.imageOnlyAction}
+            value={config.image_only_action}
+            options={actionOptions}
+            onChange={(value) =>
+              setConfig((current) => ({ ...current, image_only_action: value }))
+            }
+          />
+        </div>
+      </FeatureConfigurationModal>
+
+      <FeatureConfigurationModal
+        visible={activeModal === "link_only"}
+        title={d.linkOnlyTitle}
+        description={d.linkOnlyModalDesc}
+        category="moderation"
+        icon={cilExternalLink}
+        saving={saving}
+        error={localizedSaveError}
+        onClose={() => setActiveModal(null)}
+        onSave={handleModalSave}
+      >
+        <div className="d-flex flex-column gap-3">
+          <p className="mb-0 small text-body-secondary">
+            {d.linkOnlyPermissionNote}
+          </p>
+          <FormatChannelPicker
+            label={d.linkOnlyChannels}
+            selectedIds={config.link_only_channel_ids}
+            blockedIds={config.image_only_channel_ids}
+            channels={channels}
+            unavailableLabel={dict.common.channelUnavailable}
+            conflictHint={d.formatChannelConflictHint}
+            onToggle={(id) => toggleFormatChannel("link_only_channel_ids", id)}
+          />
+          <ActionSelect
+            label={d.linkOnlyAction}
+            value={config.link_only_action}
+            options={actionOptions}
+            onChange={(value) =>
+              setConfig((current) => ({ ...current, link_only_action: value }))
+            }
+          />
+        </div>
+      </FeatureConfigurationModal>
+
+      <FeatureConfigurationModal
         visible={activeModal === "exemptions"}
         title={d.exemptionsTitle}
         description={d.exemptionsModalDesc}
         category="moderation"
         icon={cilShieldAlt}
         saving={saving}
-        error={saveError}
+        error={localizedSaveError}
         onClose={() => setActiveModal(null)}
         onSave={handleModalSave}
       >
@@ -768,6 +924,64 @@ function ActionSelect({
           </option>
         ))}
       </CFormSelect>
+    </div>
+  );
+}
+
+function FormatChannelPicker({
+  label,
+  selectedIds,
+  blockedIds,
+  channels,
+  unavailableLabel,
+  conflictHint,
+  onToggle,
+}: {
+  label: string;
+  selectedIds: string[];
+  blockedIds: string[];
+  channels: { id: string; name: string }[];
+  unavailableLabel: string;
+  conflictHint: string;
+  onToggle: (id: string) => void;
+}) {
+  return (
+    <div>
+      <ChannelPickerToolbar label={label} />
+      <div className="d-flex flex-wrap gap-2">
+        {selectedIds
+          .filter((id) => !channels.some((channel) => channel.id === id))
+          .map((id) => (
+            <Button
+              key={id}
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() => onToggle(id)}
+            >
+              {unavailableLabel} ×
+            </Button>
+          ))}
+        {channels.map((channel) => {
+          const isSelected = selectedIds.includes(channel.id);
+          const blocked = !isSelected && blockedIds.includes(channel.id);
+          return (
+            <Button
+              key={channel.id}
+              type="button"
+              size="sm"
+              variant={isSelected ? "primary" : "secondary"}
+              disabled={blocked}
+              title={blocked ? conflictHint : undefined}
+              onClick={() => {
+                if (!blocked) onToggle(channel.id);
+              }}
+            >
+              #{channel.name}
+            </Button>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -89,6 +89,19 @@ def test_build_discord_payload_includes_embed_and_override() -> None:
     assert payload["embeds"][0]["color"] == 0xFF00AA
 
 
+def test_build_discord_payload_omits_empty_avatar_override() -> None:
+    payload = build_discord_payload(
+        content_template="{account} is live!",
+        embed_template={"title": "{title}"},
+        event=_event(),
+        username="Custom Bot",
+        avatar_url=None,
+    )
+    assert payload["username"] == "Custom Bot"
+    assert "avatar_url" not in payload
+    assert payload["allowed_mentions"] == {"parse": []}
+
+
 def test_stock_template_uses_large_image_and_platform_color() -> None:
     payload = build_discord_payload(
         content_template="{account} is now live!\n{link}",

@@ -148,7 +148,7 @@ async def test_youtube_resolve_handle_uses_data_api_not_scrape(
                 "snippet": {
                     "title": "Demo",
                     "customUrl": "@demo",
-                    "thumbnails": {"default": {"url": "https://example.com/a.png"}},
+                    "thumbnails": {"default": {"url": "https://yt3.ggpht.com/a.png"}},
                 }
             }
         ]
@@ -163,9 +163,218 @@ async def test_youtube_resolve_handle_uses_data_api_not_scrape(
     adapter = YouTubeAdapter(http_client=client)
     creator = await adapter.resolve_account("@demo")
     assert creator.platform_creator_id == "UCabcdefghijklmnopqrstuv"
+    assert creator.avatar_url == "https://yt3.ggpht.com/a.png"
+    assert creator.display_name == "Demo"
     # Never hit youtube.com HTML pages.
     for call in client.get.await_args_list:
         assert "googleapis.com" in call.args[0]
+
+
+@pytest.mark.anyio
+async def test_youtube_resolve_prefers_medium_when_high_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("YOUTUBE_API_KEY", "test-key")
+    client = AsyncMock()
+    response = MagicMock()
+    response.status_code = 200
+    response.json.return_value = {
+        "items": [
+            {
+                "id": "UCabcdefghijklmnopqrstuv",
+                "snippet": {
+                    "title": "Demo",
+                    "customUrl": "@demo",
+                    "thumbnails": {
+                        "medium": {"url": "https://yt3.ggpht.com/medium.png"},
+                        "default": {"url": "https://yt3.ggpht.com/default.png"},
+                    },
+                },
+            }
+        ]
+    }
+    client.get = AsyncMock(return_value=response)
+    adapter = YouTubeAdapter(http_client=client)
+    creator = await adapter.resolve_account("UCabcdefghijklmnopqrstuv")
+    assert creator.avatar_url == "https://yt3.ggpht.com/medium.png"
+
+
+@pytest.mark.anyio
+async def test_youtube_resolve_survives_snippet_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setenv("YOUTUBE_API_KEY", "test-key")
+    client = AsyncMock()
+    handle_response = MagicMock()
+    handle_response.status_code = 200
+    handle_response.json.return_value = {"items": [{"id": "UCabcdefghijklmnopqrstuv"}]}
+    snippet_response = MagicMock()
+    snippet_response.status_code = 500
+    snippet_response.json.return_value = {}
+
+    async def get_side_effect(url, params=None, **_kwargs):
+        if "forHandle" in (params or {}):
+            return handle_response
+        return snippet_response
+
+    client.get = AsyncMock(side_effect=get_side_effect)
+    adapter = YouTubeAdapter(http_client=client)
+    with caplog.at_level("WARNING"):
+        creator = await adapter.resolve_account("@demo")
+    assert creator.platform_creator_id == "UCabcdefghijklmnopqrstuv"
+    assert creator.avatar_url is None
+    assert "snippet failed" in caplog.text
+
+
+@pytest.mark.anyio
+async def test_twitch_resolve_maps_profile_image(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TWITCH_CLIENT_ID", "id")
+    monkeypatch.setenv("TWITCH_CLIENT_SECRET", "secret")
+    client = AsyncMock()
+    adapter = TwitchAdapter(http_client=client)
+    adapter._token = "tok"
+    user_response = MagicMock()
+    user_response.status_code = 200
+    user_response.json.return_value = {
+        "data": [
+            {
+                "id": "123",
+                "login": "demo",
+                "display_name": "Demo",
+                "profile_image_url": (
+                    "https://static-cdn.jtvnw.net/jtv_user_pictures/demo.png"
+                ),
+            }
+        ]
+    }
+    client.get = AsyncMock(return_value=user_response)
+    creator = await adapter.resolve_account("https://www.twitch.tv/demo")
+    assert creator.platform_creator_id == "123"
+    assert creator.avatar_url == (
+        "https://static-cdn.jtvnw.net/jtv_user_pictures/demo.png"
+    )
+    assert creator.display_name == "Demo"
+
+
+@pytest.mark.anyio
+async def test_x_resolve_maps_profile_image(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("X_API_BEARER_TOKEN", "bearer")
+    monkeypatch.delenv("X_MONTHLY_READ_BUDGET", raising=False)
+    monkeypatch.setattr(
+        "app.services.content_notifications.x_budget.budget_exhausted",
+        AsyncMock(return_value=False),
+    )
+    monkeypatch.setattr(
+        "app.services.content_notifications.x_budget.record_reads",
+        AsyncMock(return_value=1),
+    )
+    client = AsyncMock()
+    user_response = MagicMock()
+    user_response.status_code = 200
+    user_response.json.return_value = {
+        "data": {
+            "id": "99",
+            "username": "demo",
+            "name": "Demo",
+            "profile_image_url": (
+                "https://pbs.twimg.com/profile_images/1/photo_normal.jpg"
+            ),
+        }
+    }
+    client.get = AsyncMock(return_value=user_response)
+    from app.integrations.content_platforms.x.adapter import XAdapter
+
+    adapter = XAdapter(http_client=client)
+    creator = await adapter.resolve_account("https://x.com/demo")
+    assert creator.platform_creator_id == "99"
+    assert creator.avatar_url == (
+        "https://pbs.twimg.com/profile_images/1/photo_normal.jpg"
+    )
+
+
+@pytest.mark.anyio
+async def test_kick_resolve_uses_users_profile_picture(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("KICK_CLIENT_ID", "id")
+    monkeypatch.setenv("KICK_CLIENT_SECRET", "secret")
+    from app.integrations.content_platforms.kick.adapter import KickAdapter
+
+    adapter = KickAdapter(http_client=AsyncMock())
+    adapter._token = "tok"
+    adapter._token_expires_at = 9_999_999_999
+
+    async def request(method, url, params=None, json=None, headers=None):
+        resp = MagicMock()
+        resp.status_code = 200
+        if "/channels" in url:
+            resp.json.return_value = {
+                "data": [
+                    {
+                        "broadcaster_user_id": 42,
+                        "slug": "demo",
+                        "channel_name": "Demo",
+                    }
+                ]
+            }
+        else:
+            resp.json.return_value = {
+                "data": [
+                    {
+                        "user_id": 42,
+                        "name": "Demo",
+                        "profile_picture": (
+                            "https://files.kick.com/images/user/a.png"
+                        ),
+                    }
+                ]
+            }
+        return resp
+
+    adapter._http.request = AsyncMock(side_effect=request)
+    creator = await adapter.resolve_account("https://kick.com/demo")
+    assert creator.platform_creator_id == "42"
+    assert creator.username == "demo"
+    assert creator.display_name == "Demo"
+    assert creator.avatar_url == "https://files.kick.com/images/user/a.png"
+    urls = [call.args[1] for call in adapter._http.request.await_args_list]
+    assert any("/users" in url for url in urls)
+
+
+@pytest.mark.anyio
+async def test_kick_resolve_survives_users_404(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("KICK_CLIENT_ID", "id")
+    monkeypatch.setenv("KICK_CLIENT_SECRET", "secret")
+    from app.integrations.content_platforms.kick.adapter import KickAdapter
+
+    adapter = KickAdapter(http_client=AsyncMock())
+    adapter._token = "tok"
+    adapter._token_expires_at = 9_999_999_999
+
+    async def request(method, url, params=None, json=None, headers=None):
+        resp = MagicMock()
+        if "/channels" in url:
+            resp.status_code = 200
+            resp.json.return_value = {
+                "data": [{"broadcaster_user_id": 42, "slug": "demo"}]
+            }
+        else:
+            resp.status_code = 404
+            resp.json.return_value = {}
+        return resp
+
+    adapter._http.request = AsyncMock(side_effect=request)
+    creator = await adapter.resolve_account("https://kick.com/demo")
+    assert creator.platform_creator_id == "42"
+    assert creator.username == "demo"
+    assert creator.avatar_url is None
 
 
 @pytest.mark.anyio

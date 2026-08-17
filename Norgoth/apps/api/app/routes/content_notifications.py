@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Any, Literal, Optional
+from typing import Any, Literal, NoReturn, Optional
 from uuid import UUID, uuid4
 
 import httpx
@@ -44,8 +44,12 @@ from app.models.content_notifications import (
     PlatformSubscription,
 )
 from app.services.content_notifications.avatar import (
+    persistable_source_avatar,
+    persistable_webhook_avatar,
     parse_account_platform_filter,
+    read_resolve_cache,
     refresh_stale_avatars,
+    write_resolve_cache,
 )
 from app.services.content_notifications.fanout import (
     ensure_source,
@@ -63,6 +67,7 @@ from app.services.content_notifications.quotas import (
     guild_platform_usage,
     total_limit_for,
 )
+from app.services.content_notifications.rate_limit import throttle
 from app.services.content_notifications.tag_registry import (
     DEFAULT_TEMPLATES,
     TAG_REGISTRY,
@@ -131,6 +136,11 @@ class SenderStyleBody(BaseModel):
     avatar_url: Optional[str] = Field(default=None, max_length=500)
 
 
+class SenderStyleUpdateBody(BaseModel):
+    display_name: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    avatar_url: Optional[str] = Field(default=None, max_length=500)
+
+
 class TestNotificationRequest(BaseModel):
     subscription_id: UUID
 
@@ -145,6 +155,55 @@ class PreviewRequest(BaseModel):
     content: str = ""
     embed_json: Optional[dict[str, Any]] = None
     ping_role_id: Optional[str] = None
+
+
+def _serialize_resolved_creator(
+    creator: ResolvedCreator,
+    *,
+    available: bool,
+    reason: str | None,
+) -> dict[str, Any]:
+    platform = creator.platform.value
+    return {
+        "platform": platform,
+        "platform_creator_id": creator.platform_creator_id,
+        "username": creator.username,
+        "display_name": creator.display_name,
+        "profile_url": creator.profile_url,
+        "avatar_url": persistable_source_avatar(platform, creator.avatar_url),
+        "canonical_url": creator.canonical_url,
+        "available": available,
+        "reason": reason,
+    }
+
+
+def _adapter_http_status(code: str) -> int:
+    if code in {"rate_limited", "quota_exhausted"}:
+        return 429
+    return 400
+
+
+def _raise_adapter_http(error: PlatformAdapterError) -> NoReturn:
+    raise HTTPException(
+        status_code=_adapter_http_status(error.code),
+        detail={"code": error.code, "message": str(error)},
+    ) from error
+
+
+async def _resolve_creator(
+    *,
+    guild_id: str,
+    platform: str,
+    url: str,
+) -> ResolvedCreator:
+    cached = await read_resolve_cache(guild_id, platform, url)
+    if cached is not None:
+        return cached
+    adapter = get_adapter(platform)
+    await throttle(platform)
+    creator = await adapter.resolve_account(url)
+    await write_resolve_cache(guild_id, platform, url, creator)
+    return creator
 
 
 def _serialize_source(source: ContentCreatorSource) -> dict[str, Any]:
@@ -250,25 +309,38 @@ async def resolve_account(
     guild_id: str,
     body: ResolveAccountRequest,
 ) -> dict[str, Any]:
-    _ = guild_id
     adapter = get_adapter(body.platform)
     try:
-        creator = await adapter.resolve_account(body.url)
+        creator = await _resolve_creator(
+            guild_id=guild_id,
+            platform=body.platform,
+            url=body.url,
+        )
     except PlatformBlockedError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
+        _raise_adapter_http(error)
     except PlatformAdapterError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-    return {
-        "platform": creator.platform.value,
-        "platform_creator_id": creator.platform_creator_id,
-        "username": creator.username,
-        "display_name": creator.display_name,
-        "profile_url": creator.profile_url,
-        "avatar_url": creator.avatar_url,
-        "canonical_url": creator.canonical_url,
-        "available": adapter.is_available(),
-        "reason": adapter.availability_reason(),
-    }
+        _raise_adapter_http(error)
+    except httpx.TimeoutException as error:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "upstream_timeout",
+                "message": "Creator lookup timed out.",
+            },
+        ) from error
+    except httpx.RequestError as error:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "upstream_error",
+                "message": "Creator lookup failed.",
+            },
+        ) from error
+    return _serialize_resolved_creator(
+        creator,
+        available=adapter.is_available(),
+        reason=adapter.availability_reason(),
+    )
 
 
 @router.get("/guilds/{guild_id}/content-notifications/accounts")
@@ -358,9 +430,31 @@ async def create_account(
 ) -> dict[str, Any]:
     adapter = get_adapter(body.platform)
     try:
-        creator = await adapter.resolve_account(body.url)
-    except (PlatformBlockedError, PlatformAdapterError) as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
+        creator = await _resolve_creator(
+            guild_id=guild_id,
+            platform=body.platform,
+            url=body.url,
+        )
+    except PlatformBlockedError as error:
+        _raise_adapter_http(error)
+    except PlatformAdapterError as error:
+        _raise_adapter_http(error)
+    except httpx.TimeoutException as error:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "upstream_timeout",
+                "message": "Creator lookup timed out.",
+            },
+        ) from error
+    except httpx.RequestError as error:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "upstream_error",
+                "message": "Creator lookup failed.",
+            },
+        ) from error
 
     source = await ensure_source(
         session,
@@ -719,6 +813,31 @@ async def delete_template(
     return {"ok": True}
 
 
+def _serialize_sender_style(row: NotificationSenderStyle) -> dict[str, Any]:
+    return {
+        "id": str(row.id),
+        "display_name": row.display_name,
+        "avatar_url": row.avatar_url,
+    }
+
+
+def _validated_style_avatar(url: str | None) -> str | None:
+    if url is None or not str(url).strip():
+        return None
+    normalized = persistable_webhook_avatar(url)
+    if normalized is None:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "invalid_avatar_url",
+                "message": (
+                    "Avatar URL must be a public https image Discord can fetch."
+                ),
+            },
+        )
+    return normalized
+
+
 @router.get("/guilds/{guild_id}/content-notifications/sender-styles")
 async def list_sender_styles(
     guild_id: str,
@@ -731,16 +850,7 @@ async def list_sender_styles(
             )
         )
     ).all()
-    return {
-        "styles": [
-            {
-                "id": str(row.id),
-                "display_name": row.display_name,
-                "avatar_url": row.avatar_url,
-            }
-            for row in rows
-        ]
-    }
+    return {"styles": [_serialize_sender_style(row) for row in rows]}
 
 
 @router.post("/guilds/{guild_id}/content-notifications/sender-styles")
@@ -752,16 +862,40 @@ async def create_sender_style(
     row = NotificationSenderStyle(
         guild_id=guild_id,
         display_name=body.display_name,
-        avatar_url=body.avatar_url,
+        avatar_url=_validated_style_avatar(body.avatar_url),
     )
     session.add(row)
     await session.commit()
     await session.refresh(row)
-    return {
-        "id": str(row.id),
-        "display_name": row.display_name,
-        "avatar_url": row.avatar_url,
-    }
+    return _serialize_sender_style(row)
+
+
+@router.patch("/guilds/{guild_id}/content-notifications/sender-styles/{style_id}")
+async def update_sender_style(
+    guild_id: str,
+    style_id: UUID,
+    body: SenderStyleUpdateBody,
+    session: AsyncSession = Depends(get_database_session),
+) -> dict[str, Any]:
+    row = await session.scalar(
+        select(NotificationSenderStyle).where(
+            NotificationSenderStyle.id == style_id,
+            NotificationSenderStyle.guild_id == guild_id,
+        )
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Sender style not found")
+    next_name = row.display_name
+    next_avatar = row.avatar_url
+    if "display_name" in body.model_fields_set and body.display_name is not None:
+        next_name = body.display_name
+    if "avatar_url" in body.model_fields_set:
+        next_avatar = _validated_style_avatar(body.avatar_url)
+    row.display_name = next_name
+    row.avatar_url = next_avatar
+    await session.commit()
+    await session.refresh(row)
+    return _serialize_sender_style(row)
 
 
 @router.delete("/guilds/{guild_id}/content-notifications/sender-styles/{style_id}")

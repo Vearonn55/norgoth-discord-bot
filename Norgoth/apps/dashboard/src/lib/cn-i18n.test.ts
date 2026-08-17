@@ -35,6 +35,10 @@ describe("content notifications and campaign history i18n", () => {
       "{count} of {limit} Kick configurations",
     );
     expect(en.contentNotifications.kickDisabledCount).toContain("count toward");
+    expect(en.contentNotifications.resolveInvalidAccount).toContain("could not be found");
+    expect(en.contentNotifications.resolveRateLimited).toContain("rate-limiting");
+    expect(en.contentNotifications.deleteTemplateConfirm).toContain("built-in default");
+    expect(en.contentNotifications.senderStyleMustSelect).toContain("sender style");
   });
 
   it("uses the mapped Turkish strings", () => {
@@ -74,6 +78,8 @@ describe("content notifications and campaign history i18n", () => {
     expect(tr.contentNotifications.kickCapacity).toBe(
       "{count} / {limit} Kick yapılandırması",
     );
+    expect(tr.contentNotifications.resolveInvalidAccount).toContain("bulunamadı");
+    expect(tr.contentNotifications.deleteTemplateConfirm).toContain("yerleşik varsayılan");
     expect(tr.sidebar.rssFeeds).toBe("RSS Akışları");
   });
 });

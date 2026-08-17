@@ -24,7 +24,22 @@ describe("readApiError", () => {
     });
   });
 
-  it("falls back for empty bodies", async () => {
+  it("parses FastAPI detail objects", async () => {
+    const response = new Response(
+      JSON.stringify({
+        detail: {
+          code: "automod_channel_rule_conflict",
+          message: "A channel cannot be both Image Only and Link Only.",
+        },
+      }),
+      { status: 409 },
+    );
+    await expect(readApiError(response)).resolves.toEqual({
+      code: "automod_channel_rule_conflict",
+      message: "A channel cannot be both Image Only and Link Only.",
+      requestId: null,
+    });
+  });
     const response = new Response("", { status: 502 });
     await expect(readApiError(response)).resolves.toEqual({
       code: "http_error",

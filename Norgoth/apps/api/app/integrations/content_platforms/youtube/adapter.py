@@ -159,16 +159,31 @@ class YouTubeAdapter(ContentPlatformAdapter):
                 },
             )
             if response.status_code != 200:
+                logger.warning(
+                    "YouTube channel snippet failed for %s: HTTP %s",
+                    channel_id,
+                    response.status_code,
+                )
                 return {"title": channel_id}
             items = response.json().get("items") or []
             if not items:
+                logger.warning(
+                    "YouTube channel snippet returned no items for %s",
+                    channel_id,
+                )
                 return {"title": channel_id}
             snippet = items[0].get("snippet") or {}
             thumbs = snippet.get("thumbnails") or {}
             avatar = (
                 (thumbs.get("high") or {}).get("url")
+                or (thumbs.get("medium") or {}).get("url")
                 or (thumbs.get("default") or {}).get("url")
             )
+            if not avatar:
+                logger.warning(
+                    "YouTube channel snippet missing thumbnails for %s",
+                    channel_id,
+                )
             return {
                 "title": snippet.get("title") or channel_id,
                 "customUrl": snippet.get("customUrl"),

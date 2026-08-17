@@ -30,6 +30,21 @@ KICK_TOKEN_URL = "https://id.kick.com/oauth/token"
 KICK_API = "https://api.kick.com/public/v1"
 
 
+def _first_record(payload: Any) -> dict[str, Any] | None:
+    if isinstance(payload, list):
+        item = payload[0] if payload else None
+        return item if isinstance(item, dict) else None
+    if not isinstance(payload, dict):
+        return None
+    data = payload.get("data")
+    if isinstance(data, list):
+        item = data[0] if data else None
+        return item if isinstance(item, dict) else None
+    if isinstance(data, dict):
+        return data
+    return payload
+
+
 class KickAdapter(ContentPlatformAdapter):
     platform = PlatformType.KICK
 
@@ -165,13 +180,7 @@ class KickAdapter(ContentPlatformAdapter):
                 code="resolve_failed",
             )
         payload = response.json()
-        data = payload.get("data") or payload
-        if isinstance(data, list):
-            channel = data[0] if data else None
-        elif isinstance(data, dict):
-            channel = data
-        else:
-            channel = None
+        channel = _first_record(payload)
         if not channel:
             raise PlatformAdapterError("Kick channel not found.", code="not_found")
 
@@ -181,12 +190,21 @@ class KickAdapter(ContentPlatformAdapter):
             or channel.get("id")
         )
         username = channel.get("slug") or slug
+        nested_user = (
+            channel.get("user") if isinstance(channel.get("user"), dict) else {}
+        )
+        user_profile = await self._fetch_user_profile(user_id)
         display = (
             channel.get("channel_name")
-            or (channel.get("user") or {}).get("name")
+            or nested_user.get("name")
+            or user_profile.get("name")
             or username
         )
-        avatar = channel.get("profile_picture")
+        avatar = (
+            user_profile.get("profile_picture")
+            or nested_user.get("profile_picture")
+            or channel.get("profile_picture")
+        )
         return ResolvedCreator(
             platform=PlatformType.KICK,
             platform_creator_id=user_id,
@@ -197,6 +215,33 @@ class KickAdapter(ContentPlatformAdapter):
             canonical_url=f"https://kick.com/{username}",
             metadata={"slug": username},
         )
+
+    async def _fetch_user_profile(self, user_id: str) -> dict[str, Any]:
+        """Load Kick Users API profile_picture. Missing image must not fail resolve."""
+
+        if not user_id:
+            return {}
+        try:
+            response = await self._request(
+                "GET",
+                f"{KICK_API}/users",
+                params={"id": user_id},
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning("Kick user profile lookup failed for creator %s", user_id)
+            return {}
+        if response.status_code != 200:
+            logger.warning(
+                "Kick user profile lookup failed: HTTP %s",
+                response.status_code,
+            )
+            return {}
+        try:
+            payload = response.json()
+        except Exception:  # noqa: BLE001
+            return {}
+        record = _first_record(payload)
+        return record or {}
 
     def _extract_slug(self, value: str) -> str:
         cleaned = value.strip()

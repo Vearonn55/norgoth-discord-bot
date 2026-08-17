@@ -34,6 +34,18 @@ export async function readApiError(response: Response): Promise<ApiErrorBody> {
         requestId: null,
       };
     }
+    if (data?.detail && typeof data.detail === "object") {
+      const detail = data.detail as { code?: unknown; message?: unknown };
+      const code =
+        typeof detail.code === "string" && detail.code
+          ? detail.code
+          : "http_error";
+      const message =
+        typeof detail.message === "string" && detail.message
+          ? detail.message
+          : `Request failed (${response.status}).`;
+      return { code, message, requestId: null };
+    }
   } catch {
     /* ignore malformed / empty bodies */
   }

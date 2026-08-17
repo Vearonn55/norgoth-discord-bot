@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CFormCheck,
   CFormInput,
@@ -25,6 +25,7 @@ import { formatDict } from "@/lib/locale-dict";
 import {
   localizeEventType,
   useContentNotificationsCopy,
+  type ContentNotificationsCopy,
 } from "@/lib/content-notifications-copy";
 import {
   confirmDirtyClose,
@@ -32,6 +33,7 @@ import {
 } from "@/lib/cn-url-state";
 import { useGuildStore } from "@/stores/guild-store";
 import {
+  ContentNotificationApiError,
   useContentNotificationsStore,
   type ContentAccount,
   type ContentPlatform,
@@ -92,6 +94,8 @@ export function AccountEditorModal({
     embeds?: DiscordWebhookEmbed[];
   } | null>(null);
   const [snapshot, setSnapshot] = useState("");
+  const [resolving, setResolving] = useState(false);
+  const resolveGeneration = useRef(0);
 
   const templateId = account?.template_id;
   const assignedTemplate = useMemo(() => {
@@ -200,10 +204,13 @@ export function AccountEditorModal({
   }
 
   async function handleResolve() {
-    if (!url.trim()) return;
+    if (!url.trim() || resolving || saving) return;
+    const generation = ++resolveGeneration.current;
     setFormError(null);
+    setResolving(true);
     try {
       const creator = await resolveAccount(guildId, platform, url.trim());
+      if (generation !== resolveGeneration.current) return;
       setResolved(creator);
       const template = templates.find((t) => t.platform_default_for === platform);
       if (template) setLiveMessage(template.content);
@@ -220,13 +227,17 @@ export function AccountEditorModal({
           }),
         }
       );
+      if (generation !== resolveGeneration.current) return;
       if (response.ok) {
         const data = await response.json();
         setPreviewPayload(data.payload);
       }
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : copy.resolveFailed);
+      if (generation !== resolveGeneration.current) return;
+      setFormError(mapResolveError(err, copy));
       setResolved(null);
+    } finally {
+      if (generation === resolveGeneration.current) setResolving(false);
     }
   }
 
@@ -357,8 +368,10 @@ export function AccountEditorModal({
               value={platform}
               onChange={(e) => {
                 const next = e.target.value as ContentPlatform;
+                resolveGeneration.current += 1;
                 setPlatform(next);
                 setResolved(null);
+                setResolving(false);
                 setEventTypes(EVENT_TYPES_BY_PLATFORM[next] ?? []);
               }}
             >
@@ -410,12 +423,18 @@ export function AccountEditorModal({
               <CFormInput
                 id="cn-account-url"
                 value={url}
-                onChange={(e) => setUrl(e.target.value)}
+                onChange={(e) => {
+                  resolveGeneration.current += 1;
+                  setUrl(e.target.value);
+                  setResolved(null);
+                  setResolving(false);
+                }}
                 placeholder="https://..."
               />
               <button
                 type="button"
                 className="btn btn-outline-light"
+                disabled={saving || resolving || !url.trim()}
                 onClick={() => void handleResolve()}
               >
                 {copy.resolve}
@@ -510,6 +529,7 @@ export function AccountEditorModal({
               </option>
             ))}
           </CFormSelect>
+          <p className="form-text mb-0">{copy.senderStyleMustSelect}</p>
         </div>
 
         <fieldset className="mb-0">
@@ -549,4 +569,25 @@ export function AccountEditorModal({
       </div>
     </FeatureConfigurationModal>
   );
+}
+
+function mapResolveError(
+  err: unknown,
+  copy: ContentNotificationsCopy,
+): string {
+  const code =
+    err instanceof ContentNotificationApiError ? err.code : null;
+  if (code === "invalid_url" || code === "not_found") {
+    return copy.resolveInvalidAccount;
+  }
+  if (code === "platform_unavailable" || code === "auth_error") {
+    return copy.resolveCredentialsMissing;
+  }
+  if (code === "rate_limited" || code === "quota_exhausted") {
+    return copy.resolveRateLimited;
+  }
+  if (code === "platform_blocked") {
+    return copy.resolveUnavailable;
+  }
+  return copy.resolveFailed;
 }

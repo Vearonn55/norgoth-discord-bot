@@ -18,6 +18,12 @@ const AUTOMATION_HREFS = [
   "/automation/rich-link-embeds",
 ];
 
+const SECURITY_HREFS = [
+  "/security/auto-moderation",
+  "/security/raid-protection",
+  "/security/honeypot",
+];
+
 describe("sidebar labels", () => {
   it("keeps English dashboard and embed library labels", () => {
     expect(itemByHref("en", "/dashboard")?.label).toBe("Dashboard");
@@ -35,24 +41,40 @@ describe("sidebar labels", () => {
 });
 
 describe("sidebar category order", () => {
-  it("places Automation immediately after Community in English and Turkish", () => {
+  it("places Security immediately above Messages in English and Turkish", () => {
     for (const lang of ["en", "tr"] as const) {
       const titles = getSidebarGroups(lang).map((group) => group.title);
       const community = lang === "tr" ? tr.sidebar.groupCommunity : en.sidebar.groupCommunity;
       const automation = lang === "tr" ? tr.sidebar.groupAutomation : en.sidebar.groupAutomation;
+      const security = lang === "tr" ? tr.sidebar.groupSecurity : en.sidebar.groupSecurity;
+      const messages = lang === "tr" ? tr.sidebar.groupMessages : en.sidebar.groupMessages;
       const communityIdx = titles.indexOf(community);
       const automationIdx = titles.indexOf(automation);
+      const securityIdx = titles.indexOf(security);
+      const messagesIdx = titles.indexOf(messages);
       expect(communityIdx).toBeGreaterThan(-1);
       expect(automationIdx).toBe(communityIdx + 1);
+      expect(securityIdx).toBe(messagesIdx - 1);
       expect(new Set(titles).size).toBe(titles.length);
       expect(titles).toEqual([
         lang === "tr" ? tr.sidebar.groupHome : en.sidebar.groupHome,
         community,
         automation,
-        lang === "tr" ? tr.sidebar.groupMessages : en.sidebar.groupMessages,
+        security,
+        messages,
         lang === "tr" ? tr.sidebar.groupAudit : en.sidebar.groupAudit,
-        lang === "tr" ? tr.sidebar.groupSecurity : en.sidebar.groupSecurity,
       ]);
+    }
+  });
+
+  it("keeps Security child routes and order unchanged", () => {
+    for (const lang of ["en", "tr"] as const) {
+      const security = getSidebarGroups(lang).find(
+        (group) =>
+          group.title ===
+          (lang === "tr" ? tr.sidebar.groupSecurity : en.sidebar.groupSecurity),
+      );
+      expect(security?.items.map((item) => item.href)).toEqual(SECURITY_HREFS);
     }
   });
 

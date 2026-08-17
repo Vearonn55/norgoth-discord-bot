@@ -7,12 +7,15 @@ import {
   useImperativeHandle,
   useState,
 } from "react";
+import { cilTrash } from "@coreui/icons";
 import { CCol, CFormInput, CFormSelect, CFormTextarea, CRow } from "@coreui/react";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import { useContentNotificationsStore } from "@/stores/content-notifications-store";
 import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon";
 import { MessagePreview } from "@/components/discord/message-preview";
 import { useContentNotificationsCopy } from "@/lib/content-notifications-copy";
+import { formatDict } from "@/lib/locale-dict";
 
 const DEFAULT_CONTENT =
   "{ping_role}\n{account} posted new content!\n\n{title}\n{link}";
@@ -33,11 +36,13 @@ export const TemplatesPanel = forwardRef<
   const copy = useContentNotificationsCopy();
   const { guildId } = useFirstGuild();
   const templates = useContentNotificationsStore((s) => s.templates);
+  const accounts = useContentNotificationsStore((s) => s.accounts);
   const loadTemplates = useContentNotificationsStore((s) => s.loadTemplates);
   const createTemplate = useContentNotificationsStore((s) => s.createTemplate);
   const updateTemplate = useContentNotificationsStore((s) => s.updateTemplate);
   const deleteTemplate = useContentNotificationsStore((s) => s.deleteTemplate);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [platformDefault, setPlatformDefault] = useState("");
   const [content, setContent] = useState(DEFAULT_CONTENT);
@@ -61,6 +66,27 @@ export const TemplatesPanel = forwardRef<
     setName("");
     setPlatformDefault("");
     setContent(DEFAULT_CONTENT);
+  }
+
+  async function handleDelete(templateId: string, templateName: string) {
+    if (!guildId || deletingId) return;
+    const inUse = accounts.filter((row) => row.template_id === templateId).length;
+    const confirmed = window.confirm(
+      formatDict(copy.deleteTemplateConfirm, {
+        name: templateName,
+        count: inUse,
+      })
+    );
+    if (!confirmed) return;
+    setDeletingId(templateId);
+    try {
+      await deleteTemplate(guildId, templateId);
+      if (editingId === templateId) resetForm();
+    } catch {
+      // Keep the card visible; the button re-enables in finally.
+    } finally {
+      setDeletingId(null);
+    }
   }
 
   const save = useCallback(async () => {
@@ -155,11 +181,11 @@ export const TemplatesPanel = forwardRef<
         {templates.map((template) => (
           <div
             key={template.id}
-            className="border rounded p-3 d-flex justify-content-between gap-3"
+            className="border rounded p-3 d-flex flex-column"
           >
             <button
               type="button"
-              className="btn btn-link text-start text-decoration-none p-0"
+              className="btn btn-link text-start text-decoration-none p-0 min-w-0"
               onClick={() => {
                 setEditingId(template.id);
                 setName(template.name);
@@ -168,23 +194,28 @@ export const TemplatesPanel = forwardRef<
               }}
             >
               <div className="fw-semibold">{template.name}</div>
-              <pre className="small text-body-secondary mb-0 mt-2">
+              <pre className="small text-body-secondary mb-0 mt-2 text-break">
                 {template.content}
               </pre>
             </button>
-            <Button
-              type="button"
-              variant="danger"
-              size="sm"
-              onClick={() => {
-                if (!guildId) return;
-                void deleteTemplate(guildId, template.id).then(() => {
-                  if (editingId === template.id) resetForm();
-                });
-              }}
-            >
-              {copy.delete}
-            </Button>
+            <div className="d-flex justify-content-end align-items-center flex-wrap gap-2 mt-3">
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                className="flex-shrink-0"
+                disabled={deletingId === template.id}
+                aria-label={formatDict(copy.deleteTemplateAria, {
+                  name: template.name,
+                })}
+                title={formatDict(copy.deleteTemplateAria, {
+                  name: template.name,
+                })}
+                onClick={() => void handleDelete(template.id, template.name)}
+              >
+                <Icon icon={cilTrash} />
+              </Button>
+            </div>
           </div>
         ))}
       </div>
