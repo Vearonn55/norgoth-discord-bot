@@ -16,9 +16,10 @@ Limit bibliography (retrieved 2026-08-13):
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.content_notifications import (
@@ -30,13 +31,15 @@ from app.models.content_notifications import (
 ACTIVE_LIMITS: dict[str, int] = {
     "youtube": 10,
     "twitch": 10,
-    "kick": 5,
+    "kick": 10,
     "x": 3,
     "tiktok": 0,
 }
 
 # Soft total (enabled + disabled) = active_cap * TOTAL_MULTIPLIER.
+# Kick is a hard total of 10 including disabled, not 10 × 3.
 TOTAL_MULTIPLIER = 3
+KICK_TOTAL_LIMIT = 10
 
 CONTENT_NOTIFICATION_LIMIT_REACHED = "content_notification_limit_reached"
 CONTENT_NOTIFICATION_TOTAL_LIMIT_REACHED = "content_notification_total_limit_reached"
@@ -47,8 +50,18 @@ def active_limit_for(platform: str) -> int:
 
 
 def total_limit_for(platform: str) -> int:
+    if platform == "kick":
+        return KICK_TOTAL_LIMIT
     active = active_limit_for(platform)
     return active * TOTAL_MULTIPLIER
+
+
+def _platform_advisory_lock_key(guild_id: str, platform: str) -> int:
+    digest = hashlib.blake2b(
+        f"norgoth:cn:{guild_id}:{platform}".encode("utf-8"),
+        digest_size=8,
+    ).digest()
+    return int.from_bytes(digest, byteorder="big", signed=True)
 
 
 async def count_subscriptions(
@@ -149,6 +162,10 @@ async def _lock_platform_subscriptions(
 ) -> None:
     """Serialize concurrent create/enable for the same guild+platform."""
 
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(:lock_key)"),
+        {"lock_key": _platform_advisory_lock_key(guild_id, platform)},
+    )
     await session.scalars(
         select(GuildContentSubscription.id)
         .join(

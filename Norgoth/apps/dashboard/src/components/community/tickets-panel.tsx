@@ -26,7 +26,10 @@ import { TicketPanelPreview } from "@/components/community/ticket-panel-preview"
 import { MessageSourceToggle } from "@/components/discord/message-source-toggle";
 import { RichMessageEditor } from "@/components/editors/rich-message-editor";
 import { ChannelSelect } from "@/components/ui/channel-select";
-import { ChannelPickerToolbar } from "@/components/ui/refresh-channels-button";
+import {
+  ChannelPickerToolbar,
+  RolePickerToolbar,
+} from "@/components/ui/refresh-channels-button";
 import { formatDateTime } from "@/lib/datetime";
 import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import { useFirstGuild } from "@/lib/use-first-guild";
@@ -170,7 +173,7 @@ export function TicketsPanel() {
               </div>
 
               <div>
-                <CFormLabel className="mb-1 small">{d.supportRoles}</CFormLabel>
+                <RolePickerToolbar label={d.supportRoles} />
                 <RoleMultiPicker
                   roles={roles}
                   selectedIds={config.support_role_ids}

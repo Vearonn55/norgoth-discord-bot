@@ -38,6 +38,8 @@ export type GuildResources = {
   categories?: GuildCategory[];
   roles: GuildRole[];
   emojis?: GuildEmoji[];
+  source?: "cache" | "fresh";
+  refreshed?: boolean;
 };
 
 export type SelectedGuild = {
@@ -52,9 +54,12 @@ const SELECTED_GUILD_KEY = "norgoth:selected-guild:v1";
 const RESOURCE_TIMEOUT_MS = 20_000;
 let resourceRefreshGeneration = 0;
 
-type ChannelRefreshNotice =
-  | { type: "success" }
-  | { type: "error"; code: string; message: string };
+export type ResourceRefreshKind = "channels" | "roles";
+
+type ResourceRefreshNotice =
+  | { type: "success"; kind: ResourceRefreshKind }
+  | { type: "warning"; kind: ResourceRefreshKind }
+  | { type: "error"; kind: ResourceRefreshKind; code: string; message: string };
 
 type GuildState = {
   guildId: string | null;
@@ -63,11 +68,14 @@ type GuildState = {
   loading: boolean;
   error: string | null;
   refreshingChannels: boolean;
-  channelRefreshNotice: ChannelRefreshNotice | null;
+  refreshingKind: ResourceRefreshKind | null;
+  channelRefreshNotice: ResourceRefreshNotice | null;
   selectGuild: (guild: SelectedGuild) => Promise<void>;
   clearGuild: () => void;
   reload: () => Promise<void>;
   refreshChannels: () => Promise<void>;
+  refreshRoles: () => Promise<void>;
+  refreshResources: (kind?: ResourceRefreshKind) => Promise<void>;
 };
 
 type ResourceLoadFailure = {
@@ -166,6 +174,7 @@ export const useGuildStore = create<GuildState>((set, get) => ({
   loading: true,
   error: null,
   refreshingChannels: false,
+  refreshingKind: null,
   channelRefreshNotice: null,
 
   clearGuild: () => {
@@ -180,6 +189,7 @@ export const useGuildStore = create<GuildState>((set, get) => ({
       error: null,
       loading: false,
       refreshingChannels: false,
+      refreshingKind: null,
       channelRefreshNotice: null,
     });
   },
@@ -202,6 +212,7 @@ export const useGuildStore = create<GuildState>((set, get) => ({
       selectedGuild: normalizedGuild,
       resources: null,
       refreshingChannels: false,
+      refreshingKind: null,
       channelRefreshNotice: null,
     });
 
@@ -340,20 +351,29 @@ export const useGuildStore = create<GuildState>((set, get) => ({
     }
   },
 
-  refreshChannels: async () => {
+  refreshResources: async (kind = "channels") => {
     const guildId = get().guildId;
     if (!guildId || get().refreshingChannels) return;
     const generation = ++resourceRefreshGeneration;
-    set({ refreshingChannels: true, channelRefreshNotice: null });
+    set({
+      refreshingChannels: true,
+      refreshingKind: kind,
+      channelRefreshNotice: null,
+    });
     try {
       const resources = await loadResources(guildId, { refresh: true });
       if (generation !== resourceRefreshGeneration || get().guildId !== guildId) {
         return;
       }
+      const cached =
+        resources.source === "cache" && resources.refreshed === false;
       set({
         resources,
         refreshingChannels: false,
-        channelRefreshNotice: { type: "success" },
+        refreshingKind: null,
+        channelRefreshNotice: cached
+          ? { type: "warning", kind }
+          : { type: "success", kind },
       });
     } catch (error) {
       if (generation !== resourceRefreshGeneration || get().guildId !== guildId) {
@@ -362,13 +382,23 @@ export const useGuildStore = create<GuildState>((set, get) => ({
       const failure = error as ResourceLoadFailure;
       set({
         refreshingChannels: false,
+        refreshingKind: null,
         channelRefreshNotice: {
           type: "error",
+          kind,
           code: failure?.code || "refresh_failed",
-          message: failure?.message || "Could not refresh channels. Please retry.",
+          message: failure?.message || "Could not refresh Discord lists. Please retry.",
         },
       });
     }
+  },
+
+  refreshChannels: async () => {
+    await get().refreshResources("channels");
+  },
+
+  refreshRoles: async () => {
+    await get().refreshResources("roles");
   },
 }));
 
@@ -380,6 +410,7 @@ export function useFirstGuild() {
   const error = useGuildStore((s) => s.error);
   const reload = useGuildStore((s) => s.reload);
   const refreshChannels = useGuildStore((s) => s.refreshChannels);
+  const refreshRoles = useGuildStore((s) => s.refreshRoles);
   const refreshingChannels = useGuildStore((s) => s.refreshingChannels);
   const selectedGuild = useGuildStore((s) => s.selectedGuild);
   return {
@@ -389,6 +420,7 @@ export function useFirstGuild() {
     error,
     reload,
     refreshChannels,
+    refreshRoles,
     refreshingChannels,
     selectedGuild,
   };

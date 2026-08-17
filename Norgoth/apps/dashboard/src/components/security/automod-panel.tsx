@@ -23,7 +23,10 @@ import { PageHeader } from "@/components/layout/page-header";
 import { PageActionFooter } from "@/components/layout/page-action-footer";
 import { MutedSection } from "@/components/ui/feature-muting";
 import { FeatureConfigurationModal } from "@/components/ui/feature-modal";
-import { ChannelPickerToolbar } from "@/components/ui/refresh-channels-button";
+import {
+  ChannelPickerToolbar,
+  RolePickerToolbar,
+} from "@/components/ui/refresh-channels-button";
 import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import {
@@ -649,8 +652,21 @@ export function AutomodPanel() {
           </div>
 
           <div>
-            <CFormLabel className="mb-2">{d.exemptRoles}</CFormLabel>
+            <RolePickerToolbar label={d.exemptRoles} />
             <div className="d-flex flex-wrap gap-2">
+              {config.exempt_role_ids
+                .filter((id) => !roles.some((role) => role.id === id))
+                .map((id) => (
+                  <Button
+                    key={id}
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => toggleId("exempt_role_ids", id)}
+                  >
+                    {dict.common.roleUnavailable} ×
+                  </Button>
+                ))}
               {roles.map((role) => {
                 const isSelected = config.exempt_role_ids.includes(role.id);
                 return (

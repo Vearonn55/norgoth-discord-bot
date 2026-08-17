@@ -17,7 +17,10 @@ import { useParams } from "next/navigation";
 import { browserApiUrl } from "@/lib/api";
 import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import { ChannelSelect } from "@/components/ui/channel-select";
-import { ChannelPickerToolbar } from "@/components/ui/refresh-channels-button";
+import {
+  ChannelPickerToolbar,
+  RolePickerToolbar,
+} from "@/components/ui/refresh-channels-button";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import {
   canPublishOrCopy,
@@ -154,7 +157,7 @@ export function VerificationSettingsForm() {
             </CCol>
           </CRow>
 
-          <h2 className="h5 mb-0">{d.roles}</h2>
+          <RolePickerToolbar label={d.roles} />
 
           <CRow className="g-3">
             <CCol md={6}>

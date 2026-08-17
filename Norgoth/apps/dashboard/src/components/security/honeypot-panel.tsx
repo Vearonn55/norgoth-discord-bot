@@ -11,7 +11,10 @@ import {
 } from "@coreui/react";
 import { SectionCard } from "@/components/ui/section-card";
 import { ChannelSelect } from "@/components/ui/channel-select";
-import { ChannelPickerToolbar } from "@/components/ui/refresh-channels-button";
+import {
+  ChannelPickerToolbar,
+  RolePickerToolbar,
+} from "@/components/ui/refresh-channels-button";
 import { RoleSelect } from "@/components/ui/role-select";
 import { MemberSelect } from "@/components/ui/member-select";
 import { Button } from "@/components/ui/button";
@@ -576,7 +579,7 @@ export function HoneypotPanel() {
             {d.exemptionsHint}
           </CAlert>
           <div>
-            <CFormLabel>{d.exemptRoles}</CFormLabel>
+            <RolePickerToolbar label={d.exemptRoles} />
             <RoleSelect
               roles={resources?.roles ?? []}
               value=""

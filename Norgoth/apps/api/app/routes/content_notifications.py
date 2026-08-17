@@ -61,6 +61,7 @@ from app.services.content_notifications.quotas import (
     assert_can_create,
     assert_can_enable,
     guild_platform_usage,
+    total_limit_for,
 )
 from app.services.content_notifications.tag_registry import (
     DEFAULT_TEMPLATES,
@@ -226,7 +227,7 @@ async def list_platforms() -> dict[str, Any]:
     for row in platforms:
         platform = str(row["platform"])
         row["active_limit"] = ACTIVE_LIMITS.get(platform, 0)
-        row["total_limit"] = ACTIVE_LIMITS.get(platform, 0) * 3
+        row["total_limit"] = total_limit_for(platform)
     return {"platforms": platforms}
 
 
@@ -333,9 +334,9 @@ async def list_accounts(
             "active_limit": ACTIVE_LIMITS.get(platform, 0),
             "active_count": 0,
             "active_remaining": ACTIVE_LIMITS.get(platform, 0),
-            "total_limit": ACTIVE_LIMITS.get(platform, 0) * 3,
+            "total_limit": total_limit_for(platform),
             "total_count": 0,
-            "total_remaining": ACTIVE_LIMITS.get(platform, 0) * 3,
+            "total_remaining": total_limit_for(platform),
         }
         row.update(stats)
     return {

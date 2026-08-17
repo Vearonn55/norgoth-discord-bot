@@ -86,3 +86,86 @@ async def test_apply_verification_state_refreshes_after_create() -> None:
     assert view.created_at == now
     assert view.updated_at == now
     ConfigurationResponse.model_validate(view)
+
+
+def _existing_settings(guild_id, now) -> GuildSettings:
+    settings = GuildSettings(
+        guild_id=guild_id,
+        enabled=True,
+        deny_vpn_or_proxy=True,
+        deny_shared_ip=True,
+        vpn_or_proxy_action=RiskAction.DENY,
+        shared_ip_action=RiskAction.DENY,
+        minimum_account_age_days=0,
+        session_timeout_seconds=900,
+    )
+    settings.id = uuid4()
+    settings.created_at = now
+    settings.updated_at = now
+    return settings
+
+
+@pytest.mark.asyncio
+async def test_patch_detectors_refreshes_after_manual_review_action() -> None:
+    """Changing deny -> manual_review must refresh timestamps before assemble."""
+
+    guild_id = uuid4()
+    now = datetime.now(timezone.utc)
+    later = datetime.now(timezone.utc)
+    settings = _existing_settings(guild_id, now)
+
+    repo = AsyncMock()
+    repo.get_settings = AsyncMock(return_value=settings)
+    repo.flush = AsyncMock()
+    repo.get_role_bindings = AsyncMock(return_value={})
+    repo.get_channel_bindings = AsyncMock(return_value={})
+
+    async def _refresh(instance: object) -> None:
+        assert isinstance(instance, GuildSettings)
+        instance.updated_at = later
+
+    repo.refresh = AsyncMock(side_effect=_refresh)
+
+    service = ConfigurationService(repo)
+    view = await service.patch_detectors(
+        guild_id=guild_id,
+        vpn_or_proxy_action=RiskAction.MANUAL_REVIEW,
+    )
+
+    repo.flush.assert_awaited()
+    repo.refresh.assert_awaited()
+    assert view is not None
+    assert view.vpn_or_proxy_action is RiskAction.MANUAL_REVIEW
+    assert view.updated_at == later
+    ConfigurationResponse.model_validate(view)
+
+
+@pytest.mark.asyncio
+async def test_set_enabled_refreshes_after_update() -> None:
+    """Enable toggle must refresh timestamps the same way detector PATCH does."""
+
+    guild_id = uuid4()
+    now = datetime.now(timezone.utc)
+    later = datetime.now(timezone.utc)
+    settings = _existing_settings(guild_id, now)
+
+    repo = AsyncMock()
+    repo.get_settings = AsyncMock(return_value=settings)
+    repo.flush = AsyncMock()
+    repo.get_role_bindings = AsyncMock(return_value={})
+    repo.get_channel_bindings = AsyncMock(return_value={})
+
+    async def _refresh(instance: object) -> None:
+        assert isinstance(instance, GuildSettings)
+        instance.updated_at = later
+
+    repo.refresh = AsyncMock(side_effect=_refresh)
+
+    service = ConfigurationService(repo)
+    view = await service.set_enabled(guild_id=guild_id, enabled=False)
+
+    repo.flush.assert_awaited()
+    repo.refresh.assert_awaited()
+    assert view is not None
+    assert view.updated_at == later
+    ConfigurationResponse.model_validate(view)

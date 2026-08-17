@@ -42,6 +42,7 @@ export type LeaderboardEntry = {
   username?: string | null;
   avatar_url?: string | null;
   xp: number;
+  total_xp?: number;
   level: number;
   net_upvotes?: number;
   upvote_total?: number;

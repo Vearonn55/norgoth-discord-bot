@@ -252,8 +252,13 @@ export function AccountsPanel() {
           {CN_FUNCTIONAL_PLATFORMS.map((id) => {
             const meta = platforms.find((p) => p.platform === id);
             const blocked = meta && !meta.available;
-            const activeCount = meta?.active_count ?? 0;
-            const activeLimit = meta?.active_limit ?? 0;
+            const isKick = id === "kick";
+            const used = isKick
+              ? (meta?.total_count ?? 0)
+              : (meta?.active_count ?? 0);
+            const limit = isKick
+              ? (meta?.total_limit ?? 10)
+              : (meta?.active_limit ?? 0);
             return (
               <CBadge
                 key={id}
@@ -262,7 +267,7 @@ export function AccountsPanel() {
               >
                 {PLATFORM_LABELS[id]}
                 {blocked ? ` · ${copy.blocked}` : ""}
-                {` · ${activeCount}/${activeLimit}`}
+                {` · ${used}/${limit}`}
               </CBadge>
             );
           })}

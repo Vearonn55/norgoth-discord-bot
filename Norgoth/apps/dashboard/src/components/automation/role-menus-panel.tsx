@@ -26,7 +26,10 @@ import { validateEmbed } from "@/lib/discord/message-payload";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import { useParams } from "next/navigation";
 import { ChannelSelect } from "@/components/ui/channel-select";
-import { RefreshChannelsButton } from "@/components/ui/refresh-channels-button";
+import {
+  RefreshChannelsButton,
+  RolePickerToolbar,
+} from "@/components/ui/refresh-channels-button";
 import { formatDateTime } from "@/lib/datetime";
 import {
   roleMenuInteractionLabel,
@@ -625,9 +628,11 @@ export function RoleMenusPanel() {
                 />
 
                 <div>
-                  <div className="mb-2 fw-medium">
-                    {formatDict(d.rolesInMenu, { count: editing.roles.length })}
-                  </div>
+                  <RolePickerToolbar
+                    label={formatDict(d.rolesInMenu, {
+                      count: editing.roles.length,
+                    })}
+                  />
                   <CFormInput
                     className="mb-2"
                     value={roleSearch}

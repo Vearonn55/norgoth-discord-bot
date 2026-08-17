@@ -18,7 +18,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { RoleMultiPicker } from "@/components/ui/role-multi-picker";
-import { ChannelPickerToolbar } from "@/components/ui/refresh-channels-button";
+import {
+  ChannelPickerToolbar,
+  RolePickerToolbar,
+} from "@/components/ui/refresh-channels-button";
 import { RichMessageEditor } from "@/components/editors/rich-message-editor";
 import { MessagePreview } from "@/components/discord/message-preview";
 import { EmbedDraftCreator } from "@/components/embed-messages/embed-draft-creator";
@@ -434,6 +437,7 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
                   </p>
                 </div>
 
+                <RolePickerToolbar label={d.autoRoleTitle} />
                 <RoleMultiPicker
                   roles={roles}
                   selectedIds={

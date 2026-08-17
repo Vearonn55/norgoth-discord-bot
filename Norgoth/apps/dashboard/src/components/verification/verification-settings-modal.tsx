@@ -19,8 +19,8 @@ type VerificationSettingsModalProps = {
 type Section = "general" | "high-risk" | "whitelist";
 
 /**
- * Verification Settings popout. Save persists configuration and publishes (or
- * updates) the Discord verification panel, then closes on success.
+ * Verification Settings popout. Save persists configuration, then closes.
+ * Discord panel publish runs afterward and does not keep the popup open.
  */
 export function VerificationSettingsModal({
   visible,
@@ -36,7 +36,8 @@ export function VerificationSettingsModal({
   const publishing = useVerificationStore((s) => s.publishing);
   const error = useVerificationStore((s) => s.error);
   const setError = useVerificationStore((s) => s.setError);
-  const saveAndPublish = useVerificationStore((s) => s.saveAndPublish);
+  const save = useVerificationStore((s) => s.save);
+  const publishPanel = useVerificationStore((s) => s.publishPanel);
   const loadConfig = useVerificationStore((s) => s.loadConfig);
 
   const sections = useMemo(
@@ -71,10 +72,12 @@ export function VerificationSettingsModal({
         section === "general"
           ? async () => {
               if (!guildId || busy) return;
-              const result = await saveAndPublish(guildId, lang);
+              const result = await save(guildId);
               if (!result.ok) return;
-              await loadConfig(guildId);
               onClose();
+              void publishPanel(guildId, lang).finally(() => {
+                void loadConfig(guildId);
+              });
             }
           : undefined
       }

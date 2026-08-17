@@ -42,6 +42,43 @@ def xp_voice_key(guild_id: str) -> str:
     return f"norgoth:guild:{guild_id}:xp:voice"
 
 
+def progression_xp(
+    *,
+    metric_xp: int,
+    total_score: float | None,
+    text_score: float | None = None,
+    voice_score: float | None = None,
+) -> int:
+    """Canonical level XP: stored total, else text+voice, else the metric score."""
+
+    if total_score is not None and float(total_score) > 0:
+        return int(total_score)
+    combined = int(text_score or 0) + int(voice_score or 0)
+    if combined > 0:
+        return combined
+    return int(metric_xp)
+
+
+def legacy_text_xp_from_total(
+    total: float,
+    voice: float | None,
+) -> float | None:
+    """Seed text XP from a pre-split ``:xp`` total.
+
+    When voice XP already exists, ``:xp`` is *not* text-only — attribute
+    ``max(0, total - voice)`` instead of copying the whole total into text.
+    """
+
+    total_val = float(total)
+    if total_val <= 0:
+        return None
+    voice_val = float(voice or 0)
+    if voice_val > 0:
+        text_val = max(0.0, total_val - voice_val)
+        return text_val if text_val > 0 else None
+    return total_val
+
+
 def guild_members_key(guild_id: str) -> str:
     return f"norgoth:guild:{guild_id}:members"
 
@@ -245,8 +282,9 @@ async def get_leaderboard(
                         )
                 await pipe.execute()
             elif metric == "text":
-                # Pre-split totals lived only on ``:xp``. Attribute to text,
-                # warm the text ZSET, and upsert durable Postgres rows.
+                # Pre-split totals lived only on ``:xp``. Attribute to text
+                # only when there is no voice XP (``:xp`` is not text-only
+                # once voice exists).
                 legacy = await redis_client.zrevrange(
                     xp_key(guild_id),
                     0,
@@ -254,26 +292,44 @@ async def get_leaderboard(
                     withscores=True,
                 )
                 if legacy:
-                    entries = [
-                        (str(user_id), float(score))
-                        for user_id, score in legacy
-                        if float(score) > 0
-                    ]
-                    if entries:
+                    voice_pipe = redis_client.pipeline()
+                    for user_id, _score in legacy:
+                        voice_pipe.zscore(xp_voice_key(guild_id), str(user_id))
+                    voice_scores = await voice_pipe.execute()
+                    seeded: list[tuple[str, float, float]] = []
+                    for (user_id, score), voice_score in zip(legacy, voice_scores):
+                        voice_val = (
+                            0.0 if voice_score is None else float(voice_score)
+                        )
+                        text_score = legacy_text_xp_from_total(
+                            float(score),
+                            None if voice_score is None else float(voice_score),
+                        )
+                        if text_score is None or text_score <= 0:
+                            continue
+                        seeded.append((str(user_id), text_score, voice_val))
+                    if seeded:
+                        entries = [
+                            (user_id, text_score)
+                            for user_id, text_score, _voice in seeded
+                        ]
                         pipe = redis_client.pipeline()
-                        for user_id, score in entries:
-                            pipe.zadd(xp_text_key(guild_id), {str(user_id): score})
+                        for user_id, text_score, _voice in seeded:
+                            pipe.zadd(
+                                xp_text_key(guild_id), {user_id: text_score}
+                            )
                         await pipe.execute()
 
                         async with factory() as session:
-                            for user_id, score in entries:
-                                xp_int = int(score)
+                            for user_id, text_score, voice_val in seeded:
+                                text_int = int(text_score)
+                                voice_int = int(voice_val)
                                 row = (
                                     await session.execute(
                                         select(MemberXp)
                                         .where(
                                             MemberXp.guild_id == guild_id,
-                                            MemberXp.user_id == str(user_id),
+                                            MemberXp.user_id == user_id,
                                         )
                                         .with_for_update()
                                     )
@@ -282,16 +338,40 @@ async def get_leaderboard(
                                     session.add(
                                         MemberXp(
                                             guild_id=guild_id,
-                                            user_id=str(user_id),
-                                            xp=xp_int,
-                                            text_xp=xp_int,
-                                            voice_xp=0,
+                                            user_id=user_id,
+                                            xp=text_int + voice_int,
+                                            text_xp=text_int,
+                                            voice_xp=voice_int,
                                         )
                                     )
                                 elif row.text_xp <= 0:
-                                    row.text_xp = xp_int
-                                    row.xp = max(row.xp, xp_int + row.voice_xp)
+                                    row.text_xp = text_int
+                                    row.xp = max(
+                                        row.xp,
+                                        text_int + max(row.voice_xp, voice_int),
+                                    )
                             await session.commit()
+
+        total_by_user: dict[str, int] = {}
+        if entries:
+            score_pipe = redis_client.pipeline()
+            for user_id, _score in entries:
+                uid = str(user_id)
+                score_pipe.zscore(xp_key(guild_id), uid)
+                score_pipe.zscore(xp_text_key(guild_id), uid)
+                score_pipe.zscore(xp_voice_key(guild_id), uid)
+            raw_scores = await score_pipe.execute()
+            for index, (user_id, score) in enumerate(entries):
+                uid = str(user_id)
+                total_s, text_s, voice_s = raw_scores[
+                    index * 3 : index * 3 + 3
+                ]
+                total_by_user[uid] = progression_xp(
+                    metric_xp=int(score),
+                    total_score=total_s,
+                    text_score=text_s,
+                    voice_score=voice_s,
+                )
     finally:
         await redis_client.aclose()
 
@@ -347,6 +427,7 @@ async def get_leaderboard(
     for index, (user_id, score) in enumerate(entries, start=1):
         xp = int(score)
         user_id_str = str(user_id)
+        total_xp = total_by_user.get(user_id_str, xp)
         leaderboard.append(
             {
                 "rank": index,
@@ -355,7 +436,8 @@ async def get_leaderboard(
                 "username": usernames.get(user_id_str),
                 "avatar_url": avatars.get(user_id_str),
                 "xp": xp,
-                "level": level_from_xp(xp, scale),
+                "total_xp": total_xp,
+                "level": level_from_xp(total_xp, scale),
             }
         )
 

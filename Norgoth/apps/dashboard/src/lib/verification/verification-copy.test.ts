@@ -37,3 +37,20 @@ describe("verification bindings warning copy", () => {
     expect(src).not.toContain("Save channels and roles in Verification Settings");
   });
 });
+
+describe("verification settings modal save close", () => {
+  it("closes after a successful save and does not wait on publish", () => {
+    const src = readFileSync(
+      resolve(
+        __dirname,
+        "../../components/verification/verification-settings-modal.tsx",
+      ),
+      "utf8",
+    );
+    expect(src).toContain("const result = await save(guildId);");
+    expect(src).toContain("onClose();");
+    expect(src).toContain("void publishPanel(guildId, lang)");
+    expect(src).not.toContain("saveAndPublish");
+    expect(src).not.toContain("await loadConfig(guildId);");
+  });
+});

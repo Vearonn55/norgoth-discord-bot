@@ -10,6 +10,7 @@ import {
 import { DiscordRoleBadge } from "@/components/ui/discord-role-badge";
 import type { GuildRole } from "@/stores/guild-store";
 import { roleColorStyles } from "@/lib/discord/role-color";
+import { useLocaleDict } from "@/lib/locale-dict";
 
 type RoleMultiPickerProps = {
   roles: GuildRole[];
@@ -32,6 +33,7 @@ export function RoleMultiPicker({
   searchPlaceholder = "Search roles…",
   emptyMessage = "No roles match.",
 }: RoleMultiPickerProps) {
+  const dict = useLocaleDict();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
 
@@ -82,7 +84,10 @@ export function RoleMultiPicker({
                 onClick={() => toggle(id)}
                 aria-label={`Remove @${role?.name ?? id}`}
               >
-                <DiscordRoleBadge name={role?.name ?? id} color={role?.color} />
+                <DiscordRoleBadge
+                  name={role?.name ?? dict.common.roleUnavailable}
+                  color={role?.color}
+                />
               </button>
             );
           })}

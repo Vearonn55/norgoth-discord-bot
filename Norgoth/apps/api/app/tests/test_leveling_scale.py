@@ -12,7 +12,9 @@ from app.routes.leveling import (
     LEVEL_THRESHOLD_SCALE_MAX,
     LEVEL_THRESHOLD_SCALE_MIN,
     clamp_threshold_scale,
+    legacy_text_xp_from_total,
     level_from_xp,
+    progression_xp,
     xp_for_level,
 )
 
@@ -47,3 +49,24 @@ def test_higher_scale_yields_lower_or_equal_level_for_same_xp() -> None:
     # Stretching the curve (higher scale) makes a fixed XP total worth fewer
     # levels; compressing it makes the same XP worth more.
     assert easy_level >= default_level >= hard_level
+
+
+def test_progression_xp_uses_text_plus_voice_total() -> None:
+    # Text 5k + voice 20k → level from 25k, not from the metric score.
+    total = progression_xp(
+        metric_xp=5_000,
+        total_score=25_000,
+        text_score=5_000,
+        voice_score=20_000,
+    )
+    assert total == 25_000
+    metric_only_level = level_from_xp(5_000)
+    combined_level = level_from_xp(total)
+    assert combined_level > metric_only_level
+
+
+def test_legacy_text_heal_skips_when_voice_present() -> None:
+    assert legacy_text_xp_from_total(25_000, None) == 25_000
+    assert legacy_text_xp_from_total(25_000, 0) == 25_000
+    assert legacy_text_xp_from_total(25_000, 20_000) == 5_000
+    assert legacy_text_xp_from_total(20_000, 20_000) is None

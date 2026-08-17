@@ -15,7 +15,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { ChannelSelect } from "@/components/ui/channel-select";
-import { ChannelPickerToolbar } from "@/components/ui/refresh-channels-button";
+import { RoleSelect } from "@/components/ui/role-select";
+import {
+  ChannelPickerToolbar,
+  RolePickerToolbar,
+} from "@/components/ui/refresh-channels-button";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import {
   useNotificationsStore,
@@ -166,23 +170,18 @@ export function NotificationsPanel() {
             </CCol>
 
             <CCol md={4}>
-              <CFormLabel>Ping role</CFormLabel>
-              <CFormSelect
+              <RolePickerToolbar label="Ping role" />
+              <RoleSelect
+                roles={roles}
                 value={draft.role_id ?? ""}
-                onChange={(event) =>
+                onChange={(value) =>
                   setDraft((current) => ({
                     ...current,
-                    role_id: event.target.value || null,
+                    role_id: value || null,
                   }))
                 }
-              >
-                <option value="">No ping</option>
-                {roles.map((role) => (
-                  <option key={role.id} value={role.id}>
-                    @{role.name}
-                  </option>
-                ))}
-              </CFormSelect>
+                emptyLabel="No ping"
+              />
             </CCol>
 
             <CCol xs={12}>

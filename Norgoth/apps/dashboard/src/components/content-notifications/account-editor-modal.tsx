@@ -9,7 +9,10 @@ import {
 } from "@coreui/react";
 import { FeatureConfigurationModal } from "@/components/ui/feature-modal";
 import { ChannelSelect } from "@/components/ui/channel-select";
-import { ChannelPickerToolbar } from "@/components/ui/refresh-channels-button";
+import {
+  ChannelPickerToolbar,
+  RolePickerToolbar,
+} from "@/components/ui/refresh-channels-button";
 import { RoleSelect } from "@/components/ui/role-select";
 import { MessagePreview } from "@/components/discord/message-preview";
 import { PlatformAvatar } from "@/components/content-notifications/platform-avatar";
@@ -361,7 +364,8 @@ export function AccountEditorModal({
             >
               {(["youtube", "twitch", "kick", "x"] as const).map((id) => {
                 const meta = platforms.find((p) => p.platform === id);
-                const remaining = meta?.active_remaining;
+                const remaining =
+                  id === "kick" ? meta?.total_remaining : meta?.active_remaining;
                 const atLimit = typeof remaining === "number" && remaining <= 0;
                 return (
                   <option
@@ -379,6 +383,18 @@ export function AccountEditorModal({
                 );
               })}
             </CFormSelect>
+            {platform === "kick" ? (
+              <p className="small text-body-secondary mb-0 mt-2">
+                {formatDict(copy.kickDisabledCount, {
+                  limit: platforms.find((p) => p.platform === "kick")
+                    ?.total_limit ?? 10,
+                })}
+              </p>
+            ) : (
+              <p className="small text-body-secondary mb-0 mt-2">
+                {copy.disabledDoNotCount}
+              </p>
+            )}
           </div>
         ) : null}
 
@@ -468,7 +484,7 @@ export function AccountEditorModal({
         </div>
 
         <div>
-          <label className="form-label small">{copy.pingRoleOptional}</label>
+          <RolePickerToolbar label={copy.pingRoleOptional} />
           <RoleSelect
             roles={resources?.roles ?? []}
             value={roleId}

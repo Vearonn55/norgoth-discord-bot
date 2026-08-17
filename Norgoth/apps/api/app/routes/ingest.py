@@ -315,9 +315,12 @@ async def ingest_xp(
         session.add(row)
     else:
         # Merge-safe: never wipe accrued text_xp with an accidental 0 (e.g. voice
-        # award before the text ZSET was seeded from legacy totals).
+        # award before the text ZSET was seeded from legacy totals). Same for
+        # voice_xp when a text-only ingest arrives with voice_xp=0.
         if text_xp <= 0 and row.text_xp > 0:
             text_xp = row.text_xp
+        if voice_xp <= 0 and row.voice_xp > 0:
+            voice_xp = row.voice_xp
         total = text_xp + voice_xp
         row.text_xp = text_xp
         row.voice_xp = voice_xp

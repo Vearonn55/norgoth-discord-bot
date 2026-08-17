@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
 from app.services.content_notifications.quotas import (
     ACTIVE_LIMITS,
     CONTENT_NOTIFICATION_LIMIT_REACHED,
+    CONTENT_NOTIFICATION_TOTAL_LIMIT_REACHED,
     ContentNotificationQuotaError,
+    _lock_platform_subscriptions,
     active_limit_for,
     assert_can_create,
     assert_can_enable,
@@ -21,12 +23,16 @@ def test_active_limits_match_plan() -> None:
     assert ACTIVE_LIMITS == {
         "youtube": 10,
         "twitch": 10,
-        "kick": 5,
+        "kick": 10,
         "x": 3,
         "tiktok": 0,
     }
     assert total_limit_for("youtube") == 30
+    assert total_limit_for("twitch") == 30
+    assert total_limit_for("kick") == 10
+    assert total_limit_for("x") == 9
     assert active_limit_for("tiktok") == 0
+    assert active_limit_for("kick") == 10
 
 
 @pytest.mark.anyio
@@ -73,18 +79,18 @@ async def test_assert_can_create_allows_disabled_when_active_full(
         "app.services.content_notifications.quotas.platform_usage",
         AsyncMock(
             return_value={
-                "platform": "kick",
-                "active_limit": 5,
-                "active_count": 5,
+                "platform": "youtube",
+                "active_limit": 10,
+                "active_count": 10,
                 "active_remaining": 0,
-                "total_limit": 15,
-                "total_count": 5,
-                "total_remaining": 10,
+                "total_limit": 30,
+                "total_count": 10,
+                "total_remaining": 20,
             }
         ),
     )
     await assert_can_create(
-        session, guild_id="1", platform="kick", will_be_enabled=False
+        session, guild_id="1", platform="youtube", will_be_enabled=False
     )
 
 
@@ -193,3 +199,41 @@ async def test_concurrent_final_slot_second_request_rejected(
         )
     assert exc.value.code == CONTENT_NOTIFICATION_LIMIT_REACHED
     assert lock.await_count == 2
+
+
+@pytest.mark.anyio
+async def test_assert_can_create_rejects_kick_eleventh_including_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = AsyncMock()
+    monkeypatch.setattr(
+        "app.services.content_notifications.quotas._lock_platform_subscriptions",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "app.services.content_notifications.quotas.platform_usage",
+        AsyncMock(
+            return_value={
+                "platform": "kick",
+                "active_limit": 10,
+                "active_count": 4,
+                "active_remaining": 6,
+                "total_limit": 10,
+                "total_count": 10,
+                "total_remaining": 0,
+            }
+        ),
+    )
+    with pytest.raises(ContentNotificationQuotaError) as exc:
+        await assert_can_create(
+            session, guild_id="1", platform="kick", will_be_enabled=False
+        )
+    assert exc.value.code == CONTENT_NOTIFICATION_TOTAL_LIMIT_REACHED
+    assert exc.value.as_detail()["limit"] == 10
+
+
+def test_lock_uses_transaction_advisory_lock() -> None:
+    from inspect import getsource
+
+    source = getsource(_lock_platform_subscriptions)
+    assert "pg_advisory_xact_lock" in source

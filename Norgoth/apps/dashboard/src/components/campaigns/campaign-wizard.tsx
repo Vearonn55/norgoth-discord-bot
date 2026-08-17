@@ -15,7 +15,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RoleMultiPicker } from "@/components/ui/role-multi-picker";
 import { ChannelSelect } from "@/components/ui/channel-select";
-import { RefreshChannelsButton } from "@/components/ui/refresh-channels-button";
+import {
+  RefreshChannelsButton,
+  RolePickerToolbar,
+} from "@/components/ui/refresh-channels-button";
 import { RichMessageEditor } from "@/components/editors/rich-message-editor";
 import { ValidationStatCard } from "@/components/campaigns/validation-stat-card";
 import { EmbedColorPicker } from "@/components/discord/embed-color-picker";
@@ -896,12 +899,10 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
                   </div>
                 ) : (
                   <div className="border rounded p-3 d-flex flex-column gap-3">
-                    <div>
-                      <h3 className="h6 mb-1">{wizardCopy.dmAudienceFilters}</h3>
-                      <p className="mb-0 text-body-secondary small">
-                        {wizardCopy.dmAudienceFiltersDesc}
-                      </p>
-                    </div>
+                    <RolePickerToolbar label={wizardCopy.dmAudienceFilters} />
+                    <p className="mb-0 text-body-secondary small">
+                      {wizardCopy.dmAudienceFiltersDesc}
+                    </p>
 
                     <RoleFilterPicker
                       label={dict.campaignWizard.includeRoles}

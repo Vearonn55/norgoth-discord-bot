@@ -117,6 +117,22 @@ def xp_voice_key(guild_id: int | str) -> str:
     return f"norgoth:guild:{guild_id}:xp:voice"
 
 
+def legacy_text_xp_from_total(
+    total: float,
+    voice: float | None,
+) -> float | None:
+    """Seed text XP from a pre-split ``:xp`` total without treating voice as text."""
+
+    total_val = float(total)
+    if total_val <= 0:
+        return None
+    voice_val = float(voice or 0)
+    if voice_val > 0:
+        text_val = max(0.0, total_val - voice_val)
+        return text_val if text_val > 0 else None
+    return total_val
+
+
 def xp_cooldown_key(guild_id: int | str, user_id: int | str) -> str:
     return f"norgoth:guild:{guild_id}:xp:cooldown:{user_id}"
 
@@ -178,7 +194,14 @@ class LevelingCog(commands.Cog):
 
     async def get_config(self, guild_id: int) -> dict[str, Any]:
         stored = await self.bot.state.get_json(leveling_config_key(guild_id))
-        config = {**DEFAULT_CONFIG, **stored}
+        if not stored or "voice_xp_per_minute" not in stored:
+            hydrated = await self.bot.state._hydrate_feature_from_api(
+                guild_id, "leveling"
+            )
+            if hydrated:
+                await self.bot.state.set_json(leveling_config_key(guild_id), hydrated)
+                stored = hydrated
+        config = {**DEFAULT_CONFIG, **(stored or {})}
         # Legacy migration: older configs gated voice XP with a boolean. When it
         # was explicitly off, treat the per-minute value as 0 (disabled). The
         # numeric value is now the single source of truth.
@@ -197,8 +220,15 @@ class LevelingCog(commands.Cog):
         if await redis.zscore(xp_text_key(guild_id), member) is not None:
             return
         total = await redis.zscore(xp_key(guild_id), member)
-        if total is not None and float(total) > 0:
-            await redis.zadd(xp_text_key(guild_id), {member: float(total)})
+        if total is None or float(total) <= 0:
+            return
+        voice = await redis.zscore(xp_voice_key(guild_id), member)
+        text = legacy_text_xp_from_total(
+            float(total),
+            None if voice is None else float(voice),
+        )
+        if text is not None and text > 0:
+            await redis.zadd(xp_text_key(guild_id), {member: float(text)})
 
     async def _award_metric_xp(
         self,
@@ -762,14 +792,27 @@ class LevelingCog(commands.Cog):
         scale = threshold_scale(await self.get_config(interaction.guild.id))
         lines: list[str] = []
         label = "Text XP" if metric == "text" else "Voice XP"
+        total_pipe = redis.pipeline()
+        other_key = (
+            xp_voice_key(interaction.guild.id)
+            if metric == "text"
+            else xp_text_key(interaction.guild.id)
+        )
+        for user_id, _score in entries:
+            uid = str(user_id)
+            total_pipe.zscore(xp_key(interaction.guild.id), uid)
+            total_pipe.zscore(other_key, uid)
+        scores = await total_pipe.execute()
 
         for index, (user_id, score) in enumerate(entries, start=1):
             xp = int(score)
+            total_score, other_score = scores[index * 2 - 2], scores[index * 2 - 1]
+            total_xp = int(total_score) if total_score is not None and float(total_score) > 0 else xp + int(other_score or 0)
             member = interaction.guild.get_member(int(user_id))
             name = member.display_name if member else f"User {user_id}"
             lines.append(
                 f"**{index}.** {name} — {xp:,} {label} "
-                f"(Level {level_from_xp(xp, scale)})"
+                f"(Level {level_from_xp(total_xp, scale)})"
             )
 
         embed = discord.Embed(

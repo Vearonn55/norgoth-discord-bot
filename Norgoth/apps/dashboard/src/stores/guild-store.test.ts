@@ -36,6 +36,7 @@ afterEach(() => {
     loading: false,
     error: null,
     refreshingChannels: false,
+    refreshingKind: null,
     channelRefreshNotice: null,
   });
 });
@@ -81,6 +82,7 @@ describe("refreshChannels", () => {
     );
     expect(useGuildStore.getState().channelRefreshNotice).toEqual({
       type: "success",
+      kind: "channels",
     });
   });
 
@@ -116,5 +118,65 @@ describe("refreshChannels", () => {
 
     expect(useGuildStore.getState().guildId).toBeNull();
     expect(useGuildStore.getState().resources).toBeNull();
+  });
+
+  it("warns when Discord returns the cached snapshot", async () => {
+    stubWindow();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          jsonResponse({
+            ...guildA,
+            source: "cache",
+            refreshed: false,
+          }),
+        ),
+      ),
+    );
+    useGuildStore.setState({
+      guildId: "guild-a",
+      resources: guildA,
+      loading: false,
+      refreshingChannels: false,
+      channelRefreshNotice: null,
+    });
+
+    await useGuildStore.getState().refreshChannels();
+
+    expect(useGuildStore.getState().channelRefreshNotice).toEqual({
+      type: "warning",
+      kind: "channels",
+    });
+  });
+
+  it("scopes success notices to the requested kind", async () => {
+    stubWindow();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          jsonResponse({
+            ...guildA,
+            source: "fresh",
+            refreshed: true,
+          }),
+        ),
+      ),
+    );
+    useGuildStore.setState({
+      guildId: "guild-a",
+      resources: guildA,
+      loading: false,
+      refreshingChannels: false,
+      channelRefreshNotice: { type: "success", kind: "channels" },
+    });
+
+    await useGuildStore.getState().refreshRoles();
+
+    expect(useGuildStore.getState().channelRefreshNotice).toEqual({
+      type: "success",
+      kind: "roles",
+    });
   });
 });

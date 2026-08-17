@@ -347,6 +347,9 @@ class ConfigurationService:
             settings.shared_ip_action = shared_ip_action
 
         await self._configuration_repository.flush()
+        # onupdate=func.now() expires updated_at; refresh before assemble so
+        # ConfigurationResponse does not see NULL / MissingGreenlet (HTTP 500).
+        await self._configuration_repository.refresh(settings)
 
         return await self._assemble(settings)
 
@@ -365,5 +368,6 @@ class ConfigurationService:
 
         settings.enabled = enabled
         await self._configuration_repository.flush()
+        await self._configuration_repository.refresh(settings)
 
         return await self._assemble(settings)

@@ -28,6 +28,7 @@ export function MemberVerificationView() {
   const config = useVerificationStore((s) => s.config);
   const loading = useVerificationStore((s) => s.loading);
   const error = useVerificationStore((s) => s.error);
+  const publishFeedback = useVerificationStore((s) => s.publishFeedback);
   const setError = useVerificationStore((s) => s.setError);
   const loadConfig = useVerificationStore((s) => s.loadConfig);
   const applyVerificationState = useVerificationStore(
@@ -72,6 +73,12 @@ export function MemberVerificationView() {
           {error}
         </CAlert>
       )}
+
+      {publishFeedback && !error ? (
+        <CAlert color="success" className="mb-0">
+          {publishFeedback}
+        </CAlert>
+      ) : null}
 
       {needsBindings && (
         <CAlert color="warning" className="mb-0">

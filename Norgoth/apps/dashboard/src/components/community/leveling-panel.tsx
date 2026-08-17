@@ -16,8 +16,6 @@ import {
   cilStar,
   cilTags,
 } from "@coreui/icons";
-import Link from "next/link";
-import { useParams } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -33,7 +31,10 @@ import { RichMessageEditor } from "@/components/editors/rich-message-editor";
 import { PageHeader } from "@/components/layout/page-header";
 import { MutedSection } from "@/components/ui/feature-muting";
 import { ChannelSelect } from "@/components/ui/channel-select";
-import { ChannelPickerToolbar } from "@/components/ui/refresh-channels-button";
+import {
+  ChannelPickerToolbar,
+  RolePickerToolbar,
+} from "@/components/ui/refresh-channels-button";
 import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import { useModulesStore } from "@/stores/modules-store";
@@ -56,8 +57,6 @@ import {
 export function LevelingPanel() {
   const dict = useLocaleDict();
   const d = dict.levelingPage;
-  const params = useParams();
-  const lang = typeof params?.lang === "string" ? params.lang : "en";
   const { guildId, resources, loading, error, reload } = useFirstGuild();
 
   const config = useLevelingStore((s) => s.config);
@@ -718,9 +717,7 @@ export function LevelingPanel() {
               </div>
 
               <div style={{ minWidth: 192 }}>
-                <CFormLabel className="small text-body-secondary">
-                  {d.grantRole}
-                </CFormLabel>
+                <RolePickerToolbar label={d.grantRole} />
                 <CFormSelect
                   value={newRewardRoleId}
                   onChange={(event) => setNewRewardRoleId(event.target.value)}
@@ -741,29 +738,6 @@ export function LevelingPanel() {
           </div>
 
           {renderCardSave("rewards", d.saveRoleRewards)}
-        </div>
-      </Card>
-
-      <Card>
-        <div className="d-flex flex-wrap align-items-center justify-content-between gap-3">
-          <div>
-            <h2 className="h5 mb-1 fw-semibold">{d.leaderboardTitle}</h2>
-            <p className="mb-0 small text-body-secondary">
-              {d.leaderboardDesc}{" "}
-              {leaderboard.length
-                ? formatDict(d.leaderboardRanked, {
-                    count: leaderboard.length,
-                    level: leaderboard[0]?.level ?? 0,
-                  })
-                : d.leaderboardNobody}
-            </p>
-          </div>
-          <Link
-            href={`/${lang}/community/leaderboard`}
-            className="btn btn-outline-secondary btn-sm"
-          >
-            {d.viewLeaderboard}
-          </Link>
         </div>
       </Card>
       </MutedSection>
