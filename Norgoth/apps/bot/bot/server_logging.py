@@ -6,14 +6,31 @@ for the dashboard and, when a log channel is configured, posted as an embed.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
+from collections.abc import Sequence
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
 import discord
+import httpx
 from discord.ext import commands
 
+from bot.audit_detail import (
+    AuditDetail,
+    build_channel_update_detail,
+    build_role_update_detail,
+    build_thread_update_detail,
+    discord_embed_field_changes,
+)
 from bot.logging_presentation import compose_log_embed_spec
+from bot.permission_diff import (
+    channel_overwrite_fields,
+    diff_channel_overwrites,
+    diff_role_permissions,
+    role_permission_fields,
+)
 from bot.state import now_iso
 
 if TYPE_CHECKING:
@@ -354,22 +371,144 @@ class ServerLoggingCog(commands.Cog):
         action: discord.AuditLogAction,
         *,
         target_id: int | None = None,
+        actions: Sequence[discord.AuditLogAction] | None = None,
+        since: datetime | None = None,
+        max_wait_s: float = 0.0,
     ) -> tuple[str | None, str | None]:
         """Best-effort actor lookup from Discord's audit log."""
 
+        actor_id, actor_name, _status, _reason = await self._resolve_audit_actor_detailed(
+            guild,
+            action,
+            target_id=target_id,
+            actions=actions,
+            since=since,
+            max_wait_s=max_wait_s,
+        )
+        return actor_id, actor_name
+
+    async def _resolve_audit_actor_detailed(
+        self,
+        guild: discord.Guild,
+        action: discord.AuditLogAction,
+        *,
+        target_id: int | None = None,
+        actions: Sequence[discord.AuditLogAction] | None = None,
+        since: datetime | None = None,
+        max_wait_s: float = 0.0,
+    ) -> tuple[str | None, str | None, str, str | None]:
+        """Return (actor_id, actor_name, status, reason).
+
+        status is found, delayed, ambiguous, or unavailable.
+        Strict correlation (``since`` set) requires exactly one match.
+        Reason is taken from the matching Discord audit-log entry when present.
+        """
+
+        action_set = tuple(actions) if actions else (action,)
+        matches = await self._collect_audit_actor_matches(
+            guild,
+            action_set,
+            target_id=target_id,
+            since=since,
+        )
+        if matches is None:
+            return None, None, "unavailable", None
+        if matches:
+            return self._finish_audit_actor_matches(matches, delayed=False)
+
+        if max_wait_s > 0:
+            try:
+                await asyncio.sleep(max_wait_s)
+            except asyncio.CancelledError:
+                raise
+            matches = await self._collect_audit_actor_matches(
+                guild,
+                action_set,
+                target_id=target_id,
+                since=since,
+            )
+            if matches is None:
+                return None, None, "unavailable", None
+            if matches:
+                return self._finish_audit_actor_matches(matches, delayed=True)
+
+        return None, None, "unavailable", None
+
+    def _finish_audit_actor_matches(
+        self,
+        matches: list[tuple[str, str, str | None]],
+        *,
+        delayed: bool,
+    ) -> tuple[str | None, str | None, str, str | None]:
+        unique: dict[str, str] = {}
+        reasons: dict[str, str | None] = {}
+        for actor_id, actor_name, reason in matches:
+            unique.setdefault(actor_id, actor_name)
+            if actor_id not in reasons or not reasons[actor_id]:
+                reasons[actor_id] = reason
+        if len(unique) != 1:
+            return None, None, "ambiguous", None
+        actor_id, actor_name = next(iter(unique.items()))
+        status = "delayed" if delayed else "found"
+        return actor_id, actor_name, status, reasons.get(actor_id)
+
+    async def _collect_audit_actor_matches(
+        self,
+        guild: discord.Guild,
+        actions: Sequence[discord.AuditLogAction],
+        *,
+        target_id: int | None,
+        since: datetime | None,
+    ) -> list[tuple[str, str, str | None]] | None:
+        """Return matching (id, name, reason) triples, or None on API failure.
+
+        An empty list means a successful lookup with no match.
+        """
+
+        action_set = set(actions)
+        limit = 6 if len(action_set) == 1 else 12
+        matches: list[tuple[str, str, str | None]] = []
         try:
-            async for entry in guild.audit_logs(limit=6, action=action):
+            if len(action_set) == 1:
+                iterator = guild.audit_logs(limit=limit, action=next(iter(action_set)))
+            else:
+                iterator = guild.audit_logs(limit=limit)
+            async for entry in iterator:
+                if entry.action not in action_set:
+                    continue
                 if target_id is not None and entry.target is not None:
                     if getattr(entry.target, "id", None) != target_id:
                         continue
+                if since is not None:
+                    created = getattr(entry, "created_at", None)
+                    if created is not None:
+                        if created.tzinfo is None:
+                            created = created.replace(tzinfo=timezone.utc)
+                        if created < since:
+                            continue
                 user = entry.user
                 if user is None:
-                    return None, None
-                return str(user.id), str(user)
-        except (discord.Forbidden, discord.HTTPException):
-            return None, None
-
-        return None, None
+                    continue
+                raw_reason = getattr(entry, "reason", None)
+                reason = (
+                    str(raw_reason).strip()[:512]
+                    if isinstance(raw_reason, str) and raw_reason.strip()
+                    else None
+                )
+                matches.append((str(user.id), str(user), reason))
+                if since is None and matches:
+                    return matches
+        except discord.Forbidden:
+            return None
+        except discord.HTTPException as error:
+            logger.warning(
+                "audit actor lookup failed guild_id=%s discord_status=%s discord_code=%s",
+                guild.id,
+                getattr(error, "status", None),
+                getattr(error, "code", None),
+            )
+            return None
+        return matches
 
     async def record_event(
         self,
@@ -382,6 +521,7 @@ class ServerLoggingCog(commands.Cog):
         event_type: str,
         actor_id: str | None = None,
         actor_name: str | None = None,
+        detail: AuditDetail | dict[str, Any] | None = None,
     ) -> None:
         if not await self.bot.state.is_module_enabled(guild.id, "logging"):
             return
@@ -392,8 +532,8 @@ class ServerLoggingCog(commands.Cog):
         if actor_id and "Actor ID" not in entry_fields:
             entry_fields["Actor ID"] = actor_id
 
-        # Always capture the event in the ring buffer that powers the dashboard
-        # Audit Logs, independent of whether it is routed to a Discord channel.
+        # Redis remains the Discord-log / fast ring cache. Durable details go
+        # to Postgres via ingest.
         entry = {
             "id": str(uuid.uuid4()),
             "category": category,
@@ -416,6 +556,16 @@ class ServerLoggingCog(commands.Cog):
             logger.exception("Failed to append event log entry")
 
         try:
+            await self._ingest_server_event(guild.id, entry, detail)
+        except Exception:  # noqa: BLE001
+            logger.debug(
+                "Server event ingest failed guild_id=%s event_type=%s",
+                guild.id,
+                event_type,
+                exc_info=True,
+            )
+
+        try:
             await self.route_event(
                 guild,
                 event_type,
@@ -427,6 +577,50 @@ class ServerLoggingCog(commands.Cog):
             )
         except Exception:  # noqa: BLE001 - routing must not break event capture
             logger.exception("Failed to route log event %s", event_type)
+
+    async def _ingest_server_event(
+        self,
+        guild_id: int,
+        entry: dict[str, Any],
+        detail: AuditDetail | dict[str, Any] | None,
+    ) -> None:
+        base = getattr(self.bot.state, "_api_base_url", "") or ""
+        token = getattr(self.bot.state, "_bot_token", "") or ""
+        if not isinstance(base, str) or not base:
+            return
+        if not isinstance(token, str) or not token:
+            return
+
+        detail_payload: dict[str, Any] | None
+        if isinstance(detail, AuditDetail):
+            detail_payload = None if detail.is_empty() else detail.to_dict()
+        elif isinstance(detail, dict):
+            detail_payload = detail
+        else:
+            detail_payload = None
+
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(
+                f"{base}/internal/ingest/{guild_id}/server-event",
+                headers={
+                    "X-Norgoth-Internal-Token": token,
+                    "X-Norgoth-Bot-Token": token,
+                },
+                json={
+                    "event_type": entry.get("event_type"),
+                    "source_event_id": entry.get("id"),
+                    "category": entry.get("category"),
+                    "action": entry.get("action"),
+                    "actor_id": entry.get("actor_id"),
+                    "actor_name": entry.get("actor_name"),
+                    "created_at": entry.get("created_at"),
+                    "payload": {
+                        "description": entry.get("description"),
+                        "fields": entry.get("fields") or {},
+                        "detail": detail_payload,
+                    },
+                },
+            )
 
     # ---- member events -------------------------------------------------
 
@@ -702,33 +896,96 @@ class ServerLoggingCog(commands.Cog):
         before: discord.Role,
         after: discord.Role,
     ) -> None:
-        actor_id, actor_name = await self.resolve_audit_actor(
-            after.guild,
-            discord.AuditLogAction.role_update,
-            target_id=after.id,
+        try:
+            await self._log_guild_role_update(before, after)
+        except Exception:  # noqa: BLE001 - logging must never break the gateway
+            logger.exception("Failed to log role update guild_id=%s", after.guild.id)
+
+    async def _log_guild_role_update(
+        self,
+        before: discord.Role,
+        after: discord.Role,
+    ) -> None:
+        detail = build_role_update_detail(before, after)
+        if detail.is_empty():
+            return
+
+        permissions_changed = bool(detail.permission_changes)
+        wait_s = 0.6 if permissions_changed else 0.0
+        since = (
+            datetime.now(timezone.utc) - timedelta(seconds=5)
+            if permissions_changed
+            else None
         )
-        if before.name != after.name:
-            await self.record_event(
+        actor_id, actor_name, actor_status, reason = (
+            await self._resolve_audit_actor_detailed(
                 after.guild,
-                "role",
-                "Role renamed",
-                f"Role **{before.name}** renamed to **{after.name}**.",
-                {"Before": before.name, "After": after.name},
-                event_type="role_update",
-                actor_id=actor_id,
-                actor_name=actor_name,
+                discord.AuditLogAction.role_update,
+                target_id=after.id,
+                since=since,
+                max_wait_s=wait_s,
             )
-        elif before.permissions != after.permissions:
-            await self.record_event(
-                after.guild,
-                "role",
-                "Role permissions updated",
-                f"Permissions changed for role **{after.name}**.",
-                {"Role": after.name},
-                event_type="role_update",
-                actor_id=actor_id,
-                actor_name=actor_name,
+        )
+        if actor_status not in {"found", "delayed"}:
+            actor_id, actor_name = None, None
+            reason = None
+        detail.actor = (
+            {"id": actor_id, "name": actor_name}
+            if actor_id or actor_name
+            else None
+        )
+        detail.reason = reason
+
+        name_only = (
+            len(detail.field_changes) == 1
+            and detail.field_changes[0].field == "name"
+            and not permissions_changed
+        )
+        perms_only = not detail.field_changes and permissions_changed
+        if name_only:
+            action = "Role renamed"
+            description = (
+                f"Role **{before.name}** renamed to **{after.name}**."
             )
+        elif perms_only:
+            action = "Role permissions updated"
+            description = f"Permissions changed for role **{after.name}**."
+        else:
+            action = "Role updated"
+            description = f"Role **{after.name}** was updated."
+
+        fields: dict[str, str] = {
+            "Role": after.name,
+            "Role ID": str(after.id),
+        }
+        fields.update(discord_embed_field_changes(detail.field_changes))
+        if permissions_changed:
+            diff = diff_role_permissions(before.permissions, after.permissions)
+            fields.update(role_permission_fields(diff))
+            logger.info(
+                "permission_diff event_type=%s guild_id=%s granted=%s revoked=%s "
+                "overwrite_changes=%s actor_status=%s",
+                "role_update",
+                after.guild.id,
+                len(diff.granted),
+                len(diff.revoked),
+                0,
+                actor_status,
+            )
+        if actor_status not in {"found", "delayed"}:
+            fields["Actor"] = "Unknown"
+
+        await self.record_event(
+            after.guild,
+            "role",
+            action,
+            description,
+            fields,
+            event_type="role_update",
+            actor_id=actor_id,
+            actor_name=actor_name,
+            detail=detail,
+        )
 
     # ---- channel events ----------------------------------------------------
 
@@ -780,30 +1037,95 @@ class ServerLoggingCog(commands.Cog):
         before: discord.abc.GuildChannel,
         after: discord.abc.GuildChannel,
     ) -> None:
-        changes: dict[str, str] = {}
-        if getattr(before, "name", None) != getattr(after, "name", None):
-            changes["Name"] = f"{before.name} → {after.name}"
-        before_topic = getattr(before, "topic", None)
-        after_topic = getattr(after, "topic", None)
-        if before_topic != after_topic:
-            changes["Topic"] = "updated"
-        if not changes:
+        try:
+            await self._log_guild_channel_update(before, after)
+        except Exception:  # noqa: BLE001 - logging must never break the gateway
+            logger.exception(
+                "Failed to log channel update guild_id=%s", after.guild.id
+            )
+
+    async def _log_guild_channel_update(
+        self,
+        before: discord.abc.GuildChannel,
+        after: discord.abc.GuildChannel,
+    ) -> None:
+        overwrite_diff = diff_channel_overwrites(before, after)
+        detail = build_channel_update_detail(
+            before,
+            after,
+            category_synced=overwrite_diff.category_synced,
+        )
+        if detail.is_empty():
             return
 
-        actor_id, actor_name = await self.resolve_audit_actor(
-            after.guild,
-            discord.AuditLogAction.channel_update,
-            target_id=after.id,
+        wait_s = 0.6 if not overwrite_diff.is_empty() else 0.0
+        since = (
+            datetime.now(timezone.utc) - timedelta(seconds=5)
+            if wait_s
+            else None
         )
+        actions: list[discord.AuditLogAction] = [discord.AuditLogAction.channel_update]
+        if not overwrite_diff.is_empty():
+            actions.extend(
+                [
+                    discord.AuditLogAction.overwrite_create,
+                    discord.AuditLogAction.overwrite_update,
+                    discord.AuditLogAction.overwrite_delete,
+                ]
+            )
+
+        actor_id, actor_name, actor_status, reason = (
+            await self._resolve_audit_actor_detailed(
+                after.guild,
+                actions[0],
+                target_id=after.id,
+                actions=actions,
+                since=since,
+                max_wait_s=wait_s,
+            )
+        )
+        if actor_status not in {"found", "delayed"}:
+            actor_id, actor_name = None, None
+            reason = None
+        detail.actor = (
+            {"id": actor_id, "name": actor_name}
+            if actor_id or actor_name
+            else None
+        )
+        detail.reason = reason
+
+        fields: dict[str, str] = discord_embed_field_changes(detail.field_changes)
+        fields["Channel"] = f"#{after.name}"
+        fields["Channel ID"] = str(after.id)
+        channel_type = getattr(after, "type", None)
+        if channel_type is not None and "Type" not in fields:
+            fields["Type"] = str(channel_type)
+        fields.update(channel_overwrite_fields(overwrite_diff))
+        if actor_status not in {"found", "delayed"}:
+            fields["Actor"] = "Unknown"
+
+        if not overwrite_diff.is_empty():
+            logger.info(
+                "permission_diff event_type=%s guild_id=%s granted=%s revoked=%s "
+                "overwrite_changes=%s actor_status=%s",
+                "channel_update",
+                after.guild.id,
+                len(overwrite_diff.granted),
+                len(overwrite_diff.inherited),
+                overwrite_diff.change_count(),
+                actor_status,
+            )
+
         await self.record_event(
             after.guild,
             "channel",
             "Channel updated",
             f"Channel **#{after.name}** was updated.",
-            changes,
+            fields,
             event_type="channel_update",
             actor_id=actor_id,
             actor_name=actor_name,
+            detail=detail,
         )
 
     # ---- thread events -----------------------------------------------------
@@ -852,30 +1174,41 @@ class ServerLoggingCog(commands.Cog):
         before: discord.Thread,
         after: discord.Thread,
     ) -> None:
-        changes: dict[str, str] = {}
-        if before.name != after.name:
-            changes["Name"] = f"{before.name} → {after.name}"
-        if before.archived != after.archived:
-            changes["Archived"] = str(after.archived)
-        if before.locked != after.locked:
-            changes["Locked"] = str(after.locked)
-        if not changes:
+        detail = build_thread_update_detail(before, after)
+        if detail.is_empty():
             return
 
-        actor_id, actor_name = await self.resolve_audit_actor(
-            after.guild,
-            discord.AuditLogAction.thread_update,
-            target_id=after.id,
+        actor_id, actor_name, actor_status, reason = (
+            await self._resolve_audit_actor_detailed(
+                after.guild,
+                discord.AuditLogAction.thread_update,
+                target_id=after.id,
+            )
         )
+        if actor_status not in {"found", "delayed"}:
+            actor_id, actor_name = None, None
+            reason = None
+        detail.actor = (
+            {"id": actor_id, "name": actor_name}
+            if actor_id or actor_name
+            else None
+        )
+        detail.reason = reason
+
+        fields = discord_embed_field_changes(detail.field_changes)
+        fields["Thread"] = after.name
+        fields["Thread ID"] = str(after.id)
+
         await self.record_event(
             after.guild,
             "thread",
             "Thread updated",
             f"Thread **{after.name}** was updated.",
-            changes,
+            fields,
             event_type="thread_update",
             actor_id=actor_id,
             actor_name=actor_name,
+            detail=detail,
         )
 
     # ---- ban events --------------------------------------------------------

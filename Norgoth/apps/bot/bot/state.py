@@ -284,3 +284,39 @@ class BotState:
         key = moderation_log_key(guild_id)
         await self._redis.lpush(key, json.dumps(entry))
         await self._redis.ltrim(key, 0, 499)
+        await self._ingest_moderation_log(guild_id, entry)
+
+    async def _ingest_moderation_log(
+        self,
+        guild_id: int,
+        entry: dict[str, Any],
+    ) -> None:
+        if not isinstance(self._api_base_url, str) or not self._api_base_url:
+            return
+        if not isinstance(self._bot_token, str) or not self._bot_token:
+            return
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                await client.post(
+                    f"{self._api_base_url}/internal/ingest/{guild_id}/moderation-log",
+                    headers={
+                        "X-Norgoth-Internal-Token": self._bot_token,
+                        "X-Norgoth-Bot-Token": self._bot_token,
+                    },
+                    json={
+                        "action": entry.get("action"),
+                        "target_id": entry.get("target_id"),
+                        "moderator_id": entry.get("moderator_id"),
+                        "reason": entry.get("reason"),
+                        "moderator_name": entry.get("moderator_name"),
+                        "target": entry.get("target"),
+                        "detail": entry.get("detail"),
+                        "created_at": entry.get("created_at"),
+                    },
+                )
+        except Exception:  # noqa: BLE001
+            logger.debug(
+                "Moderation log ingest failed for guild %s",
+                guild_id,
+                exc_info=True,
+            )

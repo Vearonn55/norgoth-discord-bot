@@ -9,5 +9,7 @@ describe("FeatureConfigurationModal overflow", () => {
     expect(src).toContain("dialogClassName");
     expect(src).toContain("bodyClassName");
     expect(src).toContain("scrollable={scrollable}");
+    expect(src).toContain("shouldInvokeModalClose");
+    expect(src).toContain("handleClose");
   });
 });

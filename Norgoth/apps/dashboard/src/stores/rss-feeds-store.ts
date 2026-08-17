@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { apiUrl } from "@/lib/api";
-import { readApiError } from "@/lib/api-error";
+import { readApiError, type ApiErrorBody } from "@/lib/api-error";
 
 export type RssFeed = {
   id: string;
@@ -25,6 +25,7 @@ export type RssFeed = {
 export type RssProbeResult = {
   ok: boolean;
   error: string | null;
+  error_code?: string | null;
   format_hint: string | null;
   feed_title: string | null;
   sample_title: string | null;
@@ -72,6 +73,12 @@ type RssFeedsState = {
 const TIMEOUT_MS = 30_000;
 let latestLoadId = 0;
 
+function errorWithCode(apiError: ApiErrorBody): Error {
+  const error = new Error(apiError.message);
+  (error as Error & { code?: string }).code = apiError.code;
+  return error;
+}
+
 async function fetchWithTimeout(
   url: string,
   options: RequestInit,
@@ -88,7 +95,7 @@ async function fetchWithTimeout(
 
 export const useRssFeedsStore = create<RssFeedsState>((set) => ({
   feeds: [],
-  maxFeeds: 5,
+  maxFeeds: 15,
   workerOnline: false,
   loading: false,
   saving: false,
@@ -104,7 +111,7 @@ export const useRssFeedsStore = create<RssFeedsState>((set) => ({
       );
       if (!response.ok) {
         const apiError = await readApiError(response);
-        throw new Error(apiError.message);
+        throw errorWithCode(apiError);
       }
       const data = (await response.json()) as {
         feeds: RssFeed[];
@@ -114,7 +121,7 @@ export const useRssFeedsStore = create<RssFeedsState>((set) => ({
       if (requestId !== latestLoadId) return;
       set({
         feeds: data.feeds ?? [],
-        maxFeeds: data.max_feeds ?? 5,
+        maxFeeds: data.max_feeds ?? 15,
         workerOnline: Boolean(data.worker_online),
       });
     } catch (e) {
@@ -143,7 +150,7 @@ export const useRssFeedsStore = create<RssFeedsState>((set) => ({
       );
       if (!response.ok) {
         const apiError = await readApiError(response);
-        throw new Error(apiError.message);
+        throw errorWithCode(apiError);
       }
       const feed = (await response.json()) as RssFeed;
       set((state) => ({ feeds: [feed, ...state.feeds] }));
@@ -173,7 +180,7 @@ export const useRssFeedsStore = create<RssFeedsState>((set) => ({
       );
       if (!response.ok) {
         const apiError = await readApiError(response);
-        throw new Error(apiError.message);
+        throw errorWithCode(apiError);
       }
       const feed = (await response.json()) as RssFeed;
       set((state) => ({
@@ -203,7 +210,7 @@ export const useRssFeedsStore = create<RssFeedsState>((set) => ({
       );
       if (!response.ok) {
         const apiError = await readApiError(response);
-        throw new Error(apiError.message);
+        throw errorWithCode(apiError);
       }
       set((state) => ({
         feeds: state.feeds.filter((f) => f.id !== feedId),
@@ -231,7 +238,7 @@ export const useRssFeedsStore = create<RssFeedsState>((set) => ({
     );
     if (!response.ok) {
       const apiError = await readApiError(response);
-      throw new Error(apiError.message);
+      throw errorWithCode(apiError);
     }
     return (await response.json()) as RssProbeResult;
   },

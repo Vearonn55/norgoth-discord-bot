@@ -13,11 +13,10 @@ from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Path
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
 from app.db.session import get_database_session
 from app.security.internal_auth import require_internal_token
 from app.models.runtime_events import (
@@ -30,6 +29,12 @@ from app.models.runtime_events import (
     RaidIncident,
     ServerEventLogEntry,
     Ticket,
+)
+from app.services.audit_detail import (
+    EVENT_LOG_CAP,
+    MODERATION_LOG_CAP,
+    is_snowflake,
+    prepare_event_payload,
 )
 
 SNOWFLAKE = r"^[0-9]{5,25}$"
@@ -93,11 +98,39 @@ async def ingest_honeypot_trigger(
 
 
 class ModerationLogBody(BaseModel):
-    action: str
+    action: str = Field(max_length=80)
     target_id: Optional[str] = Field(default=None, pattern=SNOWFLAKE)
     moderator_id: Optional[str] = Field(default=None, pattern=SNOWFLAKE)
-    reason: Optional[str] = None
+    reason: Optional[str] = Field(default=None, max_length=512)
     details: Optional[dict[str, Any]] = None
+    moderator_name: Optional[str] = Field(default=None, max_length=128)
+    target: Optional[str] = Field(default=None, max_length=256)
+    detail: Optional[str] = Field(default=None, max_length=512)
+    created_at: Optional[datetime] = None
+
+
+async def _prune_oldest(
+    session: AsyncSession,
+    model: type[ServerEventLogEntry] | type[ModerationLogEntry],
+    guild_id: str,
+    cap: int,
+) -> None:
+    count = await session.scalar(
+        select(func.count()).select_from(model).where(model.guild_id == guild_id)
+    )
+    if not count or int(count) <= cap:
+        return
+    excess = int(count) - cap
+    oldest_ids = (
+        await session.scalars(
+            select(model.id)
+            .where(model.guild_id == guild_id)
+            .order_by(model.created_at.asc())
+            .limit(excess)
+        )
+    ).all()
+    if oldest_ids:
+        await session.execute(delete(model).where(model.id.in_(list(oldest_ids))))
 
 
 @router.post("/{guild_id}/moderation-log")
@@ -106,22 +139,39 @@ async def ingest_moderation_log(
     guild_id: str = Path(pattern=SNOWFLAKE),
     session: AsyncSession = Depends(get_database_session),
 ) -> dict[str, Any]:
+    details = dict(body.details or {})
+    if body.moderator_name:
+        details["moderator_name"] = body.moderator_name
+    if body.target:
+        details["target"] = body.target
+    if body.detail:
+        details["detail"] = body.detail
     entry = ModerationLogEntry(
         guild_id=guild_id,
-        action=body.action,
-        target_id=body.target_id,
-        moderator_id=body.moderator_id,
+        action=(body.action or "")[:32],
+        target_id=body.target_id if is_snowflake(body.target_id) else None,
+        moderator_id=body.moderator_id if is_snowflake(body.moderator_id) else None,
         reason=body.reason,
-        details=body.details,
+        details=details or None,
     )
+    if body.created_at is not None:
+        entry.created_at = body.created_at
     session.add(entry)
+    await session.flush()
+    await _prune_oldest(session, ModerationLogEntry, guild_id, MODERATION_LOG_CAP)
     await session.commit()
     return {"id": str(entry.id)}
 
 
 class ServerEventBody(BaseModel):
-    event_type: str
+    event_type: str = Field(max_length=64)
     payload: dict[str, Any] = Field(default_factory=dict)
+    source_event_id: Optional[str] = Field(default=None, max_length=36)
+    category: Optional[str] = Field(default=None, max_length=32)
+    action: Optional[str] = Field(default=None, max_length=128)
+    actor_id: Optional[str] = Field(default=None, max_length=32)
+    actor_name: Optional[str] = Field(default=None, max_length=128)
+    created_at: Optional[datetime] = None
 
 
 @router.post("/{guild_id}/server-event")
@@ -130,12 +180,54 @@ async def ingest_server_event(
     guild_id: str = Path(pattern=SNOWFLAKE),
     session: AsyncSession = Depends(get_database_session),
 ) -> dict[str, Any]:
+    source_id = body.source_event_id.strip() if body.source_event_id else None
+    if source_id:
+        existing = (
+            await session.execute(
+                select(ServerEventLogEntry).where(
+                    ServerEventLogEntry.guild_id == guild_id,
+                    ServerEventLogEntry.source_event_id == source_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            return {"id": str(existing.id), "duplicate": True}
+
+    payload, has_detail = prepare_event_payload(body.payload)
+    actor_id = body.actor_id if is_snowflake(body.actor_id) else None
     entry = ServerEventLogEntry(
         guild_id=guild_id,
-        event_type=body.event_type,
-        payload=body.payload,
+        event_type=body.event_type[:64],
+        category=(body.category or None),
+        action=(body.action or None),
+        actor_id=actor_id,
+        actor_name=(body.actor_name[:128] if body.actor_name else None),
+        source_event_id=source_id,
+        has_detail=has_detail,
+        payload=payload,
     )
+    if body.created_at is not None:
+        entry.created_at = body.created_at
     session.add(entry)
+    try:
+        await session.flush()
+    except IntegrityError:
+        await session.rollback()
+        if not source_id:
+            raise
+        existing = (
+            await session.execute(
+                select(ServerEventLogEntry).where(
+                    ServerEventLogEntry.guild_id == guild_id,
+                    ServerEventLogEntry.source_event_id == source_id,
+                )
+            )
+        ).scalar_one_or_none()
+        return {
+            "id": str(existing.id) if existing is not None else "",
+            "duplicate": True,
+        }
+    await _prune_oldest(session, ServerEventLogEntry, guild_id, EVENT_LOG_CAP)
     await session.commit()
     return {"id": str(entry.id)}
 

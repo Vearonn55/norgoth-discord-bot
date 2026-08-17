@@ -73,7 +73,7 @@ async def process_feed(
             last_modified=feed.last_modified,
             client=http_client,
         )
-    except (SsrfError, httpx.HTTPError) as exc:
+    except (SsrfError, httpx.HTTPError, httpx.InvalidURL) as exc:
         feed.failure_count = int(feed.failure_count or 0) + 1
         feed.last_error = str(exc)[:1000]
         feed.next_poll_at = next_poll_after_failure(

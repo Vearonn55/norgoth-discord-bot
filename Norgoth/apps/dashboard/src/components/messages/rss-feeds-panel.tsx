@@ -32,7 +32,8 @@ import { Icon } from "@/components/ui/icon";
 import { cilNotes } from "@coreui/icons";
 import { useFeatureInfo } from "@/lib/feature-info";
 import { formatDateTime } from "@/lib/datetime";
-import { useLocaleDict } from "@/lib/locale-dict";
+import { useLocaleDict, formatDict } from "@/lib/locale-dict";
+import { rssErrorMessage } from "@/lib/rss-errors";
 import { MutedSection } from "@/components/ui/feature-muting";
 
 type Draft = {
@@ -139,7 +140,17 @@ export function RssFeedsPanel() {
         }));
       }
     } catch (e) {
-      setLocalError(e instanceof Error ? e.message : d.probeFailed);
+      const code =
+        e && typeof e === "object" && "code" in e
+          ? String((e as { code?: string }).code ?? "")
+          : null;
+      setLocalError(
+        rssErrorMessage(
+          d,
+          code,
+          e instanceof Error ? e.message : d.probeFailed,
+        ),
+      );
     }
   }
 
@@ -174,7 +185,17 @@ export function RssFeedsPanel() {
       setShowForm(false);
       setEditingId(null);
     } catch (e) {
-      setLocalError(e instanceof Error ? e.message : d.saveFailed);
+      const code =
+        e && typeof e === "object" && "code" in e
+          ? String((e as { code?: string }).code ?? "")
+          : null;
+      setLocalError(
+        rssErrorMessage(
+          d,
+          code,
+          e instanceof Error ? e.message : d.saveFailed,
+        ),
+      );
     }
   }
 
@@ -215,7 +236,7 @@ export function RssFeedsPanel() {
       />
 
       <CAlert color="info" className="mb-0">
-        {d.infoBanner}
+        {formatDict(d.infoBanner, { max: maxFeeds })}
       </CAlert>
 
       {(error || localError) && (
@@ -259,7 +280,16 @@ export function RssFeedsPanel() {
                 >
                   {probeResult.ok
                     ? `${probeResult.format_hint} · ${probeResult.feed_title ?? "—"} · ${probeResult.item_count} items`
-                    : probeResult.error}
+                    : rssErrorMessage(
+                        d,
+                        probeResult.error_code,
+                        probeResult.error,
+                      )}
+                </p>
+              ) : null}
+              {probeResult?.ok && probeResult.item_count === 0 ? (
+                <p className="small text-body-secondary mt-2 mb-0">
+                  {d.emptyFeedWarning}
                 </p>
               ) : null}
             </div>

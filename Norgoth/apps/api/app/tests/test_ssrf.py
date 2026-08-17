@@ -81,6 +81,56 @@ async def test_safe_fetch_oversized_body(monkeypatch: pytest.MonkeyPatch) -> Non
     with pytest.raises(SsrfError, match="size limit"):
         await safe_fetch("https://example.com/feed.xml", client=client)
 
+
+@pytest.mark.asyncio
+async def test_safe_fetch_streams_and_aborts_oversized_httpx_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.security.ssrf.resolve_and_validate_host",
+        lambda host: ["93.184.216.34"],
+    )
+
+    payload = b"x" * (2 * 1024 * 1024 + 50)
+
+    class _StreamResponse:
+        status_code = 200
+        headers = {"content-type": "application/xml"}
+
+        async def aiter_bytes(self, chunk_size: int = 65536):
+            for index in range(0, len(payload), chunk_size):
+                yield payload[index : index + chunk_size]
+
+        async def aclose(self) -> None:
+            return None
+
+    stream = _StreamResponse()
+
+    client = AsyncMock(spec=httpx.AsyncClient)
+    client.request = AsyncMock(return_value=stream)
+    client.aclose = AsyncMock()
+
+    with pytest.raises(SsrfError, match="size limit") as exc:
+        await safe_fetch("https://example.com/feed.xml", client=client)
+    assert exc.value.code == "too_large"
+
+
+@pytest.mark.asyncio
+async def test_safe_fetch_redirect_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "app.security.ssrf.resolve_and_validate_host",
+        lambda host: ["93.184.216.34"],
+    )
+    redirect = MagicMock()
+    redirect.status_code = 302
+    redirect.headers = {"location": "https://example.com/feed.xml"}
+    client = AsyncMock(spec=httpx.AsyncClient)
+    client.request = AsyncMock(return_value=redirect)
+    client.aclose = AsyncMock()
+    with pytest.raises(SsrfError, match="Too many redirects") as exc:
+        await safe_fetch("https://example.com/feed.xml", client=client)
+    assert exc.value.code == "unsafe_destination"
+
     pinned = client.request.await_args.args[1]
     assert pinned.startswith("https://93.184.216.34/")
     assert client.request.await_args.kwargs["headers"]["Host"] == "example.com"

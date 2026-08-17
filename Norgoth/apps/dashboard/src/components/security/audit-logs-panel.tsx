@@ -18,6 +18,7 @@ import { useFeatureInfo } from "@/lib/feature-info";
 import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import { create } from "zustand";
+import { AuditChangeDetails } from "@/components/security/audit-change-details";
 import { useModerationLogsStore } from "@/stores/moderation-logs-store";
 import { useServerEventsStore } from "@/stores/server-events-store";
 
@@ -25,6 +26,7 @@ type AuditSource = "moderation" | "event";
 
 type AuditRow = {
   id: string;
+  eventId?: string;
   source: AuditSource;
   category: string;
   action: string;
@@ -130,11 +132,12 @@ export function AuditLogsPanel() {
 
     const events: AuditRow[] = eventEntries.map((entry) => ({
       id: `evt-${entry.id}`,
+      eventId: entry.id,
       source: "event",
       category: entry.category,
       action: entry.action,
-      summary: entry.description.replace(/<@!?\d+>/g, "@member"),
-      actor: entry.actor_name || entry.fields?.Actor || "—",
+      summary: (entry.description || "").replace(/<@!?\d+>/g, "@member"),
+      actor: entry.actor_name || "—",
       created_at: entry.created_at,
       fields: entry.fields ?? {},
     }));
@@ -270,31 +273,43 @@ export function AuditLogsPanel() {
             page={page}
             pageSize={12}
             onPageChange={setPage}
-            expandable={(row) => (
-              <div className="d-flex flex-column gap-2">
-                <div>
-                  <span className="small fw-semibold text-body-secondary">
-                    {d.colDetails}
-                  </span>
-                  <div>{row.summary || "—"}</div>
+            expandable={(row) =>
+              row.source === "event" && row.eventId && guildId ? (
+                <AuditChangeDetails
+                  guildId={guildId}
+                  eventId={row.eventId}
+                  summary={row.summary}
+                  actor={row.actor}
+                  action={row.action}
+                  createdAtLabel={formatDateTime(row.created_at, lang)}
+                  fallbackFields={row.fields}
+                />
+              ) : (
+                <div className="d-flex flex-column gap-2">
+                  <div>
+                    <span className="small fw-semibold text-body-secondary">
+                      {d.colDetails}
+                    </span>
+                    <div className="norgoth-audit-wrap">{row.summary || "—"}</div>
+                  </div>
+                  {Object.keys(row.fields).length > 0 ? (
+                    <dl className="row g-1 mb-0 mt-1 small">
+                      {Object.entries(row.fields).map(([label, value]) => (
+                        <div className="col-12 d-flex gap-2" key={label}>
+                          <dt
+                            className="text-body-secondary"
+                            style={{ minWidth: 140 }}
+                          >
+                            {label}
+                          </dt>
+                          <dd className="mb-0 norgoth-audit-wrap">{value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  ) : null}
                 </div>
-                {Object.keys(row.fields).length > 0 ? (
-                  <dl className="row g-1 mb-0 mt-1 small">
-                    {Object.entries(row.fields).map(([label, value]) => (
-                      <div className="col-12 d-flex gap-2" key={label}>
-                        <dt
-                          className="text-body-secondary"
-                          style={{ minWidth: 140 }}
-                        >
-                          {label}
-                        </dt>
-                        <dd className="mb-0">{value}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                ) : null}
-              </div>
-            )}
+              )
+            }
             toolbar={
               <div className="d-flex align-items-center gap-2 flex-wrap">
                 <CFormSelect

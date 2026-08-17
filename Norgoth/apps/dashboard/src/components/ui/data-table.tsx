@@ -74,8 +74,23 @@ export function DataTable<T>({
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const totalColumns = columns.length + (expandable ? 1 : 0);
 
+  function isInteractiveTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) {
+      return false;
+    }
+    return Boolean(target.closest("button, a, input, select, textarea, label"));
+  }
+
   function toggleRow(key: string) {
     setExpanded((current) => ({ ...current, [key]: !current[key] }));
+  }
+
+  function onRowActivate(key: string, event: { key?: string; preventDefault?: () => void }) {
+    if (event.key && event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+    event.preventDefault?.();
+    toggleRow(key);
   }
 
   return (
@@ -130,7 +145,29 @@ export function DataTable<T>({
                 return (
                   <Fragment key={key}>
                     <CTableRow
-                      onClick={expandable ? () => toggleRow(key) : undefined}
+                      onClick={
+                        expandable
+                          ? (event) => {
+                              if (isInteractiveTarget(event.target)) {
+                                return;
+                              }
+                              toggleRow(key);
+                            }
+                          : undefined
+                      }
+                      onKeyDown={
+                        expandable
+                          ? (event) => {
+                              if (isInteractiveTarget(event.target)) {
+                                return;
+                              }
+                              onRowActivate(key, event);
+                            }
+                          : undefined
+                      }
+                      tabIndex={expandable ? 0 : undefined}
+                      role={expandable ? "button" : undefined}
+                      aria-expanded={expandable ? isOpen : undefined}
                       style={expandable ? { cursor: "pointer" } : undefined}
                     >
                       {expandable ? (

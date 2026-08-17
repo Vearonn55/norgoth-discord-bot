@@ -8,17 +8,75 @@ import {
 import { apiUrl } from "@/lib/api";
 import { createId } from "@/lib/id";
 
-export type EventCategory = "member" | "message" | "role" | "channel";
+export type EventCategory =
+  | "member"
+  | "message"
+  | "role"
+  | "channel"
+  | "thread"
+  | "server"
+  | "security";
 
 export type EventLogEntry = {
   id: string;
-  category: EventCategory;
+  source_event_id?: string | null;
+  category: string;
   action: string;
   description: string;
-  fields: Record<string, string>;
+  event_type?: string;
   actor_id?: string | null;
   actor_name?: string | null;
   created_at: string;
+  has_detail?: boolean;
+  fields?: Record<string, string>;
+};
+
+export type AuditFieldChange = {
+  field: string;
+  previous: unknown;
+  next: unknown;
+};
+
+export type AuditPermissionBit = {
+  permission: string;
+  unknown_mask?: string | null;
+};
+
+export type AuditOverwriteChange = {
+  target_kind: "role" | "member" | string;
+  target_id: string;
+  target_name: string;
+  permission: string;
+  previous: "allow" | "deny" | "inherit" | string;
+  next: "allow" | "deny" | "inherit" | string;
+  change: "transition" | "overwrite_added" | "overwrite_removed" | string;
+  unknown_mask?: string | null;
+};
+
+export type EventLogDetail = EventLogEntry & {
+  target?: { kind?: string; id?: string; name?: string; type?: string } | null;
+  source?: string | null;
+  reason?: string | null;
+  correlation_id?: string | null;
+  legacy?: boolean;
+  detail?: {
+    schema_version?: number;
+    event_type?: string;
+    target?: EventLogDetail["target"];
+    actor?: { id?: string; name?: string } | null;
+    source?: string | null;
+    reason?: string | null;
+    correlation_id?: string | null;
+    field_changes?: AuditFieldChange[];
+    permission_changes?: {
+      kind: "role_bits" | "overwrites" | string;
+      granted?: AuditPermissionBit[];
+      revoked?: AuditPermissionBit[];
+      items?: AuditOverwriteChange[];
+      category_synced?: boolean;
+    } | null;
+    truncated?: boolean;
+  } | null;
 };
 
 export type LoggingGroup = {
@@ -71,6 +129,9 @@ export function newLoggingGroup(): LoggingGroup {
 
 type ServerEventsState = {
   entries: EventLogEntry[];
+  details: Record<string, EventLogDetail>;
+  detailLoading: Record<string, boolean>;
+  detailError: Record<string, string | null>;
   category: EventCategory | "all";
   loading: boolean;
   error: string | null;
@@ -90,12 +151,16 @@ type ServerEventsState = {
   setPage: (page: number) => void;
   setDateRange: (range: DateRangeValue) => void;
   loadEvents: (guildId: string) => Promise<void>;
+  loadEventDetail: (guildId: string, eventId: string) => Promise<void>;
   loadConfig: (guildId: string) => Promise<void>;
   saveConfig: (guildId: string) => Promise<void>;
 };
 
 export const useServerEventsStore = create<ServerEventsState>((set, get) => ({
   entries: [],
+  details: {},
+  detailLoading: {},
+  detailError: {},
   category: "all",
   loading: true,
   error: null,
@@ -136,6 +201,45 @@ export const useServerEventsStore = create<ServerEventsState>((set, get) => ({
       set({ error: "Could not reach the Norgoth API." });
     } finally {
       set({ loading: false });
+    }
+  },
+  loadEventDetail: async (guildId, eventId) => {
+    if (get().details[eventId] || get().detailLoading[eventId]) {
+      return;
+    }
+    set((state) => ({
+      detailLoading: { ...state.detailLoading, [eventId]: true },
+      detailError: { ...state.detailError, [eventId]: null },
+    }));
+    try {
+      const response = await fetch(
+        apiUrl(`/guilds/${guildId}/event-logs/${eventId}`),
+        { cache: "no-store" },
+      );
+      if (!response.ok) {
+        set((state) => ({
+          detailError: {
+            ...state.detailError,
+            [eventId]: "Could not load event details.",
+          },
+        }));
+        return;
+      }
+      const body = (await response.json()) as EventLogDetail;
+      set((state) => ({
+        details: { ...state.details, [eventId]: body },
+      }));
+    } catch {
+      set((state) => ({
+        detailError: {
+          ...state.detailError,
+          [eventId]: "Could not reach the Norgoth API.",
+        },
+      }));
+    } finally {
+      set((state) => ({
+        detailLoading: { ...state.detailLoading, [eventId]: false },
+      }));
     }
   },
   loadConfig: async (guildId) => {

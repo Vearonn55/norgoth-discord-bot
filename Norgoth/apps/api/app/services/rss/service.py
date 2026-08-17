@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
+import ssl
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -21,6 +25,22 @@ from app.services.rss.quotas import (
     next_poll_after_success,
 )
 
+logger = logging.getLogger("norgoth.rss.probe")
+
+PROBE_ERROR_MESSAGES: dict[str, str] = {
+    "invalid_url": "The feed URL is invalid or unsupported.",
+    "unsafe_destination": "That destination is not allowed.",
+    "not_found": "The feed was not found.",
+    "access_denied": "The source denied access to this feed.",
+    "rate_limited": "The source is rate limiting requests.",
+    "remote_unavailable": "The remote server is unavailable.",
+    "timeout": "The connection timed out.",
+    "tls_failed": "TLS validation failed.",
+    "too_large": "The feed response is too large.",
+    "unsupported_content": "The response is not a supported feed type.",
+    "invalid_document": "The document is not a valid RSS or Atom feed.",
+}
+
 
 @dataclass
 class ProbeResult:
@@ -34,6 +54,87 @@ class ProbeResult:
     last_modified: str | None
     final_url: str | None
     parsed: ParsedFeed | None
+    error_code: str | None = None
+
+
+def _probe_fail(
+    code: str,
+    *,
+    error: str | None = None,
+    etag: str | None = None,
+    last_modified: str | None = None,
+    final_url: str | None = None,
+) -> ProbeResult:
+    return ProbeResult(
+        ok=False,
+        error=error or PROBE_ERROR_MESSAGES.get(code, "Feed probe failed."),
+        error_code=code,
+        format_hint=None,
+        feed_title=None,
+        sample_title=None,
+        item_count=0,
+        etag=etag,
+        last_modified=last_modified,
+        final_url=final_url,
+        parsed=None,
+    )
+
+
+def _size_class(nbytes: int) -> str:
+    if nbytes < 16 * 1024:
+        return "lt_16kib"
+    if nbytes < 64 * 1024:
+        return "lt_64kib"
+    if nbytes < 256 * 1024:
+        return "lt_256kib"
+    if nbytes < 1024 * 1024:
+        return "lt_1mib"
+    return "gte_1mib"
+
+
+def classify_http_status(status_code: int) -> str:
+    if status_code == 404:
+        return "not_found"
+    if status_code in {401, 403}:
+        return "access_denied"
+    if status_code == 429:
+        return "rate_limited"
+    if status_code >= 500:
+        return "remote_unavailable"
+    if status_code >= 400:
+        return "remote_unavailable"
+    return "remote_unavailable"
+
+
+def classify_transport_error(exc: BaseException) -> str:
+    if isinstance(exc, (asyncio.TimeoutError, TimeoutError)):
+        return "timeout"
+    if isinstance(exc, httpx.TimeoutException):
+        return "timeout"
+    if isinstance(exc, httpx.InvalidURL):
+        return "invalid_url"
+    if isinstance(exc, ssl.SSLError):
+        return "tls_failed"
+    cause = exc.__cause__ or getattr(exc, "__context__", None)
+    if isinstance(cause, BaseException) and cause is not exc:
+        if isinstance(cause, (ssl.SSLError, httpx.TimeoutException, TimeoutError)):
+            return classify_transport_error(cause)
+    text = str(exc).lower()
+    if "certificate" in text or "ssl" in text or "tls" in text:
+        return "tls_failed"
+    if "timed out" in text or "timeout" in text:
+        return "timeout"
+    return "remote_unavailable"
+
+
+def _content_looks_like_feed(content_type: str | None) -> bool:
+    if not content_type:
+        return True
+    lowered = content_type.lower()
+    return any(
+        token in lowered
+        for token in ("xml", "rss", "atom", "text/plain", "octet-stream")
+    )
 
 
 async def probe_feed_url(
@@ -41,78 +142,81 @@ async def probe_feed_url(
     *,
     client: httpx.AsyncClient | None = None,
 ) -> ProbeResult:
+    started = time.monotonic()
+    redirect_count = 0
+    size_class = "none"
+    parser = "none"
+    reason = "ok"
+    result_ok = False
     try:
-        result = await safe_fetch(url, client=client)
-    except SsrfError as exc:
-        return ProbeResult(
-            ok=False,
-            error=str(exc),
-            format_hint=None,
-            feed_title=None,
-            sample_title=None,
-            item_count=0,
-            etag=None,
-            last_modified=None,
-            final_url=None,
-            parsed=None,
-        )
-    except httpx.HTTPError as exc:
-        return ProbeResult(
-            ok=False,
-            error=f"Fetch failed: {exc}",
-            format_hint=None,
-            feed_title=None,
-            sample_title=None,
-            item_count=0,
-            etag=None,
-            last_modified=None,
-            final_url=None,
-            parsed=None,
-        )
+        try:
+            result = await safe_fetch(url, client=client)
+        except SsrfError as exc:
+            reason = getattr(exc, "code", None) or "unsafe_destination"
+            return _probe_fail(reason)
+        except (httpx.HTTPError, httpx.InvalidURL, ssl.SSLError) as exc:
+            reason = classify_transport_error(exc)
+            return _probe_fail(reason)
+        except MemoryError:
+            reason = "too_large"
+            return _probe_fail(reason)
 
-    if result.status_code >= 400:
+        redirect_count = int(getattr(result, "redirect_count", 0) or 0)
+        size_class = _size_class(len(result.body))
+
+        if result.status_code >= 400:
+            reason = classify_http_status(result.status_code)
+            return _probe_fail(
+                reason,
+                etag=result.headers.get("etag"),
+                last_modified=result.headers.get("last-modified"),
+                final_url=result.final_url,
+            )
+
+        try:
+            parsed = parse_feed(result.body)
+        except FeedParseError:
+            content_type = result.headers.get("content-type")
+            reason = (
+                "unsupported_content"
+                if not _content_looks_like_feed(content_type)
+                else "invalid_document"
+            )
+            return _probe_fail(
+                reason,
+                etag=result.headers.get("etag"),
+                last_modified=result.headers.get("last-modified"),
+                final_url=result.final_url,
+            )
+
+        parser = parsed.format_hint or "unknown"
+        result_ok = True
+        reason = "ok"
+        sample = parsed.items[0].title if parsed.items else None
         return ProbeResult(
-            ok=False,
-            error=f"Feed returned HTTP {result.status_code}",
-            format_hint=None,
-            feed_title=None,
-            sample_title=None,
-            item_count=0,
+            ok=True,
+            error=None,
+            error_code=None,
+            format_hint=parsed.format_hint,
+            feed_title=parsed.title,
+            sample_title=sample,
+            item_count=len(parsed.items),
             etag=result.headers.get("etag"),
             last_modified=result.headers.get("last-modified"),
             final_url=result.final_url,
-            parsed=None,
+            parsed=parsed,
         )
-
-    try:
-        parsed = parse_feed(result.body)
-    except FeedParseError as exc:
-        return ProbeResult(
-            ok=False,
-            error=str(exc),
-            format_hint=None,
-            feed_title=None,
-            sample_title=None,
-            item_count=0,
-            etag=result.headers.get("etag"),
-            last_modified=result.headers.get("last-modified"),
-            final_url=result.final_url,
-            parsed=None,
+    finally:
+        latency_ms = int((time.monotonic() - started) * 1000)
+        logger.info(
+            "rss_probe ok=%s reason=%s latency_ms=%s redirects=%s size_class=%s parser=%s",
+            result_ok,
+            reason,
+            latency_ms,
+            redirect_count,
+            size_class,
+            parser,
         )
-
-    sample = parsed.items[0].title if parsed.items else None
-    return ProbeResult(
-        ok=True,
-        error=None,
-        format_hint=parsed.format_hint,
-        feed_title=parsed.title,
-        sample_title=sample,
-        item_count=len(parsed.items),
-        etag=result.headers.get("etag"),
-        last_modified=result.headers.get("last-modified"),
-        final_url=result.final_url,
-        parsed=parsed,
-    )
 
 
 async def bootstrap_items(

@@ -16,6 +16,10 @@ import { Icon } from "@/components/ui/icon";
 import { MessagePreview } from "@/components/discord/message-preview";
 import { useContentNotificationsCopy } from "@/lib/content-notifications-copy";
 import { formatDict } from "@/lib/locale-dict";
+import {
+  isTemplateFormDirty,
+  templateFormBaseline,
+} from "@/lib/cn-url-state";
 
 const DEFAULT_CONTENT =
   "{ping_role}\n{account} posted new content!\n\n{title}\n{link}";
@@ -51,11 +55,16 @@ export const TemplatesPanel = forwardRef<
     if (guildId) void loadTemplates(guildId);
   }, [guildId, loadTemplates]);
 
-  const dirty =
-    name.trim() !== "" ||
-    content !== DEFAULT_CONTENT ||
-    platformDefault !== "" ||
-    editingId !== null;
+  const editingTemplate =
+    templates.find((template) => template.id === editingId) ?? null;
+  const baseline = templateFormBaseline(editingTemplate, {
+    name: "",
+    content: DEFAULT_CONTENT,
+  });
+  const dirty = isTemplateFormDirty(
+    { name, content, platformDefault },
+    baseline,
+  );
 
   useEffect(() => {
     onDirtyChange?.(dirty);
@@ -96,26 +105,32 @@ export const TemplatesPanel = forwardRef<
       content,
       platform_default_for: platformDefault || null,
     };
-    if (editingId) {
-      const existing = templates.find((t) => t.id === editingId);
-      await updateTemplate(guildId, editingId, {
-        ...payload,
-        embed_json: existing?.embed_json ?? null,
-      });
-    } else {
-      await createTemplate(guildId, payload);
+    try {
+      if (editingId) {
+        const existing = templates.find((t) => t.id === editingId);
+        await updateTemplate(guildId, editingId, {
+          ...payload,
+          embed_json: existing?.embed_json ?? null,
+        });
+      } else {
+        await createTemplate(guildId, payload);
+      }
+      setEditingId(null);
+      setName("");
+      setPlatformDefault("");
+      setContent(DEFAULT_CONTENT);
+      onDirtyChange?.(false);
+      return true;
+    } catch {
+      return false;
     }
-    setEditingId(null);
-    setName("");
-    setPlatformDefault("");
-    setContent(DEFAULT_CONTENT);
-    return true;
   }, [
     content,
     createTemplate,
     editingId,
     guildId,
     name,
+    onDirtyChange,
     platformDefault,
     templates,
     updateTemplate,

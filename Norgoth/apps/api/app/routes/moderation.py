@@ -1,14 +1,16 @@
-"""Moderation audit log, written by the bot to Redis."""
+"""Moderation audit log, written by the bot and stored in Postgres."""
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.dependencies_auth import guild_manager_dependency
-from app.services.campaign_store import get_redis
+from app.db.session import get_database_session
+from app.models.runtime_events import ModerationLogEntry
 
 router = APIRouter(
     tags=["Moderation"],
@@ -16,35 +18,33 @@ router = APIRouter(
 )
 
 
-def moderation_log_key(guild_id: str) -> str:
-    return f"norgoth:guild:{guild_id}:modlog"
+def serialize_moderation_entry(row: ModerationLogEntry) -> dict[str, Any]:
+    details = row.details if isinstance(row.details, dict) else {}
+    created = row.created_at.isoformat() if row.created_at else ""
+    return {
+        "id": str(row.id),
+        "action": row.action,
+        "moderator_id": row.moderator_id,
+        "moderator_name": details.get("moderator_name") or row.moderator_id or "—",
+        "target": details.get("target") or row.target_id or "—",
+        "reason": row.reason or "",
+        "detail": details.get("detail"),
+        "created_at": created,
+    }
 
 
 @router.get("/guilds/{guild_id}/moderation-logs")
 async def get_moderation_logs(
     guild_id: str,
     limit: int = Query(default=50, ge=1, le=200),
+    session: AsyncSession = Depends(get_database_session),
 ) -> list[dict[str, Any]]:
-    redis_client = await get_redis()
-
-    try:
-        raw_entries = await redis_client.lrange(
-            moderation_log_key(guild_id),
-            0,
-            limit - 1,
+    rows = (
+        await session.scalars(
+            select(ModerationLogEntry)
+            .where(ModerationLogEntry.guild_id == guild_id)
+            .order_by(ModerationLogEntry.created_at.desc())
+            .limit(limit)
         )
-    finally:
-        await redis_client.aclose()
-
-    entries: list[dict[str, Any]] = []
-
-    for raw in raw_entries:
-        try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError:
-            continue
-
-        if isinstance(parsed, dict):
-            entries.append(parsed)
-
-    return entries
+    ).all()
+    return [serialize_moderation_entry(row) for row in rows]

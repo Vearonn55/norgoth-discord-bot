@@ -14,6 +14,24 @@ from xml.etree.ElementTree import Element
 
 from defusedxml import ElementTree as ET
 
+try:
+    from defusedxml.common import (
+        DTDForbidden,
+        EntitiesForbidden,
+        ExternalReferenceForbidden,
+        NotSupportedError,
+    )
+except ImportError:  # pragma: no cover
+    DTDForbidden = EntitiesForbidden = ExternalReferenceForbidden = NotSupportedError = Exception  # type: ignore[misc,assignment]
+
+_XML_SECURITY_ERRORS = (
+    ET.ParseError,
+    EntitiesForbidden,
+    DTDForbidden,
+    ExternalReferenceForbidden,
+    NotSupportedError,
+)
+
 ATOM_NS = "http://www.w3.org/2005/Atom"
 MAX_ENTRIES = 50
 
@@ -273,8 +291,8 @@ def parse_feed(body: bytes | str) -> ParsedFeed:
 
     try:
         root = ET.fromstring(text)
-    except ET.ParseError as exc:
-        raise FeedParseError(f"Invalid XML: {exc}") from exc
+    except _XML_SECURITY_ERRORS as exc:
+        raise FeedParseError("Invalid XML.") from exc
 
     local = _local(root.tag).lower()
     if local == "rss":

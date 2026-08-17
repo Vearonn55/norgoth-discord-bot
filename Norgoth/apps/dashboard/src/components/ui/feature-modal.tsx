@@ -14,6 +14,7 @@ import { Icon } from "@/components/ui/icon";
 import type { NorgothCategory } from "@/lib/design/category";
 import { categoryAccent } from "@/lib/design/category";
 import { useLocaleDict } from "@/lib/locale-dict";
+import { shouldInvokeModalClose } from "@/lib/cn-url-state";
 
 export type FeatureModalSaveState = "idle" | "dirty" | "saving" | "saved" | "error";
 
@@ -95,10 +96,15 @@ export function FeatureConfigurationModal({
     wasVisible.current = visible;
   }, [visible]);
 
+  function handleClose() {
+    if (!shouldInvokeModalClose(visible, isSaving)) return;
+    onClose();
+  }
+
   return (
     <CModal
       visible={visible}
-      onClose={onClose}
+      onClose={handleClose}
       size={size}
       alignment="center"
       scrollable={scrollable}
@@ -131,7 +137,7 @@ export function FeatureConfigurationModal({
       <CModalFooter>
         {footer ?? (
           <>
-            <Button variant="secondary" onClick={onClose} disabled={isSaving}>
+            <Button variant="secondary" onClick={handleClose} disabled={isSaving}>
               {resolvedCancel}
             </Button>
             {onSave ? (

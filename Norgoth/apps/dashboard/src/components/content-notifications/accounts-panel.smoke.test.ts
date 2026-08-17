@@ -81,6 +81,8 @@ describe("CN template cards", () => {
     expect(src).toContain("window.confirm");
     expect(src).toContain("deleteTemplateConfirm");
     expect(src).not.toContain("justify-content-between gap-3");
+    expect(src).toContain("isTemplateFormDirty");
+    expect(src).not.toContain("editingId !== null");
   });
 });
 
@@ -98,6 +100,8 @@ describe("CN sender style cards", () => {
     expect(src).toContain("SenderStyleAvatar");
     expect(src).not.toContain("next/image");
     expect(src).toContain("confirmDirtyClose");
+    expect(src).toContain("persistEdit");
+    expect(src).toContain("savedEdit");
   });
 });
 
@@ -108,5 +112,8 @@ describe("CN account editor sender style", () => {
       "utf8",
     );
     expect(src).toContain("senderStyleMustSelect");
+    expect(src).toContain("setSnapshot(currentSnapshot)");
+    expect(src).toContain("if (saving) return");
+    expect(src).toContain("accountEditorSnapshot");
   });
 });

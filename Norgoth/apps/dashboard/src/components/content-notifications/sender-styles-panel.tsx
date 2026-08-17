@@ -83,8 +83,60 @@ export const SenderStylesPanel = forwardRef<
     onDirtyChange?.(dirty);
   }, [dirty, onDirtyChange]);
 
+  const persistEdit = useCallback(async (): Promise<boolean> => {
+    if (!guildId || !editingId || savingEdit) return false;
+    if (!editName.trim()) {
+      setEditError(copy.displayName);
+      return false;
+    }
+    if (editAvatar.trim() && !isPublicHttpsAvatarUrl(editAvatar)) {
+      setEditError(copy.avatarUrlInvalid);
+      return false;
+    }
+    setSavingEdit(true);
+    setEditError(null);
+    try {
+      await updateStyle(guildId, editingId, {
+        display_name: editName.trim(),
+        avatar_url: editAvatar.trim() || null,
+      });
+      const styleId = editingId;
+      setEditingId(null);
+      setEditName("");
+      setEditAvatar("");
+      requestAnimationFrame(() => focusEditButton(styleId));
+      return true;
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : copy.avatarUrlInvalid);
+      return false;
+    } finally {
+      setSavingEdit(false);
+    }
+  }, [
+    copy.avatarUrlInvalid,
+    copy.displayName,
+    editAvatar,
+    editName,
+    editingId,
+    guildId,
+    savingEdit,
+    updateStyle,
+  ]);
+
   const save = useCallback(async () => {
-    if (!guildId || !displayName.trim()) return false;
+    let savedEdit = false;
+    if (editingId && editDirty) {
+      savedEdit = await persistEdit();
+      if (!savedEdit) return false;
+    }
+    if (!displayName.trim()) {
+      if (savedEdit) {
+        onDirtyChange?.(false);
+        return true;
+      }
+      return false;
+    }
+    if (!guildId) return false;
     if (avatarUrl.trim() && !isPublicHttpsAvatarUrl(avatarUrl)) {
       setCreateError(copy.avatarUrlInvalid);
       return false;
@@ -98,12 +150,23 @@ export const SenderStylesPanel = forwardRef<
       setDisplayName("");
       setAvatarUrl("");
       setCreatePreviewFailed(false);
+      onDirtyChange?.(false);
       return true;
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : copy.avatarUrlInvalid);
       return false;
     }
-  }, [avatarUrl, copy.avatarUrlInvalid, createStyle, displayName, guildId]);
+  }, [
+    avatarUrl,
+    copy.avatarUrlInvalid,
+    createStyle,
+    displayName,
+    editDirty,
+    editingId,
+    guildId,
+    onDirtyChange,
+    persistEdit,
+  ]);
 
   useImperativeHandle(ref, () => ({ save, dirty }), [dirty, save]);
 
@@ -138,32 +201,7 @@ export const SenderStylesPanel = forwardRef<
   }
 
   async function handleSaveEdit() {
-    if (!guildId || !editingId || savingEdit) return;
-    if (!editName.trim()) {
-      setEditError(copy.displayName);
-      return;
-    }
-    if (editAvatar.trim() && !isPublicHttpsAvatarUrl(editAvatar)) {
-      setEditError(copy.avatarUrlInvalid);
-      return;
-    }
-    setSavingEdit(true);
-    setEditError(null);
-    try {
-      await updateStyle(guildId, editingId, {
-        display_name: editName.trim(),
-        avatar_url: editAvatar.trim() || null,
-      });
-      const styleId = editingId;
-      setEditingId(null);
-      setEditName("");
-      setEditAvatar("");
-      requestAnimationFrame(() => focusEditButton(styleId));
-    } catch (err) {
-      setEditError(err instanceof Error ? err.message : copy.avatarUrlInvalid);
-    } finally {
-      setSavingEdit(false);
-    }
+    await persistEdit();
   }
 
   async function handleDelete(styleId: string, styleName: string) {

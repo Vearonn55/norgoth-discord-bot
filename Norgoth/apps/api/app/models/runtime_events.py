@@ -102,10 +102,23 @@ class ServerEventLogEntry(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "server_event_log_entries"
     __table_args__ = (
         Index("ix_server_event_log_entries_guild_created", "guild_id", "created_at"),
+        UniqueConstraint(
+            "guild_id",
+            "source_event_id",
+            name="uq_server_event_log_guild_source",
+        ),
     )
 
     guild_id: Mapped[str] = mapped_column(DiscordSnowflake(), nullable=False)
     event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    category: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    action: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    actor_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    actor_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    source_event_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    has_detail: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     payload: Mapped[Any] = mapped_column(
         JSONB, nullable=False, server_default=func.jsonb_build_object()
     )

@@ -28,8 +28,10 @@ import {
   type ContentNotificationsCopy,
 } from "@/lib/content-notifications-copy";
 import {
+  accountEditorSnapshot,
   confirmDirtyClose,
   EVENT_TYPES_BY_PLATFORM,
+  isAccountEditorDirty,
 } from "@/lib/cn-url-state";
 import { useGuildStore } from "@/stores/guild-store";
 import {
@@ -143,7 +145,7 @@ export function AccountEditorModal({
       setEventTypes(nextEvents);
       setLiveMessage(nextMessage);
       setSnapshot(
-        JSON.stringify({
+        accountEditorSnapshot({
           enabled: nextEnabled,
           channelId: nextChannel,
           roleId: nextRole,
@@ -167,7 +169,7 @@ export function AccountEditorModal({
     }
   }, [account, mode, templates, visible]);
 
-  const currentSnapshot = JSON.stringify({
+  const currentSnapshot = accountEditorSnapshot({
     enabled,
     channelId,
     roleId,
@@ -175,10 +177,12 @@ export function AccountEditorModal({
     eventTypes,
     liveMessage,
   });
-  const dirty =
-    mode === "add"
-      ? Boolean(url.trim() || channelId || liveMessage !== DEFAULT_LIVE_MESSAGE)
-      : Boolean(snapshot) && currentSnapshot !== snapshot;
+  const dirty = isAccountEditorDirty(mode, snapshot, currentSnapshot, {
+    url,
+    channelId,
+    liveMessage,
+    defaultLiveMessage: DEFAULT_LIVE_MESSAGE,
+  });
 
   const displayName =
     account?.source?.display_name ||
@@ -242,6 +246,7 @@ export function AccountEditorModal({
   }
 
   async function handleSave() {
+    if (saving) return;
     setFormError(null);
     if (!channelId || eventTypes.length === 0) {
       setFormError(copy.saveFailed);
@@ -316,6 +321,7 @@ export function AccountEditorModal({
           enabled,
         });
       }
+      setSnapshot(currentSnapshot);
       onClose();
     } catch (err) {
       setFormError(err instanceof Error ? err.message : copy.saveFailed);

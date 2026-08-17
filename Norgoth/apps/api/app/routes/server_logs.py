@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Literal, Optional
+from typing import Any, Optional
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.dependencies_auth import guild_manager_dependency
+from app.db.session import get_database_session
+from app.models.runtime_events import ServerEventLogEntry
+from app.services.audit_detail import serialize_event_detail, serialize_event_summary
 from app.services.campaign_store import get_redis, now_iso
 
 router = APIRouter(
@@ -17,8 +23,6 @@ router = APIRouter(
 )
 
 SNOWFLAKE_PATTERN = r"^[0-9]{5,25}$"
-
-EventCategory = Literal["member", "message", "role", "channel"]
 
 
 def logging_config_key(guild_id: str) -> str:
@@ -98,39 +102,36 @@ async def update_logging_config(
 @router.get("/guilds/{guild_id}/event-logs")
 async def get_event_logs(
     guild_id: str,
-    category: Optional[EventCategory] = Query(default=None),
+    category: Optional[str] = Query(default=None, max_length=32),
     limit: int = Query(default=100, ge=1, le=500),
+    session: AsyncSession = Depends(get_database_session),
 ) -> list[dict[str, Any]]:
-    redis_client = await get_redis()
+    query = (
+        select(ServerEventLogEntry)
+        .where(ServerEventLogEntry.guild_id == guild_id)
+        .order_by(ServerEventLogEntry.created_at.desc())
+        .limit(limit)
+    )
+    if category:
+        query = query.where(ServerEventLogEntry.category == category)
+    rows = (await session.scalars(query)).all()
+    return [serialize_event_summary(row) for row in rows]
 
-    try:
-        # Over-fetch when filtering so a full page can still be returned.
-        fetch_count = limit if category is None else min(limit * 5, 1000)
-        raw_entries = await redis_client.lrange(
-            event_log_key(guild_id),
-            0,
-            fetch_count - 1,
+
+@router.get("/guilds/{guild_id}/event-logs/{event_id}")
+async def get_event_log_detail(
+    guild_id: str,
+    event_id: UUID,
+    session: AsyncSession = Depends(get_database_session),
+) -> dict[str, Any]:
+    row = (
+        await session.execute(
+            select(ServerEventLogEntry).where(
+                ServerEventLogEntry.id == event_id,
+                ServerEventLogEntry.guild_id == guild_id,
+            )
         )
-    finally:
-        await redis_client.aclose()
-
-    entries: list[dict[str, Any]] = []
-
-    for raw in raw_entries:
-        try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError:
-            continue
-
-        if not isinstance(parsed, dict):
-            continue
-
-        if category is not None and parsed.get("category") != category:
-            continue
-
-        entries.append(parsed)
-
-        if len(entries) >= limit:
-            break
-
-    return entries
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Audit event not found.")
+    return serialize_event_detail(row)

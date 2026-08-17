@@ -8,7 +8,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.dependencies_auth import guild_manager_dependency
@@ -18,6 +19,8 @@ from app.services.audit import record_audit
 from app.services.rss.quotas import (
     MAX_FEEDS_PER_GUILD,
     MIN_POLL_INTERVAL_SECONDS,
+    RssFeedQuotaError,
+    assert_can_create_rss_feed,
     clamp_poll_interval,
     feed_url_hash,
     next_poll_after_success,
@@ -95,6 +98,7 @@ async def probe_rss_feed(
         "guild_id": guild_id,
         "ok": probe.ok,
         "error": probe.error,
+        "error_code": probe.error_code,
         "format_hint": probe.format_hint,
         "feed_title": probe.feed_title,
         "sample_title": probe.sample_title,
@@ -109,16 +113,13 @@ async def create_rss_feed(
     body: CreateFeedBody,
     session: AsyncSession = Depends(get_database_session),
 ) -> dict[str, Any]:
-    count = await session.scalar(
-        select(func.count())
-        .select_from(RssFeedConfig)
-        .where(RssFeedConfig.guild_id == guild_id)
-    )
-    if count is not None and int(count) >= MAX_FEEDS_PER_GUILD:
+    try:
+        await assert_can_create_rss_feed(session, guild_id=guild_id)
+    except RssFeedQuotaError as error:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Maximum of {MAX_FEEDS_PER_GUILD} RSS feeds per server.",
-        )
+            detail=error.as_detail(),
+        ) from error
 
     url = body.feed_url.strip()
     url_hash = feed_url_hash(url)
@@ -138,7 +139,10 @@ async def create_rss_feed(
     if not probe.ok or probe.parsed is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=probe.error or "Feed probe failed.",
+            detail={
+                "code": probe.error_code or "invalid_document",
+                "message": probe.error or "Feed probe failed.",
+            },
         )
 
     interval = clamp_poll_interval(body.poll_interval_seconds)
@@ -163,17 +167,24 @@ async def create_rss_feed(
         failure_count=0,
     )
     session.add(feed)
-    await session.flush()
-    await bootstrap_items(session, feed, probe.parsed)
-    await record_audit(
-        session,
-        entity_type="rss_feed_config",
-        action="create",
-        guild_id=guild_id,
-        entity_id=str(feed.id),
-        changes={"feed_url": url, "channel_id": body.channel_id},
-    )
-    await session.commit()
+    try:
+        await session.flush()
+        await bootstrap_items(session, feed, probe.parsed)
+        await record_audit(
+            session,
+            entity_type="rss_feed_config",
+            action="create",
+            guild_id=guild_id,
+            entity_id=str(feed.id),
+            changes={"feed_url": url, "channel_id": body.channel_id},
+        )
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This feed URL is already configured for this server.",
+        ) from exc
     await session.refresh(feed)
     return serialize_feed(feed)
 
@@ -216,7 +227,10 @@ async def patch_rss_feed(
         if not probe.ok or probe.parsed is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=probe.error or "Feed probe failed.",
+                detail={
+                    "code": probe.error_code or "invalid_document",
+                    "message": probe.error or "Feed probe failed.",
+                },
             )
         changes["feed_url"] = {"from": feed.feed_url, "to": url}
         feed.feed_url = url

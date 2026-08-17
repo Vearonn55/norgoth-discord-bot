@@ -89,6 +89,12 @@ _NON_INLINE_TOKENS = (
     "opened by",
     "closed by",
     "transcript",
+    "granted",
+    "revoked",
+    "denied",
+    "inherited",
+    "overwrite",
+    "sync",
 )
 
 

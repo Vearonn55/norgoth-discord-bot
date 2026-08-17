@@ -35,7 +35,10 @@ export function ContentNotificationsModals() {
         }}
         onSave={async () => {
           const ok = await templatesRef.current?.save();
-          if (ok) closeInventory();
+          if (ok) {
+            setTemplatesDirty(false);
+            closeInventory();
+          }
         }}
       >
         <TemplatesPanel
@@ -56,7 +59,10 @@ export function ContentNotificationsModals() {
         }}
         onSave={async () => {
           const ok = await stylesRef.current?.save();
-          if (ok) closeInventory();
+          if (ok) {
+            setStylesDirty(false);
+            closeInventory();
+          }
         }}
       >
         <SenderStylesPanel ref={stylesRef} onDirtyChange={setStylesDirty} />

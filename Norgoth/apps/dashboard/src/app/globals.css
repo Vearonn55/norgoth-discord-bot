@@ -1134,6 +1134,15 @@ body {
 .norgoth-data-table-detail {
   background: rgba(241, 244, 250, 0.03);
   border-left: 3px solid rgba(110, 168, 254, 0.4);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.norgoth-audit-changes,
+.norgoth-audit-wrap {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
 }
 
 /* ==========================================================================
