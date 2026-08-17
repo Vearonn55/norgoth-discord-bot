@@ -123,6 +123,32 @@ const SIDEBAR_DEFS: SidebarGroupDef[] = [
     ],
   },
   {
+    titleKey: "groupAutomation",
+    items: [
+      { labelKey: "autoRole", href: "/automation/auto-role", icon: cilUserFollow },
+      {
+        labelKey: "welcomeGoodbyeInvite",
+        href: "/automation/welcome-goodbye-invite",
+        icon: cilCommentBubble,
+      },
+      {
+        labelKey: "autoResponses",
+        href: "/automation/auto-responses",
+        icon: cilList,
+      },
+      {
+        labelKey: "selfAssignableRoles",
+        href: "/automation/role-menus",
+        icon: cilTags,
+      },
+      {
+        labelKey: "richLinkEmbeds",
+        href: "/automation/rich-link-embeds",
+        icon: cilLink,
+      },
+    ],
+  },
+  {
     titleKey: "groupMessages",
     items: [
       { labelKey: "campaigns", href: "/campaigns", icon: cilSend },
@@ -177,32 +203,6 @@ const SIDEBAR_DEFS: SidebarGroupDef[] = [
         labelKey: "honeypot",
         href: "/security/honeypot",
         icon: cilBug,
-      },
-    ],
-  },
-  {
-    titleKey: "groupAutomation",
-    items: [
-      { labelKey: "autoRole", href: "/automation/auto-role", icon: cilUserFollow },
-      {
-        labelKey: "welcomeGoodbyeInvite",
-        href: "/automation/welcome-goodbye-invite",
-        icon: cilCommentBubble,
-      },
-      {
-        labelKey: "autoResponses",
-        href: "/automation/auto-responses",
-        icon: cilList,
-      },
-      {
-        labelKey: "selfAssignableRoles",
-        href: "/automation/role-menus",
-        icon: cilTags,
-      },
-      {
-        labelKey: "richLinkEmbeds",
-        href: "/automation/rich-link-embeds",
-        icon: cilLink,
       },
     ],
   },

@@ -42,4 +42,14 @@ describe("search entries", () => {
     const filtered = filterSearchEntries(entries, "");
     expect(filtered.every((e) => e.kind === "page")).toBe(true);
   });
+
+  it("still finds Automation pages and subfeatures after the category reorder", () => {
+    expect(entries.some((e) => e.id === "page:automation.auto-role")).toBe(true);
+    expect(entries.some((e) => e.id === "sub:autorole")).toBe(true);
+    expect(entries.some((e) => e.id === "sub:welcome")).toBe(true);
+    const filtered = filterSearchEntries(entries, "automation");
+    expect(
+      filtered.some((e) => e.href.includes("/automation/auto-role")),
+    ).toBe(true);
+  });
 });

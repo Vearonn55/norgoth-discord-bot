@@ -20,7 +20,10 @@ from app.services.feed_ranking import (
     feed_rank_key,
     first_occurrence_after_anchor,
     is_feed_refresh_due,
+    is_window_refresh_due,
+    due_feed_windows,
     merge_feed_config,
+    ensure_window_schedule,
     schedule_after_failure,
     schedule_after_interval_change,
     schedule_window_after_success,
@@ -663,3 +666,98 @@ def test_missed_run_advances_to_future_occurrence() -> None:
     schedule_window_after_success(cfg, "daily", now=now)
     assert cfg["windows"]["daily"]["last_refresh_at"] == "2026-08-10T14:30:00Z"
     assert cfg["windows"]["daily"]["next_refresh_at"] == "2026-08-10T15:00:00Z"
+
+
+def test_feed_window_patch_body_keeps_explicit_false() -> None:
+    from app.routes.feed_channels import FeedWindowPatchBody
+
+    body = FeedWindowPatchBody(enabled=False)
+    assert body.enabled is False
+    assert body.model_dump(exclude_unset=True) == {"enabled": False}
+
+
+def test_disabled_window_is_not_due_even_when_next_refresh_passed() -> None:
+    now = datetime(2026, 8, 10, 12, 0, tzinfo=timezone.utc)
+    cfg = merge_feed_config(
+        {
+            "enabled": True,
+            "windows": {
+                "daily": {
+                    "enabled": False,
+                    "channel_id": "111111111111111111",
+                    "next_refresh_at": "2026-08-10T11:00:00Z",
+                },
+                "weekly": {
+                    "enabled": True,
+                    "channel_id": "222222222222222222",
+                    "next_refresh_at": "2026-08-10T11:00:00Z",
+                },
+                "monthly": {
+                    "enabled": True,
+                    "channel_id": "333333333333333333",
+                    "next_refresh_at": "2026-08-11T00:00:00Z",
+                },
+                "all_time": {
+                    "enabled": False,
+                    "channel_id": "444444444444444444",
+                    "next_refresh_at": "2026-08-10T11:00:00Z",
+                },
+            },
+        }
+    )
+    assert is_window_refresh_due(cfg, "daily", now=now) is False
+    assert is_window_refresh_due(cfg, "weekly", now=now) is True
+    assert is_window_refresh_due(cfg, "monthly", now=now) is False
+    assert is_window_refresh_due(cfg, "all_time", now=now) is False
+    assert due_feed_windows(cfg, now=now) == ["weekly"]
+
+
+def test_merge_feed_config_preserves_disabled_false() -> None:
+    merged = merge_feed_config(
+        {
+            "enabled": True,
+            "windows": {
+                "daily": {
+                    "enabled": False,
+                    "channel_id": "111111111111111111",
+                },
+                "weekly": {
+                    "enabled": True,
+                    "channel_id": "222222222222222222",
+                },
+            },
+        }
+    )
+    assert merged["windows"]["daily"]["enabled"] is False
+    assert merged["windows"]["daily"]["channel_id"] == "111111111111111111"
+    assert merged["windows"]["weekly"]["enabled"] is True
+    assert merged["windows"]["monthly"]["enabled"] is False
+
+
+def test_reenable_resets_schedule_without_touching_other_windows() -> None:
+    cfg = merge_feed_config(
+        {
+            "enabled": True,
+            "windows": {
+                "daily": {
+                    "enabled": False,
+                    "channel_id": "111111111111111111",
+                    "next_refresh_at": "2026-08-10T11:00:00Z",
+                    "schedule_anchor_at": "2026-08-10T07:00:00Z",
+                },
+                "weekly": {
+                    "enabled": True,
+                    "channel_id": "222222222222222222",
+                    "next_refresh_at": "2026-08-10T16:00:00Z",
+                    "schedule_anchor_at": "2026-08-10T12:00:00Z",
+                },
+            },
+        }
+    )
+    weekly_next = cfg["windows"]["weekly"]["next_refresh_at"]
+    cfg["windows"]["daily"]["enabled"] = True
+    now = datetime(2026, 8, 10, 12, 0, tzinfo=timezone.utc)
+    ensure_window_schedule(cfg, "daily", now=now, reset_anchor=True)
+    assert cfg["windows"]["daily"]["enabled"] is True
+    assert cfg["windows"]["daily"]["next_refresh_at"] == "2026-08-10T16:00:00Z"
+    assert cfg["windows"]["weekly"]["next_refresh_at"] == weekly_next

@@ -38,6 +38,7 @@ import {
 } from "@/lib/feed-countdown";
 import {
   feedNeedsSetup,
+  formatFeedWindowToggleFeedback,
   mergeFeedWindowCards,
   type FeedWindowCard,
 } from "@/lib/feed-windows";
@@ -379,7 +380,18 @@ export function FeedChannelsPanel() {
               onToggle={
                 card.configured
                   ? (checked) =>
-                      void patchWindow(guildId, card.key, { enabled: checked })
+                      void patchWindow(
+                        guildId,
+                        card.key,
+                        { enabled: checked },
+                        {
+                          successFeedback: formatFeedWindowToggleFeedback(
+                            d,
+                            card.key,
+                            checked,
+                          ),
+                        },
+                      )
                   : undefined
               }
               toggleDisabled={busy || !card.configured}
@@ -544,6 +556,8 @@ export function FeedChannelsPanel() {
           const saved = await patchWindow(guildId, editingWindow.key, {
             channel_id: windowDraft.channel_id || null,
             enabled: Boolean(windowDraft.channel_id) && windowDraft.enabled,
+          }, {
+            successFeedback: d.windowUpdatedSuccess,
           });
           if (saved) setEditingWindow(null);
         }}

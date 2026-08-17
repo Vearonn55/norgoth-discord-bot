@@ -10,6 +10,11 @@ describe("content notifications and campaign history i18n", () => {
     expect(en.levelingPage.rewardRoles).toBe("Reward Roles");
     expect(en.levelingPage.announceCurrent).toBe("Member's channel");
     expect(en.feedChannels.dailySliderTitle).toBe("Feed Refresh Interval");
+    expect(en.feedChannelsPage.windowEnabledSuccess).toBe("{window} feed enabled.");
+    expect(en.feedChannelsPage.windowDisabledSuccess).toBe(
+      "{window} feed disabled.",
+    );
+    expect(en.feedChannelsPage.windowUpdatedSuccess).toBe("Feed window updated.");
     expect(en.campaignHistoryPage.metricArchived).toBe("Archived Campaigns");
     expect(en.contentNotifications.historyModalTitle).toBe("History");
     expect(en.contentNotifications.historyPageTitle).toBe("Delivery History");
@@ -22,6 +27,15 @@ describe("content notifications and campaign history i18n", () => {
     expect(tr.levelingPage.levelThresholdScaleHelp).toContain("olarak");
     expect(tr.feedChannels.dailySliderTitle).toBe("Feed Yenileme Aralığı");
     expect(tr.feedChannelsPage.feedCategoryTitle).toBe("Feed Kategorisi");
+    expect(tr.feedChannelsPage.windowEnabledSuccess).toBe(
+      "{window} feed etkinleştirildi.",
+    );
+    expect(tr.feedChannelsPage.windowDisabledSuccess).toBe(
+      "{window} feed devre dışı bırakıldı.",
+    );
+    expect(tr.feedChannelsPage.windowUpdatedSuccess).toBe(
+      "Feed penceresi güncellendi.",
+    );
     expect(tr.featureInfo.inviteTracking.description).toContain(
       "davet bağlantılarıyla ilişkilendirir.",
     );

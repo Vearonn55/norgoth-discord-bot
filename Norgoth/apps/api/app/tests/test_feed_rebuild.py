@@ -286,3 +286,22 @@ def test_feed_channel_permission_overwrites_deny_send() -> None:
     assert bot["id"] == "bot1"
     assert bot["type"] == 1
     assert int(bot["allow"]) > 0
+
+
+def test_enabled_feed_windows_skips_disabled_and_unconfigured() -> None:
+    from app.services.feed_rebuild import enabled_feed_windows
+
+    cfg = merge_feed_config(
+        {
+            "enabled": True,
+            "windows": {
+                "daily": {"enabled": False, "channel_id": "1"},
+                "weekly": {"enabled": True, "channel_id": "2"},
+                "monthly": {"enabled": True, "channel_id": None},
+                "all_time": {"enabled": True, "channel_id": "4"},
+            },
+        }
+    )
+    assert enabled_feed_windows(
+        cfg, ["daily", "weekly", "monthly", "all_time", "bogus"]
+    ) == ["weekly", "all_time"]

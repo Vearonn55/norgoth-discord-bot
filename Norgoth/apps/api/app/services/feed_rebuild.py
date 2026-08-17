@@ -660,6 +660,26 @@ async def rebuild_feed_window(
         await release_rebuild_lock(guild_id, window)
 
 
+def enabled_feed_windows(
+    config: dict[str, Any],
+    windows: list[str],
+) -> list[FeedWindow]:
+    """Return dirty/candidate windows that are enabled and have a channel."""
+
+    stored = config.get("windows") or {}
+    ready: list[FeedWindow] = []
+    for window in windows:
+        if window not in FEED_WINDOWS:
+            continue
+        wcfg = stored.get(window) if isinstance(stored, dict) else None
+        if not isinstance(wcfg, dict) or not wcfg.get("enabled") or not wcfg.get(
+            "channel_id"
+        ):
+            continue
+        ready.append(window)  # type: ignore[arg-type]
+    return ready
+
+
 async def process_dirty_feeds(session: AsyncSession, guild_id: str) -> list[dict[str, Any]]:
     redis = await get_redis()
     try:
@@ -679,7 +699,7 @@ async def process_dirty_feeds(session: AsyncSession, guild_id: str) -> list[dict
 
     results: list[dict[str, Any]] = []
     cfg = await load_merged_feed_config(guild_id)
-    for window in ready:
+    for window in enabled_feed_windows(cfg, ready):
         results.append(
             await rebuild_feed_window(
                 session, guild_id=guild_id, window=window, config=cfg

@@ -196,3 +196,73 @@ def test_due_windows_can_include_multiple() -> None:
         },
     }
     assert _due_windows(config, now=now) == ["daily", "weekly"]
+
+
+def test_due_windows_skips_disabled_periods() -> None:
+    from datetime import datetime, timezone
+
+    now = datetime(2026, 8, 10, 12, 0, tzinfo=timezone.utc)
+    config = {
+        "enabled": True,
+        "windows": {
+            "daily": {
+                "enabled": False,
+                "channel_id": "1",
+                "next_refresh_at": "2026-08-10T11:00:00Z",
+            },
+            "weekly": {
+                "enabled": True,
+                "channel_id": "2",
+                "next_refresh_at": "2026-08-10T11:30:00Z",
+            },
+            "monthly": {
+                "enabled": False,
+                "channel_id": "3",
+                "next_refresh_at": "2026-08-10T11:00:00Z",
+            },
+            "all_time": {
+                "enabled": True,
+                "channel_id": "4",
+                "next_refresh_at": "2026-08-10T13:00:00Z",
+            },
+        },
+    }
+    assert _due_windows(config, now=now) == ["weekly"]
+    assert _is_window_refresh_due(config, "daily", now=now) is False
+    assert _is_window_refresh_due(config, "all_time", now=now) is False
+
+
+def test_due_windows_includes_reenabled_period_only() -> None:
+    from datetime import datetime, timezone
+
+    now = datetime(2026, 8, 10, 12, 0, tzinfo=timezone.utc)
+    config = {
+        "enabled": True,
+        "windows": {
+            "daily": {
+                "enabled": False,
+                "channel_id": "1",
+                "next_refresh_at": "2026-08-10T11:00:00Z",
+            },
+            "weekly": {
+                "enabled": True,
+                "channel_id": "2",
+                "next_refresh_at": "2026-08-10T11:30:00Z",
+            },
+            "monthly": {
+                "enabled": False,
+                "channel_id": "3",
+                "next_refresh_at": "2026-08-10T11:00:00Z",
+            },
+            "all_time": {
+                "enabled": True,
+                "channel_id": "4",
+                "next_refresh_at": "2026-08-10T13:00:00Z",
+            },
+        },
+    }
+    assert _due_windows(config, now=now) == ["weekly"]
+    config["windows"]["daily"]["enabled"] = True
+    assert _due_windows(config, now=now) == ["daily", "weekly"]
+    assert _is_window_refresh_due(config, "monthly", now=now) is False
+    assert _is_window_refresh_due(config, "all_time", now=now) is False

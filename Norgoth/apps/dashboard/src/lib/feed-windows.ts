@@ -1,5 +1,9 @@
-import type { FeedConfig, FeedWindowKey } from "@/stores/feed-channels-store";
+import type {
+  FeedConfig,
+  FeedWindowKey,
+} from "@/stores/feed-channels-store";
 import { FEED_WINDOW_LABELS } from "@/stores/feed-channels-store";
+import { formatDict } from "@/lib/locale-format";
 
 export type FeedWindowCard = {
   key: FeedWindowKey;
@@ -41,9 +45,8 @@ export function mergeFeedWindowCards(
   return WINDOW_ORDER.map((key) => {
     const window = config?.windows?.[key];
     const status = byKey.get(key);
-    const channelId = status?.channel_id ?? window?.channel_id ?? null;
-    const configured =
-      status?.configured ?? Boolean(channelId && String(channelId).length > 0);
+    const channelId = window?.channel_id ?? status?.channel_id ?? null;
+    const configured = Boolean(channelId && String(channelId).length > 0);
     const dailyHours =
       window?.refresh_interval_hours ??
       config?.daily_refresh_interval_hours ??
@@ -52,7 +55,7 @@ export function mergeFeedWindowCards(
       key,
       label: FEED_WINDOW_LABELS[key],
       configured,
-      enabled: status?.enabled ?? Boolean(window?.enabled && configured),
+      enabled: Boolean(window?.enabled && configured),
       channel_id: channelId,
       last_updated: status?.last_updated ?? null,
       cadence_label:
@@ -72,4 +75,33 @@ export function feedNeedsSetup(config: FeedConfig | null): boolean {
     (window) => Boolean(window?.channel_id)
   );
   return !hasSources && !hasWindow;
+}
+
+export type FeedWindowCopy = {
+  windowDaily: string;
+  windowWeekly: string;
+  windowMonthly: string;
+  windowAllTime: string;
+  windowEnabledSuccess: string;
+  windowDisabledSuccess: string;
+  windowUpdatedSuccess: string;
+};
+
+const WINDOW_COPY_KEYS: Record<FeedWindowKey, keyof FeedWindowCopy> = {
+  daily: "windowDaily",
+  weekly: "windowWeekly",
+  monthly: "windowMonthly",
+  all_time: "windowAllTime",
+};
+
+export function formatFeedWindowToggleFeedback(
+  copy: FeedWindowCopy,
+  window: FeedWindowKey,
+  enabled: boolean,
+): string {
+  const label = copy[WINDOW_COPY_KEYS[window]];
+  return formatDict(
+    enabled ? copy.windowEnabledSuccess : copy.windowDisabledSuccess,
+    { window: label },
+  );
 }

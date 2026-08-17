@@ -152,7 +152,8 @@ type FeedChannelsState = {
   patchWindow: (
     guildId: string,
     window: FeedWindowKey,
-    patch: Partial<FeedWindowConfig>
+    patch: Partial<FeedWindowConfig>,
+    options?: { successFeedback?: string }
   ) => Promise<FeedConfig | null>;
   repair: (guildId: string) => Promise<void>;
 };
@@ -219,7 +220,43 @@ function withCountdownSnapshot<T extends CountdownFields>(
   };
 }
 
-export const useFeedChannelsStore = create<FeedChannelsState>((set) => ({
+let patchWindowGeneration = 0;
+
+function applyWindowConfigToStatus(
+  status: FeedStatus | null,
+  config: FeedConfig
+): FeedStatus | null {
+  if (!status) return status;
+  const previous = new Map(status.windows.map((row) => [row.key, row]));
+  const keys: FeedWindowKey[] = ["daily", "weekly", "monthly", "all_time"];
+  return {
+    ...status,
+    enabled: Boolean(config.enabled),
+    windows: keys.map((key) => {
+      const prev = previous.get(key);
+      const window = config.windows[key];
+      const channelId = window?.channel_id ?? prev?.channel_id ?? null;
+      const configured = Boolean(channelId);
+      return {
+        key,
+        configured,
+        enabled: Boolean(window?.enabled && configured),
+        channel_id: channelId,
+        last_updated: prev?.last_updated ?? null,
+        schedule_anchor_at:
+          window?.schedule_anchor_at ?? prev?.schedule_anchor_at,
+        next_refresh_at:
+          window?.next_refresh_at ?? prev?.next_refresh_at ?? null,
+        remaining_seconds: prev?.remaining_seconds ?? null,
+        cadence_label: prev?.cadence_label ?? null,
+        refresh_interval_hours:
+          window?.refresh_interval_hours ?? prev?.refresh_interval_hours ?? null,
+      };
+    }),
+  };
+}
+
+export const useFeedChannelsStore = create<FeedChannelsState>((set, get) => ({
   config: null,
   status: null,
   loading: false,
@@ -413,7 +450,10 @@ export const useFeedChannelsStore = create<FeedChannelsState>((set) => ({
     }
   },
 
-  patchWindow: async (guildId, window, patch) => {
+  patchWindow: async (guildId, window, patch, options) => {
+    const generation = ++patchWindowGeneration;
+    const previousConfig = get().config;
+    const previousStatus = get().status;
     set({ busy: true, error: null, feedback: null });
     try {
       const res = await fetch(
@@ -425,17 +465,47 @@ export const useFeedChannelsStore = create<FeedChannelsState>((set) => ({
         }
       );
       if (!res.ok) {
-        set({ error: await readError(res) });
+        if (generation === patchWindowGeneration) {
+          set({
+            error: await readError(res),
+            config: previousConfig,
+            status: previousStatus,
+          });
+        }
         return null;
       }
       const data = (await res.json()) as { config: FeedConfig };
-      set({ config: data.config, feedback: "Feed window updated." });
-      return data.config;
+      const mergedConfig = {
+        ...DEFAULT_FEED_CONFIG,
+        ...data.config,
+      };
+      if (generation !== patchWindowGeneration) {
+        return mergedConfig;
+      }
+      const enableOnly =
+        Object.keys(patch).length === 1 && typeof patch.enabled === "boolean";
+      const feedback =
+        options?.successFeedback ??
+        (enableOnly ? null : "Feed window updated.");
+      set({
+        config: mergedConfig,
+        status: applyWindowConfigToStatus(previousStatus, mergedConfig),
+        feedback,
+      });
+      return mergedConfig;
     } catch {
-      set({ error: "Could not reach the Norgoth API." });
+      if (generation === patchWindowGeneration) {
+        set({
+          error: "Could not reach the Norgoth API.",
+          config: previousConfig,
+          status: previousStatus,
+        });
+      }
       return null;
     } finally {
-      set({ busy: false });
+      if (generation === patchWindowGeneration) {
+        set({ busy: false });
+      }
     }
   },
 
