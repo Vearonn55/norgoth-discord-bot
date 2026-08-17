@@ -22,9 +22,16 @@ describe("Auto Moderation format-channel cards", () => {
   });
 
   it("keeps toggle clicks from wrapping the card in a second onClick", () => {
+    expect(src).toContain("import { MiniFeatureCard }");
     expect(src).toContain("onToggle={(checked) => {");
-    expect(src).toContain("norgoth-mini-card");
-    expect(src).toContain("ChannelPickerToolbar");
+    expect(src).toContain('onClick={() => setActiveModal("image_only")}');
+    expect(src).toContain('onClick={() => setActiveModal("link_only")}');
+    const imageCard = src.slice(
+      src.indexOf("name={d.imageOnlyTitle}"),
+      src.indexOf("name={d.linkOnlyTitle}"),
+    );
+    expect(imageCard).toContain("onToggle=");
+    expect(imageCard).toContain("onClick=");
   });
 
   it("opens the modal instead of enabling when no channel is selected", () => {
