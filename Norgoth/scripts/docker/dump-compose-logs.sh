@@ -31,6 +31,8 @@ case "${ENV_NAME}" in
     ;;
 esac
 
+export NORBOT_ENV_FILE="${ENV_FILE}"
+
 echo "==== compose ps (${ENV_NAME}) ===="
 docker compose --env-file "${ENV_FILE}" "${COMPOSE_FILES[@]}" ps -a || true
 

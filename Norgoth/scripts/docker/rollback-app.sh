@@ -48,6 +48,7 @@ case "${ENV_NAME}" in
 esac
 
 OWNER="${GITHUB_REPOSITORY_OWNER:-vearonn55}"
+export NORBOT_ENV_FILE="${ENV_FILE}"
 export NORBOT_IMAGE_TAG="${SHA}"
 export NORBOT_API_IMAGE="${NORBOT_API_IMAGE:-ghcr.io/${OWNER}/norbot-api}"
 export NORBOT_BOT_IMAGE="${NORBOT_BOT_IMAGE:-ghcr.io/${OWNER}/norbot-bot}"

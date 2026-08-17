@@ -1,6 +1,7 @@
 """Tests for application configuration."""
 
 import base64
+from pathlib import Path
 
 import pytest
 from pytest import MonkeyPatch
@@ -320,6 +321,62 @@ def test_settings_require_all_discord_oauth_values(
         Settings.from_environment()
 
     get_settings.cache_clear()
+
+
+def test_empty_discord_client_values_with_redirect_are_rejected(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """Blank CLIENT_ID/SECRET with a filled redirect URI is still partial config."""
+
+    _clear_ip_environment(monkeypatch)
+    monkeypatch.setenv("NORGOTH_DISCORD_CLIENT_ID", "")
+    monkeypatch.setenv("NORGOTH_DISCORD_CLIENT_SECRET", "  ")
+    monkeypatch.setenv(
+        "NORGOTH_DISCORD_REDIRECT_URI",
+        "https://api.test.norbot.io/api/v1/oauth/discord/callback",
+    )
+    get_settings.cache_clear()
+
+    with pytest.raises(
+        ValueError,
+        match="must be configured together",
+    ):
+        Settings.from_environment()
+
+    get_settings.cache_clear()
+
+
+_DISCORD_OAUTH_KEYS = (
+    "NORGOTH_DISCORD_CLIENT_ID",
+    "NORGOTH_DISCORD_CLIENT_SECRET",
+    "NORGOTH_DISCORD_REDIRECT_URI",
+)
+
+
+def _parse_env_assignments(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, _, value = stripped.partition("=")
+        values[key.strip()] = value.strip()
+    return values
+
+
+def test_env_examples_keep_discord_oauth_all_or_none() -> None:
+    """Templates must not pre-fill a redirect URI without client credentials."""
+
+    norgoth_root = Path(__file__).resolve().parents[4]
+    example_paths = (
+        norgoth_root / ".env.example",
+        norgoth_root / "deploy" / "env" / "test.env.example",
+        norgoth_root / "deploy" / "env" / "production.env.example",
+    )
+    for path in example_paths:
+        parsed = _parse_env_assignments(path)
+        configured = [key for key in _DISCORD_OAUTH_KEYS if parsed.get(key)]
+        assert len(configured) in {0, 3}, path
 
 
 def test_oauth_encryption_key_falls_back_to_webhook_key(

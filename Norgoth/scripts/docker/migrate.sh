@@ -30,6 +30,7 @@ esac
 
 : "${NORBOT_IMAGE_TAG:?NORBOT_IMAGE_TAG is required}"
 : "${NORBOT_API_IMAGE:?NORBOT_API_IMAGE is required}"
+export NORBOT_ENV_FILE="${ENV_FILE}"
 
 echo "Running alembic upgrade head (${ENV_NAME}) with tag ${NORBOT_IMAGE_TAG}…"
 docker compose --env-file "${ENV_FILE}" "${COMPOSE_FILES[@]}" run --rm --no-deps api \

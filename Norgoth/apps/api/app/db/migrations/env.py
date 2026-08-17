@@ -1,12 +1,12 @@
 """Alembic migration environment."""
 
 import asyncio
+import os
 from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import Connection, pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from app.core.config import get_settings
 from app.db.base import Base
 from app.db.url import require_database_url
 from app.models import (
@@ -134,11 +134,17 @@ target_metadata = Base.metadata
 
 
 def get_database_url() -> str:
-    """Return the configured migration database URL."""
+    """Return the configured migration database URL.
 
-    settings = get_settings()
+    Read NORGOTH_DATABASE_URL directly. Alembic must not construct full
+    Settings — Discord OAuth and other app secrets are unrelated to schema
+    upgrades, and a partial OAuth trio would abort migrate before SQL runs.
+    """
 
-    return require_database_url(settings.database_url)
+    raw_url = os.getenv("NORGOTH_DATABASE_URL")
+    if raw_url is not None:
+        raw_url = raw_url.strip() or None
+    return require_database_url(raw_url)
 
 
 def run_migrations_offline() -> None:

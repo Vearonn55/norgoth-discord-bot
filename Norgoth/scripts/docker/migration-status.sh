@@ -30,6 +30,7 @@ esac
 
 : "${NORBOT_IMAGE_TAG:?NORBOT_IMAGE_TAG is required}"
 : "${NORBOT_API_IMAGE:?NORBOT_API_IMAGE is required}"
+export NORBOT_ENV_FILE="${ENV_FILE}"
 
 echo "=== alembic current (${ENV_NAME}) ==="
 docker compose --env-file "${ENV_FILE}" "${COMPOSE_FILES[@]}" run --rm --no-deps api python -m alembic current

@@ -1,9 +1,13 @@
 # NorBot base Compose stack (internal network only).
 # Usage:
-#   docker compose -f Norgoth/deploy/compose.yml -f Norgoth/deploy/compose.production.yml up -d
+#   NORBOT_ENV_FILE=/opt/norbot/env/production.env \
+#     docker compose -f Norgoth/deploy/compose.yml -f Norgoth/deploy/compose.production.yml up -d
 # Image tags default to "local"; CI/CD sets NORBOT_IMAGE_TAG=<git-sha>.
 # REDIS_PASSWORD is optional: when set, Redis AUTH is required. The VDS env
 # files predate that hardening step, so compose must not fail interpolation.
+# Deploy scripts export NORBOT_ENV_FILE so this base file does not also load
+# env/production.env.example (that template has a redirect URI with empty
+# client id/secret, which Compose merge would inject into `compose run`).
 
 name: norbot
 
