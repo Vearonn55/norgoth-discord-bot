@@ -11,6 +11,7 @@ import {
 } from "@coreui/react";
 import { SectionCard } from "@/components/ui/section-card";
 import { ChannelSelect } from "@/components/ui/channel-select";
+import { ChannelPickerToolbar } from "@/components/ui/refresh-channels-button";
 import { RoleSelect } from "@/components/ui/role-select";
 import { MemberSelect } from "@/components/ui/member-select";
 import { Button } from "@/components/ui/button";
@@ -212,6 +213,19 @@ export function HoneypotPanel() {
           loading: saving,
         }}
       />
+
+      {config?.warning_status && config.warning_status.ok === false ? (
+        <CAlert color="danger" className="mb-0">
+          {config.warning_status.code === "pin_failed"
+            ? d.warningPinFailed
+            : config.warning_status.code === "missing_permissions"
+              ? formatDict(d.warningPermissionError, {
+                  permissions: (config.warning_status.missing ?? []).join(", ") ||
+                    (config.warning_status.message ?? ""),
+                })
+              : d.warningDiscordUnavailable}
+        </CAlert>
+      ) : null}
 
       <CAlert
         color={draft.enabled ? "info" : "warning"}
@@ -448,7 +462,7 @@ export function HoneypotPanel() {
             {d.configToggleHint}
           </CAlert>
           <div>
-            <CFormLabel>{d.trapChannels}</CFormLabel>
+            <ChannelPickerToolbar label={d.trapChannels} />
             <CAlert color="warning" className="py-2 small">
               {d.trapChannelsWarn}
             </CAlert>
@@ -467,7 +481,7 @@ export function HoneypotPanel() {
                 const ch = resources?.channels.find((c) => c.id === id);
                 return (
                   <li key={id}>
-                    #{ch?.name ?? id}{" "}
+                    #{ch?.name ?? dict.common.channelUnavailable}{" "}
                     <button
                       type="button"
                       className="btn btn-link btn-sm p-0"

@@ -7,6 +7,7 @@ import {
 } from "@coreui/react";
 import { SectionCard } from "@/components/ui/section-card";
 import { ChannelSelect } from "@/components/ui/channel-select";
+import { ChannelPickerToolbar } from "@/components/ui/refresh-channels-button";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
@@ -98,7 +99,7 @@ export function RaidProtectionPanel() {
       <SectionCard level="primary" category="security" header={d.detectionHeader}>
         <div className="d-flex flex-column gap-3 p-1">
           <div>
-            <CFormLabel>{d.alertChannel}</CFormLabel>
+            <ChannelPickerToolbar label={d.alertChannel} />
             <ChannelSelect
               channels={resources?.channels ?? []}
               value={draft.alert_channel_id ?? ""}

@@ -10,7 +10,12 @@ from pydantic import BaseModel, Field
 
 from app.api.v1.dependencies_auth import guild_manager_dependency
 from app.services.campaign_store import get_redis, now_iso
-from app.services.feature_config_store import read_raw, save_config
+from app.services.feature_config_store import (
+    first_trap_channel_id,
+    merge_honeypot_warning_fields,
+    read_raw,
+    save_config,
+)
 
 router = APIRouter(
     tags=["Honeypot"],
@@ -59,6 +64,20 @@ class HoneypotConfig(BaseModel):
     timeout_minutes: int = Field(default=60, ge=1, le=40320)
 
 
+def resolve_force_warning_repost(
+    existing: dict[str, Any],
+    payload: dict[str, Any],
+) -> bool:
+    old_first = first_trap_channel_id(existing)
+    new_first = first_trap_channel_id(payload)
+    channel_changed = bool(old_first and new_first and old_first != new_first)
+    posting = bool(payload.get("post_pinned_warning"))
+    was_posting = bool(existing.get("post_pinned_warning"))
+    flipped_on = posting and not was_posting
+    ids_empty = not existing.get("warning_message_id")
+    return bool(channel_changed or flipped_on or (posting and ids_empty))
+
+
 def load_stored_config(raw: str | None) -> dict[str, Any]:
     stored: dict[str, Any] = {}
 
@@ -97,6 +116,10 @@ async def get_honeypot_config(guild_id: str) -> dict[str, Any]:
     for extra in (
         "warning_message_id",
         "warning_channel_id",
+        "warning_posted_at",
+        "warning_pinned",
+        "warning_status",
+        "force_warning_repost",
     ):
         if extra in stored:
             result[extra] = stored[extra]
@@ -130,15 +153,11 @@ async def update_honeypot_config(
             if isinstance(member_id, str) and member_id.isdigit()
         ]
         # Preserve bot-managed bookkeeping across dashboard saves.
-        for extra in (
-            "warning_message_id",
-            "warning_channel_id",
-        ):
-            if extra in existing and extra not in payload:
-                payload[extra] = existing[extra]
+        payload = merge_honeypot_warning_fields(existing, payload)
         payload.pop("create_channel_request", None)
-        # Explicit Save is the signal to restore a manually deleted warning.
-        payload["force_warning_repost"] = True
+        payload["force_warning_repost"] = resolve_force_warning_repost(
+            existing, payload
+        )
 
         payload["updated_at"] = now_iso()
         await save_config(guild_id, "honeypot", payload, enabled=bool(payload.get("enabled", False)))

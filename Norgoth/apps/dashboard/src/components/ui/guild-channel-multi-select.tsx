@@ -8,6 +8,7 @@ import {
   CPaginationItem,
 } from "@coreui/react";
 import type { GuildChannel } from "@/stores/guild-store";
+import { useLocaleDict } from "@/lib/locale-dict";
 
 type GuildChannelMultiSelectProps = {
   channels: GuildChannel[];
@@ -32,6 +33,7 @@ export function GuildChannelMultiSelect({
   searchPlaceholder = "Search channels…",
   emptyMessage = "No channels match.",
 }: GuildChannelMultiSelectProps) {
+  const dict = useLocaleDict();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
 
@@ -73,17 +75,18 @@ export function GuildChannelMultiSelect({
         <div className="d-flex flex-wrap gap-2">
           {selectedIds.map((id) => {
             const channel = channels.find((c) => c.id === id);
+            const unavailable = !channel;
             return (
               <CButton
                 key={id}
                 type="button"
-                color="primary"
+                color={unavailable ? "danger" : "primary"}
                 size="sm"
                 className="py-1"
                 onClick={() => toggle(id)}
                 aria-label={`Remove #${channel?.name ?? id}`}
               >
-                #{channel?.name ?? id} ×
+                #{unavailable ? dict.common.channelUnavailable : channel.name} ×
               </CButton>
             );
           })}

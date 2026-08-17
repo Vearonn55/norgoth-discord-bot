@@ -22,9 +22,8 @@ import { Icon } from "@/components/ui/icon";
 import { PageHeader } from "@/components/layout/page-header";
 import { PageActionFooter } from "@/components/layout/page-action-footer";
 import { MutedSection } from "@/components/ui/feature-muting";
-import {
-  FeatureConfigurationModal,
-} from "@/components/ui/feature-modal";
+import { FeatureConfigurationModal } from "@/components/ui/feature-modal";
+import { ChannelPickerToolbar } from "@/components/ui/refresh-channels-button";
 import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import {
@@ -617,8 +616,21 @@ export function AutomodPanel() {
           </p>
 
           <div>
-            <CFormLabel className="mb-2">{d.exemptChannels}</CFormLabel>
+            <ChannelPickerToolbar label={d.exemptChannels} />
             <div className="d-flex flex-wrap gap-2">
+              {config.exempt_channel_ids
+                .filter((id) => !channels.some((channel) => channel.id === id))
+                .map((id) => (
+                  <Button
+                    key={id}
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => toggleId("exempt_channel_ids", id)}
+                  >
+                    {dict.common.channelUnavailable} ×
+                  </Button>
+                ))}
               {channels.map((channel) => {
                 const isSelected = config.exempt_channel_ids.includes(channel.id);
                 return (

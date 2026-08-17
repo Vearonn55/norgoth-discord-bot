@@ -12,6 +12,7 @@ import {
 } from "@coreui/react";
 import { SectionCard } from "@/components/ui/section-card";
 import { ChannelSelect } from "@/components/ui/channel-select";
+import { ChannelPickerToolbar } from "@/components/ui/refresh-channels-button";
 import { RoleSelect } from "@/components/ui/role-select";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -273,7 +274,7 @@ export function RssFeedsPanel() {
               />
             </div>
             <div>
-              <CFormLabel>{d.destinationChannel}</CFormLabel>
+              <ChannelPickerToolbar label={d.destinationChannel} />
               <ChannelSelect
                 channels={resources?.channels ?? []}
                 value={draft.channel_id}

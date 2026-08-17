@@ -9,6 +9,7 @@ import {
 } from "@coreui/react";
 import { FeatureConfigurationModal } from "@/components/ui/feature-modal";
 import { ChannelSelect } from "@/components/ui/channel-select";
+import { ChannelPickerToolbar } from "@/components/ui/refresh-channels-button";
 import { RoleSelect } from "@/components/ui/role-select";
 import { MessagePreview } from "@/components/discord/message-preview";
 import { PlatformAvatar } from "@/components/content-notifications/platform-avatar";
@@ -452,10 +453,10 @@ export function AccountEditorModal({
         </div>
 
         <div>
-          <label className="form-label small" htmlFor="cn-account-channel">
-            {copy.discordChannel}
-            {required}
-          </label>
+          <ChannelPickerToolbar
+            label={`${copy.discordChannel}${required}`}
+            htmlFor="cn-account-channel"
+          />
           <ChannelSelect
             id="cn-account-channel"
             channels={resources?.channels ?? []}

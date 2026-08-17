@@ -73,7 +73,15 @@
     "messageTypeAria": "Mesaj türü",
     "saved": "Kaydedildi",
     "toggleFeature": "Özelliği aç/kapa",
-    "toggleNamed": "{name} aç/kapa"
+    "toggleNamed": "{name} aç/kapa",
+    "refreshChannels": "Kanalları Yenile",
+    "refreshChannelsSuccess": "Kanal listesi güncellendi.",
+    "refreshChannelsError": "Kanallar yenilenemedi. Lütfen yeniden deneyin.",
+    "channelUnavailable": "Silindi veya artık uygun değil",
+    "discordRateLimited": "Discord sunucu kaynaklarını sınırlıyor. Lütfen kısa süre sonra yeniden deneyin.",
+    "botNotInstalled": "NorBot henüz bu sunucuya eklenmedi.",
+    "missingBotPermissions": "NorBot bu sunucuda kanalları veya rolleri okumak için izne sahip değil.",
+    "discordTemporarilyUnavailable": "Discord geçici olarak kullanılamıyor. Lütfen kısa süre sonra yeniden deneyin."
   },
   "sidebar": {
     "overview": "Genel Bakış",
@@ -1147,6 +1155,9 @@
     "configToggleHint": "Bal küpünü Yapılandırma kartındaki anahtardan açıp kapatın.",
     "trapChannels": "Tuzak Kanallar",
     "trapChannelsWarn": "Mevcut bir kanalı seçmek onu tuzağa çevirir. Aktif bir sohbet kanalı seçmeyin.",
+    "warningPermissionError": "NorBot bal küpü uyarısını gönderemiyor veya sabitleyemiyor. Eksik: {permissions}.",
+    "warningPinFailed": "Bal küpü uyarısı gönderildi ancak sabitlenemedi. NorBot başka mesaj göndermeden sabitlemeyi yeniden deneyecek.",
+    "warningDiscordUnavailable": "Discord geçici olarak kullanılamıyor. Bal küpü uyarısı değiştirilmedi.",
     "addTrapChannel": "Tuzak kanalı ekle…",
     "remove": "Kaldır",
     "createHoneypotChannel": "Bal Küpü Kanalı Oluştur",

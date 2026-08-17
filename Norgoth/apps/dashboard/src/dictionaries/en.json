@@ -73,7 +73,15 @@
     "messageTypeAria": "Message type",
     "saved": "Saved",
     "toggleFeature": "Toggle feature",
-    "toggleNamed": "Toggle {name}"
+    "toggleNamed": "Toggle {name}",
+    "refreshChannels": "Refresh Channels",
+    "refreshChannelsSuccess": "Channel list updated.",
+    "refreshChannelsError": "Could not refresh channels. Please retry.",
+    "channelUnavailable": "Deleted or no longer available",
+    "discordRateLimited": "Discord is rate-limiting guild resources. Please retry shortly.",
+    "botNotInstalled": "NorBot is not installed in this server yet.",
+    "missingBotPermissions": "NorBot is missing permissions to read channels or roles in this server.",
+    "discordTemporarilyUnavailable": "Discord is temporarily unavailable. Please retry shortly."
   },
   "sidebar": {
     "overview": "Overview",
@@ -1147,6 +1155,9 @@
     "configToggleHint": "Enable or disable the honeypot from the Configuration card toggle.",
     "trapChannels": "Trap Channels",
     "trapChannelsWarn": "Selecting an existing channel turns it into a trap. Do not choose an active conversation channel.",
+    "warningPermissionError": "NorBot cannot post or pin the honeypot warning. Missing: {permissions}.",
+    "warningPinFailed": "The honeypot warning was posted but could not be pinned. NorBot will retry pinning without posting another message.",
+    "warningDiscordUnavailable": "Discord is temporarily unavailable. The honeypot warning was not changed.",
     "addTrapChannel": "Add trap channel…",
     "remove": "Remove",
     "createHoneypotChannel": "Create Honeypot Channel",

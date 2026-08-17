@@ -25,6 +25,8 @@ import {
 import { TicketPanelPreview } from "@/components/community/ticket-panel-preview";
 import { MessageSourceToggle } from "@/components/discord/message-source-toggle";
 import { RichMessageEditor } from "@/components/editors/rich-message-editor";
+import { ChannelSelect } from "@/components/ui/channel-select";
+import { ChannelPickerToolbar } from "@/components/ui/refresh-channels-button";
 import { formatDateTime } from "@/lib/datetime";
 import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import { useFirstGuild } from "@/lib/use-first-guild";
@@ -461,27 +463,22 @@ export function TicketsPanel() {
                 />
               </CCol>
               <CCol md={6}>
-                <CFormLabel>{d.channel}</CFormLabel>
-                <CFormSelect
+                <ChannelPickerToolbar label={d.channel} />
+                <ChannelSelect
+                  channels={channels}
                   value={editingPanel.channel_id ?? ""}
-                  onChange={(event) =>
+                  onChange={(value) =>
                     setEditingPanel((current) =>
                       current
                         ? {
                             ...current,
-                            channel_id: event.target.value || null,
+                            channel_id: value || null,
                           }
                         : current
                     )
                   }
-                >
-                  <option value="">{d.selectChannel}</option>
-                  {channels.map((channel) => (
-                    <option key={channel.id} value={channel.id}>
-                      #{channel.name}
-                    </option>
-                  ))}
-                </CFormSelect>
+                  emptyLabel={d.selectChannel}
+                />
               </CCol>
             </CRow>
 

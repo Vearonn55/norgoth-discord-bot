@@ -50,6 +50,11 @@ export type SelectedGuild = {
 
 const SELECTED_GUILD_KEY = "norgoth:selected-guild:v1";
 const RESOURCE_TIMEOUT_MS = 20_000;
+let resourceRefreshGeneration = 0;
+
+type ChannelRefreshNotice =
+  | { type: "success" }
+  | { type: "error"; code: string; message: string };
 
 type GuildState = {
   guildId: string | null;
@@ -57,9 +62,12 @@ type GuildState = {
   resources: GuildResources | null;
   loading: boolean;
   error: string | null;
+  refreshingChannels: boolean;
+  channelRefreshNotice: ChannelRefreshNotice | null;
   selectGuild: (guild: SelectedGuild) => Promise<void>;
   clearGuild: () => void;
   reload: () => Promise<void>;
+  refreshChannels: () => Promise<void>;
 };
 
 type ResourceLoadFailure = {
@@ -110,11 +118,15 @@ async function fetchWithTimeout(
   }
 }
 
-async function loadResources(guildId: string): Promise<GuildResources> {
+async function loadResources(
+  guildId: string,
+  options?: { refresh?: boolean },
+): Promise<GuildResources> {
+  const query = options?.refresh ? "?refresh=1" : "";
   let resourcesResponse: Response;
   try {
     resourcesResponse = await fetchWithTimeout(
-      apiUrl(`/guilds/${guildId}/discord-resources`),
+      apiUrl(`/guilds/${guildId}/discord-resources${query}`),
       { cache: "no-store", credentials: "include" },
       RESOURCE_TIMEOUT_MS,
     );
@@ -153,8 +165,11 @@ export const useGuildStore = create<GuildState>((set, get) => ({
   resources: null,
   loading: true,
   error: null,
+  refreshingChannels: false,
+  channelRefreshNotice: null,
 
   clearGuild: () => {
+    resourceRefreshGeneration += 1;
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(SELECTED_GUILD_KEY);
     }
@@ -164,10 +179,13 @@ export const useGuildStore = create<GuildState>((set, get) => ({
       resources: null,
       error: null,
       loading: false,
+      refreshingChannels: false,
+      channelRefreshNotice: null,
     });
   },
 
   selectGuild: async (guild) => {
+    const generation = ++resourceRefreshGeneration;
     const normalizedGuild: SelectedGuild = {
       ...guild,
       icon_url: resolvedGuildIcon({
@@ -183,6 +201,8 @@ export const useGuildStore = create<GuildState>((set, get) => ({
       guildId: normalizedGuild.id,
       selectedGuild: normalizedGuild,
       resources: null,
+      refreshingChannels: false,
+      channelRefreshNotice: null,
     });
 
     if (typeof window !== "undefined") {
@@ -194,8 +214,10 @@ export const useGuildStore = create<GuildState>((set, get) => ({
 
     try {
       const resources = await loadResources(normalizedGuild.id);
+      if (generation !== resourceRefreshGeneration) return;
       set({ resources, loading: false, error: null });
     } catch (error) {
+      if (generation !== resourceRefreshGeneration) return;
       const failure = error as ResourceLoadFailure;
       set({
         loading: false,
@@ -317,6 +339,37 @@ export const useGuildStore = create<GuildState>((set, get) => ({
       });
     }
   },
+
+  refreshChannels: async () => {
+    const guildId = get().guildId;
+    if (!guildId || get().refreshingChannels) return;
+    const generation = ++resourceRefreshGeneration;
+    set({ refreshingChannels: true, channelRefreshNotice: null });
+    try {
+      const resources = await loadResources(guildId, { refresh: true });
+      if (generation !== resourceRefreshGeneration || get().guildId !== guildId) {
+        return;
+      }
+      set({
+        resources,
+        refreshingChannels: false,
+        channelRefreshNotice: { type: "success" },
+      });
+    } catch (error) {
+      if (generation !== resourceRefreshGeneration || get().guildId !== guildId) {
+        return;
+      }
+      const failure = error as ResourceLoadFailure;
+      set({
+        refreshingChannels: false,
+        channelRefreshNotice: {
+          type: "error",
+          code: failure?.code || "refresh_failed",
+          message: failure?.message || "Could not refresh channels. Please retry.",
+        },
+      });
+    }
+  },
 }));
 
 /** Drop-in replacement for the old useFirstGuild hook. */
@@ -326,6 +379,17 @@ export function useFirstGuild() {
   const loading = useGuildStore((s) => s.loading);
   const error = useGuildStore((s) => s.error);
   const reload = useGuildStore((s) => s.reload);
+  const refreshChannels = useGuildStore((s) => s.refreshChannels);
+  const refreshingChannels = useGuildStore((s) => s.refreshingChannels);
   const selectedGuild = useGuildStore((s) => s.selectedGuild);
-  return { guildId, resources, loading, error, reload, selectedGuild };
+  return {
+    guildId,
+    resources,
+    loading,
+    error,
+    reload,
+    refreshChannels,
+    refreshingChannels,
+    selectedGuild,
+  };
 }

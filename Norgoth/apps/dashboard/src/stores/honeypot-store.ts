@@ -17,6 +17,12 @@ export type HoneypotConfig = {
   log_channel_id: string | null;
   ping_role_id: string | null;
   timeout_minutes: number;
+  warning_status?: {
+    ok?: boolean;
+    code?: string;
+    missing?: string[];
+    message?: string;
+  } | null;
 };
 
 type HoneypotState = {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CFormInput, CFormLabel, CFormSelect, CSpinner } from "@coreui/react";
+import { CFormInput, CFormLabel, CSpinner } from "@coreui/react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +25,8 @@ import { RichMessageEditor } from "@/components/editors/rich-message-editor";
 import { validateEmbed } from "@/lib/discord/message-payload";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import { useParams } from "next/navigation";
+import { ChannelSelect } from "@/components/ui/channel-select";
+import { RefreshChannelsButton } from "@/components/ui/refresh-channels-button";
 import { formatDateTime } from "@/lib/datetime";
 import {
   roleMenuInteractionLabel,
@@ -452,6 +454,9 @@ export function RoleMenusPanel() {
           <div className="d-flex flex-column gap-4">
             <div className="row g-3 norgoth-embed-draft-creator">
               <div className="col-lg-7 norgoth-embed-creator-editor d-flex flex-column gap-3">
+                <div className="d-flex justify-content-end">
+                  <RefreshChannelsButton />
+                </div>
                 <div className="d-flex align-items-center justify-content-between gap-2">
                   <CFormLabel className="mb-0 fw-medium">
                     {d.menuMessage}
@@ -503,26 +508,21 @@ export function RoleMenusPanel() {
                       <CFormLabel className="fw-medium">
                         {d.postToChannel}
                       </CFormLabel>
-                      <CFormSelect
+                      <ChannelSelect
+                        channels={channels}
                         value={editing.channel_id ?? ""}
-                        onChange={(e) =>
+                        onChange={(value) =>
                           setEditing((current) =>
                             current
                               ? {
                                   ...current,
-                                  channel_id: e.target.value || null,
+                                  channel_id: value || null,
                                 }
                               : current
                           )
                         }
-                      >
-                        <option value="">{d.selectChannel}</option>
-                        {channels.map((channel) => (
-                          <option key={channel.id} value={channel.id}>
-                            #{channel.name}
-                          </option>
-                        ))}
-                      </CFormSelect>
+                        emptyLabel={d.selectChannel}
+                      />
                     </div>
                   </>
                 ) : (
@@ -596,19 +596,12 @@ export function RoleMenusPanel() {
                           <CFormLabel className="fw-medium">
                             {d.postToChannel}
                           </CFormLabel>
-                          <CFormSelect
+                          <ChannelSelect
+                            channels={channels}
                             value={newMenuChannelId}
-                            onChange={(e) =>
-                              setNewMenuChannelId(e.target.value)
-                            }
-                          >
-                            <option value="">{d.selectChannel}</option>
-                            {channels.map((channel) => (
-                              <option key={channel.id} value={channel.id}>
-                                #{channel.name}
-                              </option>
-                            ))}
-                          </CFormSelect>
+                            onChange={setNewMenuChannelId}
+                            emptyLabel={d.selectChannel}
+                          />
                           <p className="small text-body-secondary mt-1 mb-0">
                             {d.postEmbedHelp}
                           </p>

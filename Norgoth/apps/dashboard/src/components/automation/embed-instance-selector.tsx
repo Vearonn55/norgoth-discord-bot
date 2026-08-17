@@ -103,6 +103,11 @@ export function EmbedInstanceSelector({
             }}
           >
             <option value="">{d.selectChannel}</option>
+            {channelId && !channelNames.has(channelId) ? (
+              <option value={channelId} disabled>
+                {dict.common.channelUnavailable}
+              </option>
+            ) : null}
             {channelOptions.map(([id, name]) => (
               <option key={id} value={id}>
                 #{name}

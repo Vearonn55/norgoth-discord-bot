@@ -14,6 +14,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RoleMultiPicker } from "@/components/ui/role-multi-picker";
+import { ChannelSelect } from "@/components/ui/channel-select";
+import { RefreshChannelsButton } from "@/components/ui/refresh-channels-button";
 import { RichMessageEditor } from "@/components/editors/rich-message-editor";
 import { ValidationStatCard } from "@/components/campaigns/validation-stat-card";
 import { EmbedColorPicker } from "@/components/discord/embed-color-picker";
@@ -67,11 +69,6 @@ type CampaignWizardProps = {
     };
     raw_payload?: { description?: string };
   };
-};
-
-type WizardChannel = {
-  id: string;
-  name: string;
 };
 
 type WizardRole = {
@@ -320,11 +317,16 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
   const showDraftBanner =
     !isEdit && draftHydrated && hasDraft() && !bannerDismissed;
 
-  const { guildId: selectedGuildId, selectedGuild } = useFirstGuild();
+  const { guildId: selectedGuildId, selectedGuild, resources: storeResources } =
+    useFirstGuild();
   const [guildId, setGuildId] = useState<string | null>(null);
   const [guildName, setGuildName] = useState<string>(wizardCopy.defaultServerName);
-  const [channels, setChannels] = useState<WizardChannel[]>([]);
-  const [roles, setRoles] = useState<WizardRole[]>([]);
+  const channels = storeResources?.channels ?? [];
+  const roles: WizardRole[] = (storeResources?.roles ?? []).map((role) => ({
+    id: role.id,
+    name: role.name,
+    color: role.color ?? "#99aab5",
+  }));
   const [members, setMembers] = useState<WizardMember[]>([]);
   const [resourcesError, setResourcesError] = useState<string | null>(null);
 
@@ -374,30 +376,16 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
           setGuildName(
             String(selectedGuild?.name ?? wizardCopy.defaultServerName)
           );
+          setResourcesError(null);
         }
 
-        const [resourcesResponse, membersResponse] = await Promise.all([
-          fetch(apiUrl(`/guilds/${selectedGuildId}/discord-resources`), {
+        const membersResponse = await fetch(
+          apiUrl(`/guilds/${selectedGuildId}/members`),
+          {
             cache: "no-store",
-          }),
-          fetch(apiUrl(`/guilds/${selectedGuildId}/members`), {
-            cache: "no-store",
-          }),
-        ]);
-
-        if (resourcesResponse.ok) {
-          const resources = await resourcesResponse.json();
-
-          if (!cancelled) {
-            if (Array.isArray(resources.channels)) {
-              setChannels(resources.channels as WizardChannel[]);
-            }
-            if (Array.isArray(resources.roles)) {
-              setRoles(resources.roles as WizardRole[]);
-            }
-            setResourcesError(null);
-          }
-        }
+            credentials: "include",
+          },
+        );
 
         if (membersResponse.ok) {
           const snapshot = await membersResponse.json();
@@ -873,34 +861,32 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
 
                 {!isDM ? (
                   <div className="border rounded p-3 d-flex flex-column gap-3">
-                    <div>
-                      <h3 className="h6 mb-1">
-                        {wizardCopy.discordDeliveryChannel}
-                      </h3>
-                      <p className="mb-0 text-body-secondary small">
-                        {wizardCopy.discordDeliveryChannelDesc}
-                      </p>
+                    <div className="d-flex flex-wrap align-items-start justify-content-between gap-2">
+                      <div>
+                        <h3 className="h6 mb-1">
+                          {wizardCopy.discordDeliveryChannel}
+                        </h3>
+                        <p className="mb-0 text-body-secondary small">
+                          {wizardCopy.discordDeliveryChannelDesc}
+                        </p>
+                      </div>
+                      <RefreshChannelsButton />
                     </div>
 
-                    <CFormSelect
+                    <ChannelSelect
+                      channels={channels}
                       value={wizardState.audience.channelId}
-                      onChange={(event) =>
+                      onChange={(value) =>
                         setWizardState((prev) => ({
                           ...prev,
                           audience: {
                             ...prev.audience,
-                            channelId: event.target.value,
+                            channelId: value,
                           },
                         }))
                       }
-                    >
-                      <option value="">{wizardCopy.selectChannel}</option>
-                      {channels.map((channel) => (
-                        <option key={channel.id} value={channel.id}>
-                          #{channel.name}
-                        </option>
-                      ))}
-                    </CFormSelect>
+                      emptyLabel={wizardCopy.selectChannel}
+                    />
 
                     {!wizardState.audience.channelId ? (
                       <CAlert color="danger" className="mb-0">

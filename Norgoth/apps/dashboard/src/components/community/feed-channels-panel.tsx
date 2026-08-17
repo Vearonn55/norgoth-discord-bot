@@ -26,6 +26,7 @@ import { FeatureConfigurationModal } from "@/components/ui/feature-modal";
 import { DiscordEmojiPicker } from "@/components/discord/discord-emoji-picker";
 import { GuildChannelMultiSelect } from "@/components/ui/guild-channel-multi-select";
 import { ChannelSelect } from "@/components/ui/channel-select";
+import { ChannelPickerToolbar } from "@/components/ui/refresh-channels-button";
 import { Slider } from "@/components/ui/slider";
 import { NumberInput } from "@/components/ui/number-input";
 import { useFirstGuild } from "@/lib/use-first-guild";
@@ -295,6 +296,7 @@ export function FeedChannelsPanel() {
           onChange: (checked) => void setEnabled(guildId, checked),
           loading: busy,
           label: d.title,
+          showLabel: false,
         }}
       />
 
@@ -499,7 +501,10 @@ export function FeedChannelsPanel() {
               </p>
             </div>
             <div>
-              <CFormLabel htmlFor="feed-category-select">{d.selectCategory}</CFormLabel>
+              <ChannelPickerToolbar
+                label={d.selectCategory}
+                htmlFor="feed-category-select"
+              />
               <CFormSelect
                 id="feed-category-select"
                 value={config.feed_category_id ?? ""}
@@ -564,7 +569,7 @@ export function FeedChannelsPanel() {
       >
         <div className="d-flex flex-column gap-3">
           <div>
-            <CFormLabel>{d.feedChannel}</CFormLabel>
+            <ChannelPickerToolbar label={d.feedChannel} />
             <ChannelSelect
               channels={channels}
               value={windowDraft.channel_id}
@@ -634,7 +639,7 @@ export function FeedChannelsPanel() {
               />
             </div>
             <div>
-              <CFormLabel>{d.sourceChannels}</CFormLabel>
+              <ChannelPickerToolbar label={d.sourceChannels} />
               <GuildChannelMultiSelect
                 channels={channels}
                 selectedIds={settingsDraft.source_channel_ids}

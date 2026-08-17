@@ -10,6 +10,7 @@ import {
 } from "@coreui/react";
 import { SectionCard } from "@/components/ui/section-card";
 import { ChannelSelect } from "@/components/ui/channel-select";
+import { ChannelPickerToolbar } from "@/components/ui/refresh-channels-button";
 import { Button } from "@/components/ui/button";
 import { NumberInput } from "@/components/ui/number-input";
 import { MiniFeatureCard } from "@/components/ui/mini-feature-card";
@@ -321,7 +322,7 @@ export function RichLinkEmbedsPanel() {
         <SectionCard level="secondary" category="messages" header={d.channels}>
           <div className="d-flex flex-column gap-3 p-1">
             <div>
-              <CFormLabel>{d.allowlist}</CFormLabel>
+              <ChannelPickerToolbar label={d.allowlist} />
               <ChannelSelect
                 channels={resources?.channels ?? []}
                 value=""
@@ -335,6 +336,7 @@ export function RichLinkEmbedsPanel() {
               <ChannelChips
                 ids={draft.channel_allowlist}
                 channels={resources?.channels ?? []}
+                unavailableLabel={dict.common.channelUnavailable}
                 onRemove={(id) =>
                   patch({
                     channel_allowlist: draft.channel_allowlist.filter(
@@ -359,6 +361,7 @@ export function RichLinkEmbedsPanel() {
               <ChannelChips
                 ids={draft.channel_denylist}
                 channels={resources?.channels ?? []}
+                unavailableLabel={dict.common.channelUnavailable}
                 onRemove={(id) =>
                   patch({
                     channel_denylist: draft.channel_denylist.filter(
@@ -460,10 +463,12 @@ function ChannelChips({
   ids,
   channels,
   onRemove,
+  unavailableLabel,
 }: {
   ids: string[];
   channels: { id: string; name: string }[];
   onRemove: (id: string) => void;
+  unavailableLabel: string;
 }) {
   if (!ids.length) return null;
   const names = new Map(channels.map((c) => [c.id, c.name]));
@@ -476,7 +481,7 @@ function ChannelChips({
           variant="secondary"
           onClick={() => onRemove(id)}
         >
-          #{names.get(id) ?? id} ×
+          #{names.get(id) ?? unavailableLabel} ×
         </Button>
       ))}
     </div>

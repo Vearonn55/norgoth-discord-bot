@@ -12,6 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { NumberInput } from "@/components/ui/number-input";
+import { ChannelSelect } from "@/components/ui/channel-select";
+import { ChannelPickerToolbar } from "@/components/ui/refresh-channels-button";
 import { DataTable } from "@/components/ui/data-table";
 import { RichMessageEditor } from "@/components/editors/rich-message-editor";
 import { formatDict, useLocaleDict } from "@/lib/locale-dict";
@@ -168,23 +170,18 @@ export function AutoResponsesPanel() {
 
           <div className="row g-3">
             <div>
-              <CFormLabel>{d.restrictChannel}</CFormLabel>
-              <CFormSelect
+              <ChannelPickerToolbar label={d.restrictChannel} />
+              <ChannelSelect
+                channels={channels}
                 value={draft.channel_id ?? ""}
-                onChange={(event) =>
+                onChange={(value) =>
                   setDraft((current) => ({
                     ...current,
-                    channel_id: event.target.value || null,
+                    channel_id: value || null,
                   }))
                 }
-              >
-                <option value="">{d.anyChannel}</option>
-                {channels.map((channel) => (
-                  <option key={channel.id} value={channel.id}>
-                    #{channel.name}
-                  </option>
-                ))}
-              </CFormSelect>
+                emptyLabel={d.anyChannel}
+              />
             </div>
 
             <div>

@@ -32,6 +32,8 @@ import { MessagePreview } from "@/components/discord/message-preview";
 import { RichMessageEditor } from "@/components/editors/rich-message-editor";
 import { PageHeader } from "@/components/layout/page-header";
 import { MutedSection } from "@/components/ui/feature-muting";
+import { ChannelSelect } from "@/components/ui/channel-select";
+import { ChannelPickerToolbar } from "@/components/ui/refresh-channels-button";
 import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import { useModulesStore } from "@/stores/modules-store";
@@ -531,23 +533,18 @@ export function LevelingPanel() {
 
             {config.announce_mode === "channel" ? (
               <CCol md={6}>
-                <CFormLabel>{d.announcementChannel}</CFormLabel>
-                <CFormSelect
+                <ChannelPickerToolbar label={d.announcementChannel} />
+                <ChannelSelect
+                  channels={channels}
                   value={config.announce_channel_id ?? ""}
-                  onChange={(event) =>
+                  onChange={(value) =>
                     setConfig((current) => ({
                       ...current,
-                      announce_channel_id: event.target.value || null,
+                      announce_channel_id: value || null,
                     }))
                   }
-                >
-                  <option value="">{d.selectChannel}</option>
-                  {channels.map((channel) => (
-                    <option key={channel.id} value={channel.id}>
-                      #{channel.name}
-                    </option>
-                  ))}
-                </CFormSelect>
+                  emptyLabel={d.selectChannel}
+                />
               </CCol>
             ) : null}
           </CRow>

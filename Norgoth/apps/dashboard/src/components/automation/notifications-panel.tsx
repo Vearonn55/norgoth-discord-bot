@@ -14,6 +14,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { ChannelSelect } from "@/components/ui/channel-select";
+import { ChannelPickerToolbar } from "@/components/ui/refresh-channels-button";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import {
   useNotificationsStore,
@@ -149,23 +151,18 @@ export function NotificationsPanel() {
             </CCol>
 
             <CCol md={4}>
-              <CFormLabel>Announcement channel</CFormLabel>
-              <CFormSelect
+              <ChannelPickerToolbar label="Announcement channel" />
+              <ChannelSelect
+                channels={channels}
                 value={draft.channel_id ?? ""}
-                onChange={(event) =>
+                onChange={(value) =>
                   setDraft((current) => ({
                     ...current,
-                    channel_id: event.target.value || null,
+                    channel_id: value || null,
                   }))
                 }
-              >
-                <option value="">Select a channel…</option>
-                {channels.map((channel) => (
-                  <option key={channel.id} value={channel.id}>
-                    #{channel.name}
-                  </option>
-                ))}
-              </CFormSelect>
+                emptyLabel="Select a channel…"
+              />
             </CCol>
 
             <CCol md={4}>

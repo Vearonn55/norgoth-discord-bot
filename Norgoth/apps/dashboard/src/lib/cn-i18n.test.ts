@@ -15,6 +15,16 @@ describe("content notifications and campaign history i18n", () => {
       "{window} feed disabled.",
     );
     expect(en.feedChannelsPage.windowUpdatedSuccess).toBe("Feed window updated.");
+    expect(en.feedChannelsPage.title).toBe("Top Trending");
+    expect(en.common.refreshChannels).toBe("Refresh Channels");
+    expect(en.common.refreshChannelsSuccess).toBe("Channel list updated.");
+    expect(en.common.refreshChannelsError).toBe(
+      "Could not refresh channels. Please retry.",
+    );
+    expect(en.common.channelUnavailable).toBe("Deleted or no longer available");
+    expect(en.common.discordRateLimited).toBe(
+      "Discord is rate-limiting guild resources. Please retry shortly.",
+    );
     expect(en.campaignHistoryPage.metricArchived).toBe("Archived Campaigns");
     expect(en.contentNotifications.historyModalTitle).toBe("History");
     expect(en.contentNotifications.historyPageTitle).toBe("Delivery History");
@@ -36,6 +46,12 @@ describe("content notifications and campaign history i18n", () => {
     expect(tr.feedChannelsPage.windowUpdatedSuccess).toBe(
       "Feed penceresi güncellendi.",
     );
+    expect(tr.common.refreshChannels).toBe("Kanalları Yenile");
+    expect(tr.common.refreshChannelsSuccess).toBe("Kanal listesi güncellendi.");
+    expect(tr.common.refreshChannelsError).toBe(
+      "Kanallar yenilenemedi. Lütfen yeniden deneyin.",
+    );
+    expect(tr.common.channelUnavailable).toBe("Silindi veya artık uygun değil");
     expect(tr.featureInfo.inviteTracking.description).toContain(
       "davet bağlantılarıyla ilişkilendirir.",
     );
@@ -47,6 +63,47 @@ describe("content notifications and campaign history i18n", () => {
     expect(tr.contentNotifications.historyModalTitle).toBe("Geçmiş");
     expect(tr.contentNotifications.historyPageTitle).toBe("Teslimat Geçmişi");
     expect(tr.sidebar.rssFeeds).toBe("RSS Akışları");
+  });
+});
+
+describe("top trending master toggle", () => {
+  it("hides the duplicate title beside the slider and keeps the accessible name", () => {
+    const src = readFileSync(
+      resolve(__dirname, "../components/community/feed-channels-panel.tsx"),
+      "utf8",
+    );
+    expect(src).toContain("showLabel: false");
+    expect(src).toContain("label: d.title");
+  });
+});
+
+describe("refresh channels action", () => {
+  it("keeps labeled refresh copy and reduced-motion CSS", () => {
+    const buttonSrc = readFileSync(
+      resolve(__dirname, "../components/ui/refresh-channels-button.tsx"),
+      "utf8",
+    );
+    const cssSrc = readFileSync(
+      resolve(__dirname, "../app/globals.css"),
+      "utf8",
+    );
+    const selectSrc = readFileSync(
+      resolve(__dirname, "../components/ui/channel-select.tsx"),
+      "utf8",
+    );
+    const campaignSrc = readFileSync(
+      resolve(__dirname, "../components/campaigns/campaign-wizard.tsx"),
+      "utf8",
+    );
+    expect(buttonSrc).toContain("cilReload");
+    expect(buttonSrc).toContain("flex-wrap");
+    expect(buttonSrc).toContain("common.refreshChannels");
+    expect(buttonSrc).toContain("norgoth-refresh-spin");
+    expect(cssSrc).toContain("@media (prefers-reduced-motion: reduce)");
+    expect(cssSrc).toContain(".norgoth-refresh-spin");
+    expect(selectSrc).toContain("channelUnavailable");
+    expect(campaignSrc).toContain("RefreshChannelsButton");
+    expect(campaignSrc).not.toContain("/discord-resources");
   });
 });
 

@@ -52,7 +52,67 @@ def honeypot_warning_lock_key(guild_id: int | str) -> str:
     return f"norgoth:guild:{guild_id}:honeypot:warning-lock"
 
 
-WARNING_LOCK_TTL_SECONDS = 30
+WARNING_LOCK_TTL_SECONDS = 120
+WARNING_HISTORY_SCAN = 50
+
+
+def missing_warning_permissions(perms: Any) -> list[str]:
+    """Return Discord permission names required to post and pin a warning."""
+
+    missing: list[str] = []
+    if not getattr(perms, "view_channel", True):
+        missing.append("view_channel")
+    if not getattr(perms, "send_messages", False):
+        missing.append("send_messages")
+    if not getattr(perms, "read_message_history", True):
+        missing.append("read_message_history")
+    can_pin = bool(getattr(perms, "manage_messages", False)) or bool(
+        getattr(perms, "pin_messages", False)
+    )
+    if not can_pin:
+        missing.append("manage_messages")
+    return missing
+
+
+def warning_status_ok() -> dict[str, Any]:
+    return {"ok": True}
+
+
+def warning_status_error(
+    code: str,
+    message: str,
+    *,
+    missing: list[str] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {"ok": False, "code": code, "message": message}
+    if missing:
+        payload["missing"] = missing
+    return payload
+
+
+def is_duplicate_warning(
+    message: Any,
+    *,
+    me_id: int,
+    canonical_id: str | None,
+    content: str | None,
+    embed_title: str | None,
+) -> bool:
+    author = getattr(message, "author", None)
+    if getattr(author, "id", None) != me_id:
+        return False
+    if canonical_id and str(getattr(message, "id", "")) == str(canonical_id):
+        return False
+    if bool(getattr(message, "pinned", False)):
+        return True
+    msg_content = str(getattr(message, "content", None) or "").strip() or None
+    if content and msg_content == content:
+        return True
+    if embed_title:
+        for embed in getattr(message, "embeds", None) or []:
+            if getattr(embed, "title", None) == embed_title:
+                return True
+    return False
 
 
 class HoneypotCog(commands.Cog):
@@ -65,13 +125,20 @@ class HoneypotCog(commands.Cog):
 
     async def get_config(self, guild_id: int) -> dict[str, Any]:
         stored = await self.bot.state.get_json(honeypot_key(guild_id))
+        if stored and not stored.get("warning_message_id"):
+            hydrated = await self.bot.state._hydrate_feature_from_api(
+                guild_id, "honeypot"
+            )
+            if hydrated and hydrated.get("warning_message_id"):
+                stored = hydrated
+                await self.bot.state.set_json(honeypot_key(guild_id), stored)
         if not stored:
             stored = await self.bot.state._hydrate_feature_from_api(
                 guild_id, "honeypot"
             )
             if stored:
                 await self.bot.state.set_json(honeypot_key(guild_id), stored)
-        return {**DEFAULT_CONFIG, **stored}
+        return {**DEFAULT_CONFIG, **(stored or {})}
 
     async def save_config(self, guild_id: int, config: dict[str, Any]) -> None:
         config["updated_at"] = now_iso()
@@ -128,13 +195,20 @@ class HoneypotCog(commands.Cog):
         if me is None:
             return config
 
-        perms = channel.permissions_for(me)
-        if not (perms.send_messages and perms.manage_messages):
+        missing = missing_warning_permissions(channel.permissions_for(me))
+        if missing:
+            config["warning_status"] = warning_status_error(
+                "missing_permissions",
+                "NorBot is missing permissions to post or pin the honeypot warning.",
+                missing=missing,
+            )
+            await self.save_config(guild.id, config)
             return config
 
         redis = self.bot.state.redis
+        lock_key = honeypot_warning_lock_key(guild.id)
         acquired = await redis.set(
-            honeypot_warning_lock_key(guild.id),
+            lock_key,
             "1",
             nx=True,
             ex=WARNING_LOCK_TTL_SECONDS,
@@ -142,39 +216,74 @@ class HoneypotCog(commands.Cog):
         if not acquired:
             return config
 
+        try:
+            return await self._ensure_pinned_warning_locked(guild, channel, me, config)
+        finally:
+            try:
+                await redis.delete(lock_key)
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "Failed to release honeypot warning lock guild=%s", guild.id
+                )
+
+    async def _ensure_pinned_warning_locked(
+        self,
+        guild: discord.Guild,
+        channel: discord.TextChannel,
+        me: discord.Member,
+        config: dict[str, Any],
+    ) -> dict[str, Any]:
         warning_message_id = config.get("warning_message_id")
         warning_channel_id = config.get("warning_channel_id")
-        force_repost = bool(config.get("force_warning_repost"))
+        content = str(config.get("warning_content") or "").strip() or None
+        embed = self.build_warning_embed(config)
+        embed_title = None
+        raw_embed = config.get("warning_embed")
+        if isinstance(raw_embed, dict):
+            embed_title = str(raw_embed.get("title") or "") or None
 
-        if (
-            warning_channel_id
-            and str(warning_channel_id) != str(channel.id)
-        ):
+        if warning_channel_id and str(warning_channel_id) != str(channel.id):
             old_channel = guild.get_channel(int(warning_channel_id))
             if isinstance(old_channel, discord.TextChannel) and warning_message_id:
                 try:
                     old_message = await old_channel.fetch_message(
                         int(warning_message_id)
                     )
-                    if old_message.pinned:
-                        await old_message.unpin(reason="Honeypot warning moved")
-                    await old_message.delete()
+                    if getattr(old_message.author, "id", None) == me.id:
+                        if old_message.pinned:
+                            await old_message.unpin(reason="Honeypot warning moved")
+                        await old_message.delete()
                 except (discord.NotFound, discord.HTTPException, ValueError):
                     pass
             warning_message_id = None
             config["warning_message_id"] = None
             config["warning_channel_id"] = None
-            force_repost = True
+            config["warning_pinned"] = False
 
         existing: discord.Message | None = None
         if warning_message_id:
             try:
                 existing = await channel.fetch_message(int(warning_message_id))
-            except (discord.NotFound, discord.HTTPException, ValueError):
+            except discord.NotFound:
                 existing = None
-
-        content = str(config.get("warning_content") or "").strip() or None
-        embed = self.build_warning_embed(config)
+            except discord.HTTPException as error:
+                status = int(getattr(error, "status", 0) or 0)
+                if status == 404:
+                    existing = None
+                else:
+                    code = (
+                        "missing_permissions"
+                        if status in {401, 403}
+                        else "discord_unavailable"
+                    )
+                    config["warning_status"] = warning_status_error(
+                        code,
+                        "Could not verify the existing honeypot warning.",
+                    )
+                    await self.save_config(guild.id, config)
+                    return config
+            except ValueError:
+                existing = None
 
         if existing is not None and existing.author.id == me.id:
             try:
@@ -185,44 +294,103 @@ class HoneypotCog(commands.Cog):
                     guild.id,
                     channel.id,
                 )
-            else:
-                if not existing.pinned:
-                    try:
-                        await existing.pin(reason="Norgoth honeypot warning")
-                    except discord.HTTPException:
-                        pass
-                if force_repost:
-                    config["force_warning_repost"] = False
-                    await self.save_config(guild.id, config)
-                logger.info(
-                    "honeypot warning skip-if-exists guild=%s channel=%s",
-                    guild.id,
-                    channel.id,
+                config["warning_status"] = warning_status_error(
+                    "discord_unavailable",
+                    "Could not update the existing honeypot warning.",
                 )
+                await self.save_config(guild.id, config)
                 return config
 
-        if warning_message_id and existing is None and not force_repost:
+            pinned = bool(existing.pinned)
+            if not pinned:
+                try:
+                    await existing.pin(reason="Norgoth honeypot warning")
+                    pinned = True
+                except discord.HTTPException:
+                    logger.exception(
+                        "Failed to pin honeypot warning in guild %s channel %s",
+                        guild.id,
+                        channel.id,
+                    )
+                    config["warning_message_id"] = str(existing.id)
+                    config["warning_channel_id"] = str(channel.id)
+                    config["warning_pinned"] = False
+                    config["force_warning_repost"] = False
+                    config["warning_status"] = warning_status_error(
+                        "pin_failed",
+                        "The honeypot warning exists but could not be pinned.",
+                    )
+                    await self.save_config(guild.id, config)
+                    return config
+            config["warning_message_id"] = str(existing.id)
+            config["warning_channel_id"] = str(channel.id)
+            config["warning_pinned"] = True
+            config["force_warning_repost"] = False
+            config["warning_status"] = warning_status_ok()
+            await self.save_config(guild.id, config)
+            await self._cleanup_duplicate_warnings(
+                channel,
+                me_id=me.id,
+                canonical_id=str(existing.id),
+                content=content,
+                embed_title=embed_title,
+            )
             logger.info(
-                "honeypot warning remains absent until Save/Repair guild=%s",
+                "honeypot warning skip-if-exists guild=%s channel=%s",
                 guild.id,
+                channel.id,
             )
             return config
 
         try:
             message = await channel.send(content=content, embed=embed)
-            await message.pin(reason="Norgoth honeypot warning")
         except discord.HTTPException:
             logger.exception(
                 "Failed to post honeypot warning in guild %s channel %s",
                 guild.id,
                 channel.id,
             )
+            config["warning_status"] = warning_status_error(
+                "discord_unavailable",
+                "Could not post the honeypot warning.",
+            )
+            await self.save_config(guild.id, config)
             return config
 
         config["warning_message_id"] = str(message.id)
         config["warning_channel_id"] = str(channel.id)
+        config["warning_posted_at"] = now_iso()
+        config["warning_pinned"] = False
         config["force_warning_repost"] = False
+        config["warning_status"] = warning_status_ok()
         await self.save_config(guild.id, config)
+
+        try:
+            await message.pin(reason="Norgoth honeypot warning")
+        except discord.HTTPException:
+            logger.exception(
+                "Failed to pin honeypot warning in guild %s channel %s",
+                guild.id,
+                channel.id,
+            )
+            config["warning_pinned"] = False
+            config["warning_status"] = warning_status_error(
+                "pin_failed",
+                "The honeypot warning was posted but could not be pinned.",
+            )
+            await self.save_config(guild.id, config)
+            return config
+
+        config["warning_pinned"] = True
+        config["warning_status"] = warning_status_ok()
+        await self.save_config(guild.id, config)
+        await self._cleanup_duplicate_warnings(
+            channel,
+            me_id=me.id,
+            canonical_id=str(message.id),
+            content=content,
+            embed_title=embed_title,
+        )
         logger.info(
             "honeypot warning posted-once guild=%s channel=%s message=%s",
             guild.id,
@@ -230,6 +398,53 @@ class HoneypotCog(commands.Cog):
             message.id,
         )
         return config
+
+    async def _cleanup_duplicate_warnings(
+        self,
+        channel: discord.TextChannel,
+        *,
+        me_id: int,
+        canonical_id: str,
+        content: str | None,
+        embed_title: str | None,
+    ) -> None:
+        candidates: list[Any] = []
+        seen: set[int] = set()
+        try:
+            pins = await channel.pins()
+        except discord.HTTPException:
+            pins = []
+        for message in pins:
+            message_id = int(getattr(message, "id", 0) or 0)
+            if message_id and message_id not in seen:
+                seen.add(message_id)
+                candidates.append(message)
+        try:
+            async for message in channel.history(limit=WARNING_HISTORY_SCAN):
+                message_id = int(getattr(message, "id", 0) or 0)
+                if message_id and message_id not in seen:
+                    seen.add(message_id)
+                    candidates.append(message)
+        except discord.HTTPException:
+            pass
+
+        for message in candidates:
+            if not is_duplicate_warning(
+                message,
+                me_id=me_id,
+                canonical_id=canonical_id,
+                content=content,
+                embed_title=embed_title,
+            ):
+                continue
+            try:
+                await message.delete()
+            except discord.HTTPException:
+                logger.exception(
+                    "Failed to delete duplicate honeypot warning channel=%s message=%s",
+                    channel.id,
+                    getattr(message, "id", None),
+                )
 
     async def apply_punishment(
         self,

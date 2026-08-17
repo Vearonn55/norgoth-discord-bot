@@ -16,6 +16,7 @@ DISCORD_API_BASE_URL = "https://discord.com/api/v10"
 # Discord channel type constants (subset we provision).
 CHANNEL_TYPE_TEXT = 0
 CHANNEL_TYPE_CATEGORY = 4
+CHANNEL_TYPE_ANNOUNCEMENT = 5
 
 # Permission bits used for Feed Channel send restrictions.
 PERM_VIEW_CHANNEL = 1 << 10
@@ -519,6 +520,7 @@ def bot_permissions_from_guild(
 __all__ = [
     "CHANNEL_TYPE_TEXT",
     "CHANNEL_TYPE_CATEGORY",
+    "CHANNEL_TYPE_ANNOUNCEMENT",
     "bot_permissions_from_guild",
     "DISCORD_API_BASE_URL",
     "DiscordBotAPIError",

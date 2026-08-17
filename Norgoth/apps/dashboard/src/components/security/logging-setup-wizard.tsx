@@ -6,7 +6,6 @@ import {
   CFormCheck,
   CFormInput,
   CFormLabel,
-  CFormSelect,
 } from "@coreui/react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,6 +14,8 @@ import { Switch } from "@/components/ui/switch";
 import { Stepper } from "@/components/ui/stepper";
 import { EmbedColorPicker } from "@/components/discord/embed-color-picker";
 import { DiscordEmojiPicker } from "@/components/discord/discord-emoji-picker";
+import { ChannelSelect } from "@/components/ui/channel-select";
+import { RefreshChannelsButton } from "@/components/ui/refresh-channels-button";
 import type { GuildChannel } from "@/stores/guild-store";
 import {
   colorToHex,
@@ -278,6 +279,11 @@ export function LoggingSetupWizard({ guildId, channels, onComplete }: Props) {
 
         {step === 1 ? (
           <div className="d-flex flex-column gap-3">
+            {groups.some((group) => group.included && group.mode === "existing") ? (
+              <div className="d-flex justify-content-end">
+                <RefreshChannelsButton />
+              </div>
+            ) : null}
             {groups.map((group) => (
               <div
                 key={group.key}
@@ -346,21 +352,16 @@ export function LoggingSetupWizard({ guildId, channels, onComplete }: Props) {
                       </div>
                     </div>
                   ) : (
-                    <CFormSelect
+                    <ChannelSelect
+                      channels={channels}
                       value={group.channelId ?? ""}
-                      onChange={(e) =>
+                      onChange={(value) =>
                         patchGroup(group.key, {
-                          channelId: e.target.value || null,
+                          channelId: value || null,
                         })
                       }
-                    >
-                      <option value="">{d.selectChannel}</option>
-                      {channels.map((channel) => (
-                        <option key={channel.id} value={channel.id}>
-                          #{channel.name}
-                        </option>
-                      ))}
-                    </CFormSelect>
+                      emptyLabel={d.selectChannel}
+                    />
                   )
                 ) : null}
               </div>

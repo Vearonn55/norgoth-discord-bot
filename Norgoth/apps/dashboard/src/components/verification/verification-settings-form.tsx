@@ -16,6 +16,8 @@ import { NumberInput } from "@/components/ui/number-input";
 import { useParams } from "next/navigation";
 import { browserApiUrl } from "@/lib/api";
 import { formatDict, useLocaleDict } from "@/lib/locale-dict";
+import { ChannelSelect } from "@/components/ui/channel-select";
+import { ChannelPickerToolbar } from "@/components/ui/refresh-channels-button";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import {
   canPublishOrCopy,
@@ -140,17 +142,14 @@ export function VerificationSettingsForm() {
 
           <CRow className="g-3">
             <CCol md={6}>
-              <Select
-                label={d.verificationChannel}
-                selectPlaceholder={d.selectPlaceholder}
+              <ChannelPickerToolbar label={d.verificationChannel} />
+              <ChannelSelect
+                channels={channels}
                 value={config.verification_channel_id}
-                options={channels.map((c) => ({
-                  value: c.id,
-                  label: `#${c.name}`,
-                }))}
                 onChange={(value) =>
                   setConfig((c) => ({ ...c, verification_channel_id: value }))
                 }
+                emptyLabel={d.selectPlaceholder}
               />
             </CCol>
           </CRow>

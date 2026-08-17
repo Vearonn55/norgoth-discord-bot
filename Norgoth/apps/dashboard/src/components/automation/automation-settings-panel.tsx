@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { RoleMultiPicker } from "@/components/ui/role-multi-picker";
+import { ChannelPickerToolbar } from "@/components/ui/refresh-channels-button";
 import { RichMessageEditor } from "@/components/editors/rich-message-editor";
 import { MessagePreview } from "@/components/discord/message-preview";
 import { EmbedDraftCreator } from "@/components/embed-messages/embed-draft-creator";
@@ -206,6 +207,7 @@ export function AutomationSettingsPanel({ section }: { section: Section }) {
                     label: `#${channel.name}`,
                   }))}
                   placeholder={d.selectChannel}
+                  showRefresh
                 />
 
                 <MessageComposer
@@ -704,21 +706,36 @@ function SelectRow({
   onChange,
   options,
   placeholder,
+  showRefresh = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   options: { value: string; label: string }[];
   placeholder: string;
+  showRefresh?: boolean;
 }) {
+  const dict = useLocaleDict();
+  const selectedMissing =
+    Boolean(value) && !options.some((option) => option.value === value);
+
   return (
     <div>
-      <CFormLabel>{label}</CFormLabel>
+      {showRefresh ? (
+        <ChannelPickerToolbar label={label} />
+      ) : (
+        <CFormLabel>{label}</CFormLabel>
+      )}
       <CFormSelect
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
         <option value="">{placeholder}</option>
+        {selectedMissing ? (
+          <option value={value} disabled>
+            {dict.common.channelUnavailable}
+          </option>
+        ) : null}
         {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}

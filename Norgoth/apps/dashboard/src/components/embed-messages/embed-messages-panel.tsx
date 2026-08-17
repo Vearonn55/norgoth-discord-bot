@@ -5,7 +5,6 @@ import Link from "next/link";
 import {
   CFormCheck,
   CFormInput,
-  CFormSelect,
   CModal,
   CModalBody,
   CModalFooter,
@@ -19,6 +18,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icon";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
+import { ChannelSelect } from "@/components/ui/channel-select";
+import { ChannelPickerToolbar } from "@/components/ui/refresh-channels-button";
 import { EmbedDraftCreator } from "@/components/embed-messages/embed-draft-creator";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import { formatDateTime } from "@/lib/datetime";
@@ -463,17 +464,13 @@ export function EmbedMessagesPanel({ lang }: Props) {
           <p className="small text-body-secondary">
             {d.deployDesc}
           </p>
-          <CFormSelect
+          <ChannelPickerToolbar label={d.selectChannel} />
+          <ChannelSelect
+            channels={channels}
             value={deployChannelId}
-            onChange={(e) => setDeployChannelId(e.target.value)}
-          >
-            <option value="">{d.selectChannel}</option>
-            {channels.map((channel) => (
-              <option key={channel.id} value={channel.id}>
-                #{channel.name}
-              </option>
-            ))}
-          </CFormSelect>
+            onChange={setDeployChannelId}
+            emptyLabel={d.selectChannel}
+          />
         </CModalBody>
         <CModalFooter>
           <Button variant="secondary" onClick={() => setDeployFor(null)}>

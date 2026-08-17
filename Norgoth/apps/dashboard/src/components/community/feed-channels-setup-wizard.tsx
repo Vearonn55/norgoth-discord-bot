@@ -14,6 +14,10 @@ import { Stepper } from "@/components/ui/stepper";
 import { DiscordEmojiPicker } from "@/components/discord/discord-emoji-picker";
 import { GuildChannelMultiSelect } from "@/components/ui/guild-channel-multi-select";
 import { ChannelSelect } from "@/components/ui/channel-select";
+import {
+  ChannelPickerToolbar,
+  RefreshChannelsButton,
+} from "@/components/ui/refresh-channels-button";
 import { NumberInput } from "@/components/ui/number-input";
 import type { GuildCategory, GuildChannel } from "@/stores/guild-store";
 import type { GuildEmojiItem } from "@/lib/discord/emoji-data";
@@ -167,7 +171,7 @@ export function FeedChannelsSetupWizard({
         {step === 1 ? (
           <div className="d-flex flex-column gap-3">
             <div>
-              <CFormLabel>{d.sourceChannels}</CFormLabel>
+              <ChannelPickerToolbar label={d.sourceChannels} />
               <GuildChannelMultiSelect
                 channels={textChannels}
                 selectedIds={draft.source_channel_ids}
@@ -196,6 +200,9 @@ export function FeedChannelsSetupWizard({
 
         {step === 2 ? (
           <div className="d-flex flex-column gap-3">
+            <div className="d-flex justify-content-end">
+              <RefreshChannelsButton />
+            </div>
             {WINDOW_KEYS.map((key) => {
               const windowLabel =
                 windowLabels[key] ?? FEED_WINDOW_LABELS[key];

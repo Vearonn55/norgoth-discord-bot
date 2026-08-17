@@ -68,6 +68,43 @@ async def load_config(guild_id: str, feature_key: str) -> Any | None:
         return row.config
 
 
+def first_trap_channel_id(config: dict[str, Any] | None) -> str | None:
+    if not isinstance(config, dict):
+        return None
+    ids = [
+        str(channel_id)
+        for channel_id in (config.get("trap_channel_ids") or [])
+        if str(channel_id).isdigit()
+    ]
+    return ids[0] if ids else None
+
+
+def merge_honeypot_warning_fields(
+    existing: dict[str, Any] | None,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    """Keep durable warning IDs unless the first trap channel changed."""
+
+    if not isinstance(payload, dict):
+        return payload
+    stored = existing if isinstance(existing, dict) else {}
+    old_first = first_trap_channel_id(stored)
+    new_first = first_trap_channel_id(payload)
+    if old_first and new_first and old_first != new_first:
+        return payload
+
+    merged = dict(payload)
+    for key in ("warning_message_id", "warning_channel_id"):
+        if not merged.get(key) and stored.get(key):
+            merged[key] = stored[key]
+    for key in ("warning_posted_at", "warning_status"):
+        if not merged.get(key) and stored.get(key):
+            merged[key] = stored[key]
+    if merged.get("warning_pinned") is None and stored.get("warning_pinned") is not None:
+        merged["warning_pinned"] = stored["warning_pinned"]
+    return merged
+
+
 async def save_config(
     guild_id: str,
     feature_key: str,
@@ -96,6 +133,9 @@ async def save_config(
             )
             session.add(row)
         else:
+            if feature_key == "honeypot" and isinstance(payload, dict):
+                existing_payload = row.config if isinstance(row.config, dict) else {}
+                payload = merge_honeypot_warning_fields(existing_payload, payload)
             row.config = payload
             row.enabled = bool(resolved_enabled)
         await session.commit()
