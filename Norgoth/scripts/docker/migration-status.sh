@@ -32,6 +32,8 @@ esac
 : "${NORBOT_API_IMAGE:?NORBOT_API_IMAGE is required}"
 export NORBOT_ENV_FILE="${ENV_FILE}"
 
+docker compose --env-file "${ENV_FILE}" "${COMPOSE_FILES[@]}" up -d --wait --wait-timeout 120 postgres
+
 echo "=== alembic current (${ENV_NAME}) ==="
 docker compose --env-file "${ENV_FILE}" "${COMPOSE_FILES[@]}" run --rm --no-deps api python -m alembic current
 echo "=== alembic history (last 15) ==="

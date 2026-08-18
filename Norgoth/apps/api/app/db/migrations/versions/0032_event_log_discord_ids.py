@@ -1,6 +1,6 @@
 """Persist Discord message ids for late actor enrichment edits.
 
-Revision ID: 0032_server_event_log_discord_message
+Revision ID: 0032_event_log_discord_ids
 Revises: 0031_invite_lifecycle
 Create Date: 2026-08-18
 """
@@ -10,7 +10,7 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0032_server_event_log_discord_message"
+revision = "0032_event_log_discord_ids"
 down_revision = "0031_invite_lifecycle"
 branch_labels = None
 depends_on = None
