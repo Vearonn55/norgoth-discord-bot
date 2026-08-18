@@ -102,7 +102,10 @@ async def process_feed(
         return {"posted": 0, "error": feed.last_error}
 
     try:
-        parsed = parse_feed(result.body)
+        parsed = parse_feed(
+            result.body,
+            content_type=result.headers.get("content-type"),
+        )
     except FeedParseError as exc:
         feed.failure_count = int(feed.failure_count or 0) + 1
         feed.last_error = str(exc)[:1000]

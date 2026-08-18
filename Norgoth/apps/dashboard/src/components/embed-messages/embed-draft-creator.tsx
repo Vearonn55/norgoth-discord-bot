@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CAlert, CFormInput, CFormLabel } from "@coreui/react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,11 +14,9 @@ import {
 } from "@/stores/embed-messages-store";
 import type { DiscordEmbedPayload } from "@/lib/discord/message-payload";
 import {
-  DISCORD_LIMITS,
   scrubEmptyEmbedUrls,
-  validateEmbed,
 } from "@/lib/discord/message-payload";
-import { formatDict, useLocaleDict } from "@/lib/locale-dict";
+import { useLocaleDict } from "@/lib/locale-dict";
 
 const EMPTY_EMBED: DiscordEmbedPayload = {
   title: "",
@@ -116,8 +114,6 @@ export function EmbedDraftCreator({
   const [feedback, setFeedback] = useState<string | null>(null);
   const [feedbackError, setFeedbackError] = useState(false);
 
-  const embedErrors = useMemo(() => validateEmbed(embed), [embed]);
-
   // Emit live values so a controlled host can render its own preview / persist
   // on demand. Kept in a ref so an inline callback does not retrigger the emit
   // effect (which would loop if the host updates state on each change).
@@ -138,11 +134,6 @@ export function EmbedDraftCreator({
     if (!guildId) return;
     if (!name.trim()) {
       setFeedback(d.nameRequired);
-      setFeedbackError(true);
-      return;
-    }
-    if (embedErrors.length > 0) {
-      setFeedback(embedErrors[0]);
       setFeedbackError(true);
       return;
     }
@@ -207,11 +198,6 @@ export function EmbedDraftCreator({
             height={140}
             placeholder={d.messageContentPlaceholder}
           />
-          {content.length > DISCORD_LIMITS.content ? (
-            <p className="small text-danger mb-0 mt-1">
-              {formatDict(d.contentTooLong, { limit: DISCORD_LIMITS.content })}
-            </p>
-          ) : null}
         </div>
 
         <hr className="my-1" />
@@ -234,14 +220,6 @@ export function EmbedDraftCreator({
             placeholder={d.embedDescriptionPlaceholder}
           />
         </div>
-
-        {embedErrors.length > 0 ? (
-          <CAlert color="warning" className="mb-0">
-            {embedErrors.map((err) => (
-              <div key={err}>{err}</div>
-            ))}
-          </CAlert>
-        ) : null}
 
         {hideActions ? null : (
           <div className="d-flex gap-2">

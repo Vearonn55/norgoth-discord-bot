@@ -22,7 +22,6 @@ import {
 } from "@/components/embed-messages/embed-draft-creator";
 import { MessageSourceToggle } from "@/components/discord/message-source-toggle";
 import { RichMessageEditor } from "@/components/editors/rich-message-editor";
-import { validateEmbed } from "@/lib/discord/message-payload";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import { useParams } from "next/navigation";
 import { ChannelSelect } from "@/components/ui/channel-select";
@@ -268,11 +267,6 @@ export function RoleMenusPanel() {
         setSarError(d.errEmbedName);
         return;
       }
-      const embedErrors = validateEmbed(newEmbedDraft.embed);
-      if (embedErrors.length > 0) {
-        setSarError(embedErrors[0]);
-        return;
-      }
       if (!targetChannel) {
         setSarError(d.errChooseChannel);
         return;
@@ -440,8 +434,7 @@ export function RoleMenusPanel() {
               (sourceMode === "CREATE_NEW" &&
                 (!newEmbedDraft ||
                   !newEmbedDraft.name.trim() ||
-                  !newMenuChannelId ||
-                  validateEmbed(newEmbedDraft.embed).length > 0)))
+                  !newMenuChannelId)))
         }
         saveLabel={d.saveMenu}
         scrollable={false}

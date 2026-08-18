@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0"
+  xmlns:atom="http://www.w3.org/2005/Atom"
+  xmlns:content="http://purl.org/rss/1.0/modules/content/"
+  xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>AI</title>
+    <link>https://blog.google/innovation-and-ai/technology/ai/</link>
+    <description>Google AI blog updates</description>
+    <item>
+      <title>Sample post one</title>
+      <link>https://blog.google/innovation-and-ai/technology/ai/sample-one/</link>
+      <guid isPermaLink="true">https://blog.google/innovation-and-ai/technology/ai/sample-one/</guid>
+      <pubDate>Mon, 17 Aug 2026 08:00:00 GMT</pubDate>
+      <description>A short summary.</description>
+    </item>
+    <item>
+      <title>Sample post two</title>
+      <link>https://blog.google/innovation-and-ai/technology/ai/sample-two/</link>
+      <guid isPermaLink="false">urn:google:ai:sample-two</guid>
+      <pubDate>Thu, 13 Aug 2026 16:45:00 GMT</pubDate>
+      <content:encoded><![CDATA[<p>Rich <strong>HTML</strong> body</p>]]></content:encoded>
+    </item>
+  </channel>
+</rss>

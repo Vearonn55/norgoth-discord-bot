@@ -12,6 +12,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.rss_feeds import RssFeedConfig
+from app.services.rss.normalize import canonical_feed_url
 
 MAX_FEEDS_PER_GUILD = 15
 MIN_POLL_INTERVAL_SECONDS = 300
@@ -27,7 +28,7 @@ logger = logging.getLogger("norgoth.rss.quotas")
 
 
 def feed_url_hash(url: str) -> str:
-    normalized = url.strip()
+    normalized = canonical_feed_url(url)
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 

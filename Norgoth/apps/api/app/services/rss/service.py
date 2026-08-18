@@ -16,8 +16,9 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.rss_feeds import RssFeedConfig, RssFeedItem
-from app.security.ssrf import SsrfError, safe_fetch
+from app.security.ssrf import SafeFetchResult, SsrfError, safe_fetch
 from app.services.rss.parser import FeedParseError, ParsedFeed, parse_feed
+from app.services.rss.normalize import canonical_feed_url
 from app.services.rss.quotas import (
     MAX_ITEMS_RETAINED,
     clamp_poll_interval,
@@ -40,6 +41,8 @@ PROBE_ERROR_MESSAGES: dict[str, str] = {
     "unsupported_content": "The response is not a supported feed type.",
     "invalid_document": "The document is not a valid RSS or Atom feed.",
 }
+
+MAX_DISPLAY_NAME_LEN = 200
 
 
 @dataclass
@@ -137,6 +140,90 @@ def _content_looks_like_feed(content_type: str | None) -> bool:
     )
 
 
+def clamp_display_name(value: str | None, *, max_len: int = MAX_DISPLAY_NAME_LEN) -> str | None:
+    if not value:
+        return None
+    trimmed = value.strip()
+    if not trimmed:
+        return None
+    if len(trimmed) <= max_len:
+        return trimmed
+    return trimmed[: max_len - 1].rstrip() + "…"
+
+
+def _probe_from_fetch(
+    result: SafeFetchResult,
+) -> ProbeResult:
+    if result.status_code >= 400:
+        reason = classify_http_status(result.status_code)
+        return _probe_fail(
+            reason,
+            etag=result.headers.get("etag"),
+            last_modified=result.headers.get("last-modified"),
+            final_url=result.final_url,
+        )
+
+    try:
+        parsed = parse_feed(
+            result.body,
+            content_type=result.headers.get("content-type"),
+        )
+    except FeedParseError:
+        content_type = result.headers.get("content-type")
+        reason = (
+            "unsupported_content"
+            if not _content_looks_like_feed(content_type)
+            else "invalid_document"
+        )
+        return _probe_fail(
+            reason,
+            etag=result.headers.get("etag"),
+            last_modified=result.headers.get("last-modified"),
+            final_url=result.final_url,
+        )
+
+    sample = parsed.items[0].title if parsed.items else None
+    return ProbeResult(
+        ok=True,
+        error=None,
+        error_code=None,
+        format_hint=parsed.format_hint,
+        feed_title=parsed.title,
+        sample_title=sample,
+        item_count=len(parsed.items),
+        etag=result.headers.get("etag"),
+        last_modified=result.headers.get("last-modified"),
+        final_url=result.final_url,
+        parsed=parsed,
+    )
+
+
+async def fetch_and_parse_feed(
+    url: str,
+    *,
+    client: httpx.AsyncClient | None = None,
+) -> ProbeResult:
+    """Shared hardened fetch + parse pipeline for probe and create."""
+
+    try:
+        canonical = canonical_feed_url(url)
+    except SsrfError as exc:
+        code = getattr(exc, "code", None) or "unsafe_destination"
+        return _probe_fail(code)
+
+    try:
+        result = await safe_fetch(canonical, client=client)
+    except SsrfError as exc:
+        code = getattr(exc, "code", None) or "unsafe_destination"
+        return _probe_fail(code)
+    except (httpx.HTTPError, httpx.InvalidURL, ssl.SSLError) as exc:
+        return _probe_fail(classify_transport_error(exc))
+    except MemoryError:
+        return _probe_fail("too_large")
+
+    return _probe_from_fetch(result)
+
+
 async def probe_feed_url(
     url: str,
     *,
@@ -149,63 +236,16 @@ async def probe_feed_url(
     reason = "ok"
     result_ok = False
     try:
-        try:
-            result = await safe_fetch(url, client=client)
-        except SsrfError as exc:
-            reason = getattr(exc, "code", None) or "unsafe_destination"
-            return _probe_fail(reason)
-        except (httpx.HTTPError, httpx.InvalidURL, ssl.SSLError) as exc:
-            reason = classify_transport_error(exc)
-            return _probe_fail(reason)
-        except MemoryError:
-            reason = "too_large"
-            return _probe_fail(reason)
-
-        redirect_count = int(getattr(result, "redirect_count", 0) or 0)
-        size_class = _size_class(len(result.body))
-
-        if result.status_code >= 400:
-            reason = classify_http_status(result.status_code)
-            return _probe_fail(
-                reason,
-                etag=result.headers.get("etag"),
-                last_modified=result.headers.get("last-modified"),
-                final_url=result.final_url,
-            )
-
-        try:
-            parsed = parse_feed(result.body)
-        except FeedParseError:
-            content_type = result.headers.get("content-type")
-            reason = (
-                "unsupported_content"
-                if not _content_looks_like_feed(content_type)
-                else "invalid_document"
-            )
-            return _probe_fail(
-                reason,
-                etag=result.headers.get("etag"),
-                last_modified=result.headers.get("last-modified"),
-                final_url=result.final_url,
-            )
-
-        parser = parsed.format_hint or "unknown"
-        result_ok = True
-        reason = "ok"
-        sample = parsed.items[0].title if parsed.items else None
-        return ProbeResult(
-            ok=True,
-            error=None,
-            error_code=None,
-            format_hint=parsed.format_hint,
-            feed_title=parsed.title,
-            sample_title=sample,
-            item_count=len(parsed.items),
-            etag=result.headers.get("etag"),
-            last_modified=result.headers.get("last-modified"),
-            final_url=result.final_url,
-            parsed=parsed,
-        )
+        probe = await fetch_and_parse_feed(url, client=client)
+        result_ok = probe.ok
+        if probe.ok and probe.parsed is not None:
+            parser = probe.format_hint or "unknown"
+            reason = "ok"
+        elif probe.error_code:
+            reason = probe.error_code
+        else:
+            reason = "invalid_document"
+        return probe
     finally:
         latency_ms = int((time.monotonic() - started) * 1000)
         logger.info(
@@ -226,16 +266,25 @@ async def bootstrap_items(
 ) -> int:
     """Mark current items as seen without publishing. Returns count inserted."""
 
+    if not parsed.items:
+        return 0
+
     now = datetime.now(timezone.utc)
+    keys = [item.item_key for item in parsed.items]
+    existing_keys = set(
+        (
+            await session.scalars(
+                select(RssFeedItem.item_key).where(
+                    RssFeedItem.feed_id == feed.id,
+                    RssFeedItem.item_key.in_(keys),
+                )
+            )
+        ).all()
+    )
+
     inserted = 0
     for item in parsed.items:
-        existing = await session.scalar(
-            select(RssFeedItem.id).where(
-                RssFeedItem.feed_id == feed.id,
-                RssFeedItem.item_key == item.item_key,
-            )
-        )
-        if existing:
+        if item.item_key in existing_keys:
             continue
         session.add(
             RssFeedItem(
@@ -246,6 +295,7 @@ async def bootstrap_items(
                 skipped_reason="bootstrap",
             )
         )
+        existing_keys.add(item.item_key)
         inserted += 1
     await session.flush()
     return inserted
@@ -304,8 +354,10 @@ def serialize_feed(feed: RssFeedConfig) -> dict[str, Any]:
 __all__ = [
     "ProbeResult",
     "bootstrap_items",
+    "clamp_display_name",
     "clamp_poll_interval",
     "feed_url_hash",
+    "fetch_and_parse_feed",
     "next_poll_after_success",
     "probe_feed_url",
     "prune_old_items",

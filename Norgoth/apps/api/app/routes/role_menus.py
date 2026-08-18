@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.dependencies_auth import guild_manager_dependency
+from app.core.content_limits import MAX_STORED_MARKDOWN_CHARS
 from app.db.session import get_database_session
 from app.models.embed_messages import EmbedMessageDelivery
 from app.services.campaign_store import get_redis, now_iso
@@ -117,7 +118,7 @@ class RoleMenu(BaseModel):
     # text = RichMessageEditor body on a standalone message; embed = bind to
     # Embed Library / Select From Draft.
     message_source: Literal["text", "embed"] = "embed"
-    text_content: str = Field(default="", max_length=2000)
+    text_content: str = Field(default="", max_length=MAX_STORED_MARKDOWN_CHARS)
     embed_message_id: Optional[str] = None
     embed_delivery_id: Optional[str] = None
     published_at: Optional[str] = None

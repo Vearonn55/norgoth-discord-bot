@@ -131,9 +131,12 @@ export function MessagePreview({
                   </div>
                 ) : null}
                 {embed.description ? (
-                  <div className="small text-body-secondary white-space-pre-wrap text-break">
-                    {embed.description}
-                  </div>
+                  <div
+                    className="small text-body-secondary text-break prose-preview"
+                    dangerouslySetInnerHTML={{
+                      __html: discordMarkdownToHtml(embed.description),
+                    }}
+                  />
                 ) : null}
               </div>
               <MediaSlotView

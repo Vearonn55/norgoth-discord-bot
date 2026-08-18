@@ -97,6 +97,7 @@ export function RssFeedsPanel() {
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [probeResult, setProbeResult] = useState<RssProbeResult | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [localSuccess, setLocalSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     if (!guildId) return;
@@ -109,6 +110,7 @@ export function RssFeedsPanel() {
     setDraft(emptyDraft());
     setProbeResult(null);
     setLocalError(null);
+    setLocalSuccess(null);
     setShowForm(true);
   }
 
@@ -124,6 +126,7 @@ export function RssFeedsPanel() {
     });
     setProbeResult(null);
     setLocalError(null);
+    setLocalSuccess(null);
     setShowForm(true);
   }
 
@@ -157,8 +160,15 @@ export function RssFeedsPanel() {
   async function save() {
     if (!guildId) return;
     setLocalError(null);
+    setLocalSuccess(null);
     if (!draft.feed_url.trim() || !draft.channel_id) {
       setLocalError(d.urlAndChannelRequired);
+      return;
+    }
+    if (!editingId && probeResult && !probeResult.ok) {
+      setLocalError(
+        rssErrorMessage(d, probeResult.error_code, probeResult.error),
+      );
       return;
     }
     try {
@@ -184,6 +194,9 @@ export function RssFeedsPanel() {
       }
       setShowForm(false);
       setEditingId(null);
+      setProbeResult(null);
+      setLocalSuccess(d.saveSuccess);
+      await load(guildId);
     } catch (e) {
       const code =
         e && typeof e === "object" && "code" in e
@@ -243,6 +256,12 @@ export function RssFeedsPanel() {
         <p className="text-danger mb-0">{localError || error}</p>
       )}
 
+      {localSuccess ? (
+        <CAlert color="success" className="mb-0">
+          {localSuccess}
+        </CAlert>
+      ) : null}
+
       <p className="small text-body-secondary mb-0">
         {d.worker}{" "}
         {workerOnline ? d.workerOnline : d.workerOffline} · {feeds.length}/
@@ -290,6 +309,11 @@ export function RssFeedsPanel() {
               {probeResult?.ok && probeResult.item_count === 0 ? (
                 <p className="small text-body-secondary mt-2 mb-0">
                   {d.emptyFeedWarning}
+                </p>
+              ) : null}
+              {!editingId && !probeResult ? (
+                <p className="small text-body-secondary mt-2 mb-0">
+                  {d.probeBeforeSaveHint}
                 </p>
               ) : null}
             </div>

@@ -41,10 +41,7 @@ import { cilBan, cilBug, cilSettings, cilShieldAlt, cilWarning } from "@coreui/i
 import type { DiscordEmbedPayload } from "@/lib/discord/message-payload";
 import { useFeatureInfo } from "@/lib/feature-info";
 import { formatDateTime } from "@/lib/datetime";
-import {
-  assertDiscordMarkdownLength,
-  isBlankDiscordMarkdown,
-} from "@/lib/discord-markdown-validation";
+import { isBlankDiscordMarkdown } from "@/lib/discord-markdown-validation";
 import { copyEmbedIntoHoneypot } from "@/lib/honeypot-embed-copy";
 import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 
@@ -161,20 +158,9 @@ export function HoneypotPanel() {
     if (!guildId || !draft) return;
     setLocalError(null);
     const content = draft.warning_content ?? "";
-    if (!isBlankDiscordMarkdown(content)) {
-      const check = assertDiscordMarkdownLength(content, 2000);
-      if (check.reason === "too_long") {
-        setLocalError(d.warningContentTooLong);
-        return;
-      }
-    }
     const desc = String(
       (draft.warning_embed as DiscordEmbedPayload | null)?.description ?? ""
     );
-    if (!isBlankDiscordMarkdown(desc) && desc.trim().length > 4096) {
-      setLocalError(d.embedDescriptionTooLong);
-      return;
-    }
     const normalized: HoneypotConfig = {
       ...draft,
       warning_content: isBlankDiscordMarkdown(content) ? "" : content.trim(),
@@ -408,11 +394,6 @@ export function HoneypotPanel() {
                         height={180}
                         placeholder={d.contentPlaceholder}
                       />
-                      <p className="mt-1 mb-0 small text-body-secondary">
-                        {formatDict(d.charCount, {
-                          count: draft.warning_content.length,
-                        })}
-                      </p>
                     </div>
                     <div>
                       <CFormLabel>{d.embedDescription}</CFormLabel>

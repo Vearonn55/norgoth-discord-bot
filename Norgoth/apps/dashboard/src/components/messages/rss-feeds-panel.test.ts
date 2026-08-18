@@ -11,6 +11,8 @@ describe("RSS feeds dashboard copy", () => {
     expect(en.rssFeedsPage.probeInvalidDocument).toBeTruthy();
     expect(tr.rssFeedsPage.probeInvalidDocument).toBeTruthy();
     expect(en.rssFeedsPage.limitReached).toBeTruthy();
+    expect(en.rssFeedsPage.duplicateFeed).toBeTruthy();
+    expect(en.rssFeedsPage.saveSuccess).toBeTruthy();
     const panel = readFileSync(
       resolve(__dirname, "rss-feeds-panel.tsx"),
       "utf8",

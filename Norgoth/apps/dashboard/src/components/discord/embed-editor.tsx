@@ -72,7 +72,6 @@ export function EmbedEditor({
           <CFormTextarea
             rows={4}
             value={value.description ?? ""}
-            maxLength={DISCORD_LIMITS.embedDescription}
             onChange={(e) => onChange({ ...value, description: e.target.value })}
           />
         </div>

@@ -17,6 +17,8 @@ from app.services.feature_config_store import (
     save_config,
 )
 
+from app.core.content_limits import MAX_STORED_MARKDOWN_CHARS
+
 router = APIRouter(
     tags=["Honeypot"],
     dependencies=[Depends(guild_manager_dependency())],
@@ -51,7 +53,7 @@ class HoneypotConfig(BaseModel):
             "⚠️ This channel is a honeypot trap. Do not post here. "
             "Posting will result in moderation action."
         ),
-        max_length=2000,
+        max_length=MAX_STORED_MARKDOWN_CHARS,
     )
     warning_embed: Optional[dict[str, Any]] = None
     punishment: HoneypotPunishment = "kick"

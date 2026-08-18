@@ -27,7 +27,8 @@ from app.routes.role_menus import (
     reapply_menu_components_for_deliveries,
     read_menus,
 )
-from app.services.discord.embed_builder import build_embed_dict
+from app.core.content_limits import MAX_STORED_MARKDOWN_CHARS
+from app.services.discord.message_compiler import compile_discord_messages
 from app.services.feature_config_store import load_config
 from app.services.snapshot_writer import delete_snapshot, write_snapshot
 
@@ -51,7 +52,7 @@ SNOWFLAKE = r"^[0-9]{5,25}$"
 class EmbedMessageBody(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     description: str = Field(default="", max_length=500)
-    content: str = Field(default="", max_length=2000)
+    content: str = Field(default="", max_length=MAX_STORED_MARKDOWN_CHARS)
     embed_json: Optional[dict[str, Any]] = None
     # Deprecated: drafts are content-only. Accepted for one release for backward
     # compatibility with older clients, but ignored (never persisted). Removed
@@ -491,17 +492,33 @@ async def delete_embed_message(
 
 
 def _build_payload(message: EmbedMessage) -> dict[str, Any]:
-    payload: dict[str, Any] = {}
-    content = (message.content or "").strip()
-    if content:
-        payload["content"] = content[:2000]
-    embed = build_embed_dict(message.embed_json)
-    if embed:
-        payload["embeds"] = [embed]
-    if not payload:
-        # Discord rejects fully empty messages; fall back to the name.
-        payload["content"] = message.name[:2000]
-    return payload
+    compiled = compile_discord_messages(
+        content=message.content,
+        embed_json=message.embed_json,
+        fallback_name=message.name,
+    )
+    if not compiled.ok:
+        error = compiled.errors[0]
+        raise HTTPException(
+            status_code=422,
+            detail={"code": error.code, "message": error.message},
+        )
+    return compiled.payloads[0]
+
+
+def _build_payloads(message: EmbedMessage) -> list[dict[str, Any]]:
+    compiled = compile_discord_messages(
+        content=message.content,
+        embed_json=message.embed_json,
+        fallback_name=message.name,
+    )
+    if not compiled.ok:
+        error = compiled.errors[0]
+        raise HTTPException(
+            status_code=422,
+            detail={"code": error.code, "message": error.message},
+        )
+    return compiled.payloads
 
 
 @router.post("/guilds/{guild_id}/embed-messages/{message_id}/send")
@@ -516,12 +533,14 @@ async def send_embed_message(
         raise HTTPException(status_code=503, detail="Discord bot token not configured.")
 
     message = await _load_message(session, guild_id, message_id)
-    payload = _build_payload(message)
+    payloads = _build_payloads(message)
 
     async with httpx.AsyncClient(timeout=20.0) as http_client:
         bot = DiscordBotClient(settings.discord_bot_token, http_client)
+        sent: dict[str, Any] | None = None
         try:
-            sent = await bot.send_channel_message(body.channel_id, payload)
+            for payload in payloads:
+                sent = await bot.send_channel_message(body.channel_id, payload)
         except DiscordBotAPIError as error:
             status = _status_for_error(error)
             delivery = EmbedMessageDelivery(

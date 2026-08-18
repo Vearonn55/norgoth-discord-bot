@@ -1,0 +1,27 @@
+[
+  {
+    "name": "paragraph_spacing",
+    "markdown": "First paragraph.\n\nSecond paragraph.",
+    "expectContains": ["<p>First paragraph.</p>", "prose-spacer", "<p>Second paragraph.</p>"]
+  },
+  {
+    "name": "unordered_list",
+    "markdown": "- Alpha\n- Beta",
+    "expectContains": ["<ul>", "<li>Alpha</li>", "<li>Beta</li>"]
+  },
+  {
+    "name": "ordered_list",
+    "markdown": "1. One\n2. Two",
+    "expectContains": ["<ol>", "<li>One</li>"]
+  },
+  {
+    "name": "heading_h2",
+    "markdown": "## Section",
+    "expectContains": ["<h2>Section</h2>"]
+  },
+  {
+    "name": "blockquote",
+    "markdown": "> Quoted line",
+    "expectContains": ["<blockquote>", "Quoted line"]
+  }
+]

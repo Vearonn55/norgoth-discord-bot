@@ -34,9 +34,14 @@ _XML_SECURITY_ERRORS = (
 
 ATOM_NS = "http://www.w3.org/2005/Atom"
 MAX_ENTRIES = 50
+MAX_ITEM_KEY_LEN = 512
 
 _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
+_XML_ENCODING_RE = re.compile(
+    br'<\?xml[^>]*\sencoding=["\']([^"\']+)["\']',
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -138,6 +143,23 @@ def canonicalize_link(url: str | None) -> str | None:
     return urlunparse((parsed.scheme.lower(), netloc, path, "", parsed.query, ""))
 
 
+def bound_item_key(key: str) -> str:
+    """Ensure item_key fits the database column while keeping stable dedupe."""
+
+    if len(key) <= MAX_ITEM_KEY_LEN:
+        return key
+    if key.startswith("id:"):
+        raw = key[3:]
+        digest = hashlib.sha256(raw.encode("utf-8", errors="ignore")).hexdigest()
+        return f"id:{digest}"
+    if key.startswith("link:"):
+        raw = key[5:]
+        digest = hashlib.sha256(raw.encode("utf-8", errors="ignore")).hexdigest()
+        return f"link:{digest}"
+    digest = hashlib.sha256(key.encode("utf-8", errors="ignore")).hexdigest()
+    return f"hash:{digest}"
+
+
 def compute_item_key(
     *,
     raw_id: str | None,
@@ -147,10 +169,10 @@ def compute_item_key(
     summary_text: str,
 ) -> str:
     if raw_id and raw_id.strip():
-        return f"id:{raw_id.strip()}"
+        return bound_item_key(f"id:{raw_id.strip()}")
     canonical = canonicalize_link(link)
     if canonical:
-        return f"link:{canonical}"
+        return bound_item_key(f"link:{canonical}")
     pub = published.isoformat() if published else ""
     digest = hashlib.sha256(
         f"{title}|{pub}|{summary_text[:200]}".encode("utf-8", errors="ignore")
@@ -228,7 +250,7 @@ def _parse_rss(root: Element) -> ParsedFeed:
         title = _child_text(child, {"title"})
         link = _rss_link(child)
         published = _parse_datetime(_child_text(child, {"pubDate", "published"}))
-        summary = _child_text(child, {"description", "summary", "content"})
+        summary = _child_text(child, {"description", "summary", "content", "encoded"})
         author = _child_text(child, {"author", "creator"})
         items.append(
             _build_item(
@@ -257,7 +279,7 @@ def _parse_atom(root: Element) -> ParsedFeed:
         published = _parse_datetime(
             _child_text(child, {"published"}) or _child_text(child, {"updated"})
         )
-        summary = _child_text(child, {"summary", "content"})
+        summary = _child_text(child, {"summary", "content", "encoded"})
         author = None
         for nested in list(child):
             if _local(nested.tag) == "author":
@@ -278,14 +300,42 @@ def _parse_atom(root: Element) -> ParsedFeed:
     return ParsedFeed(format_hint="atom", title=html_to_text(feed_title, max_len=256) or None, items=items)
 
 
-def parse_feed(body: bytes | str) -> ParsedFeed:
+def _decode_feed_body(body: bytes | str, *, content_type: str | None = None) -> str:
+    if isinstance(body, str):
+        return body.lstrip("\ufeff").strip()
+
+    charset: str | None = None
+    if content_type:
+        lowered = content_type.lower()
+        for token in lowered.split(";"):
+            token = token.strip()
+            if token.startswith("charset="):
+                charset = token.split("=", 1)[1].strip().strip('"').strip("'")
+                break
+
+    head = body[:256]
+    if charset is None:
+        match = _XML_ENCODING_RE.search(head)
+        if match:
+            charset = match.group(1).decode("ascii", errors="ignore")
+
+    for encoding in filter(None, [charset, "utf-8"]):
+        try:
+            return body.decode(encoding).lstrip("\ufeff").strip()
+        except (LookupError, UnicodeDecodeError):
+            continue
+
+    return body.decode("utf-8", errors="replace").lstrip("\ufeff").strip()
+
+
+def parse_feed(
+    body: bytes | str,
+    *,
+    content_type: str | None = None,
+) -> ParsedFeed:
     """Parse RSS 2.0 or Atom XML into a neutral item list."""
 
-    if isinstance(body, bytes):
-        text = body.decode("utf-8", errors="replace")
-    else:
-        text = body
-    text = text.lstrip("\ufeff").strip()
+    text = _decode_feed_body(body, content_type=content_type)
     if not text:
         raise FeedParseError("Feed body is empty.")
 

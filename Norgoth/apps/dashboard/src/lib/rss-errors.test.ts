@@ -15,6 +15,10 @@ const copy = {
   probeUnsupportedContent: "Unsupported.",
   probeInvalidDocument: "Invalid document.",
   limitReached: "Limit reached.",
+  duplicateFeed: "Duplicate feed.",
+  persistFailed: "Persist failed.",
+  saveSuccess: "Saved.",
+  probeBeforeSaveHint: "Probe first.",
 };
 
 describe("rssErrorMessage", () => {
@@ -23,6 +27,12 @@ describe("rssErrorMessage", () => {
     expect(rssErrorMessage(copy, "timeout", null)).toBe("Timeout.");
     expect(rssErrorMessage(copy, "rss_feed_limit_reached", "x")).toBe(
       "Limit reached.",
+    );
+    expect(rssErrorMessage(copy, "rss_feed_duplicate", "x")).toBe(
+      "Duplicate feed.",
+    );
+    expect(rssErrorMessage(copy, "rss_feed_persist_failed", "x")).toBe(
+      "Persist failed.",
     );
   });
 

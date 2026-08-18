@@ -13,6 +13,7 @@ from sqlalchemy import select
 
 from app.api.v1.dependencies_auth import guild_manager_dependency
 from app.core.config import get_settings
+from app.core.content_limits import MAX_STORED_MARKDOWN_CHARS
 from app.db.session import get_session_factory
 from app.models.guild import Guild
 from app.repositories.configuration_repository import ConfigurationRepository
@@ -42,7 +43,7 @@ class PublishVerificationPanelRequest(BaseModel):
             "Click the button below to open verification in your browser. "
             "Complete Discord OAuth to receive your member roles."
         ),
-        max_length=2000,
+        max_length=MAX_STORED_MARKDOWN_CHARS,
     )
     lang: str = Field(default="en", max_length=8)
 

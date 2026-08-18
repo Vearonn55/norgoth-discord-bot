@@ -16,6 +16,7 @@ from app.api.v1.dependencies_auth import (
     require_operator_session,
 )
 from app.core.config import get_settings
+from app.core.content_limits import MAX_STORED_MARKDOWN_CHARS
 from app.db.session import get_database_session, get_session_factory
 from app.models.embed_messages import EmbedMessage
 from app.security.session import OperatorSession
@@ -370,7 +371,7 @@ class TicketPanel(BaseModel):
     button_label: str = Field(default="Open Ticket", max_length=80)
     # text = RichMessageEditor body; embed = Embed Library draft.
     message_source: Literal["text", "embed"] = "embed"
-    text_content: str = Field(default="", max_length=2000)
+    text_content: str = Field(default="", max_length=MAX_STORED_MARKDOWN_CHARS)
     # Central Embed Library draft id. When set (and message_source=embed),
     # publish uses the draft's content/embed.
     embed_message_id: Optional[str] = Field(default=None, max_length=64)

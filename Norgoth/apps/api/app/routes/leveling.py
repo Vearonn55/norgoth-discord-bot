@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import ProgrammingError
 
 from app.api.v1.dependencies_auth import guild_manager_dependency
+from app.core.content_limits import MAX_STORED_MARKDOWN_CHARS
 from app.db.session import get_session_factory
 from app.models.runtime_events import MemberXp
 from app.services.campaign_store import get_redis, now_iso
@@ -148,7 +149,7 @@ class LevelingConfig(BaseModel):
     # single source of truth for the embed description.
     level_up_message: str = Field(
         default="🎉 {user} reached level **{level}**!",
-        max_length=2000,
+        max_length=MAX_STORED_MARKDOWN_CHARS,
     )
     level_up_embed: dict[str, Any] = Field(default_factory=dict)
     reward_roles: list[RewardRole] = Field(default_factory=list, max_length=25)

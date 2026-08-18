@@ -9,7 +9,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.dependencies_auth import guild_manager_dependency
@@ -25,8 +25,11 @@ from app.services.rss.quotas import (
     feed_url_hash,
     next_poll_after_success,
 )
+from app.security.ssrf import SsrfError
+from app.services.rss.normalize import canonical_feed_url
 from app.services.rss.service import (
     bootstrap_items,
+    clamp_display_name,
     probe_feed_url,
     serialize_feed,
 )
@@ -38,6 +41,28 @@ router = APIRouter(
     tags=["RSS Feeds"],
     dependencies=[Depends(guild_manager_dependency())],
 )
+
+RSS_FEED_DUPLICATE_DETAIL = {
+    "code": "rss_feed_duplicate",
+    "message": "This feed URL is already configured for this server.",
+}
+RSS_FEED_PERSIST_FAILED_DETAIL = {
+    "code": "rss_feed_persist_failed",
+    "message": "The feed could not be saved. Check the URL and try again.",
+}
+
+
+def _resolve_feed_url(raw_url: str) -> str:
+    try:
+        return canonical_feed_url(raw_url.strip())
+    except SsrfError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": getattr(exc, "code", None) or "invalid_url",
+                "message": str(exc),
+            },
+        ) from exc
 
 
 class ProbeBody(BaseModel):
@@ -93,7 +118,7 @@ async def probe_rss_feed(
     guild_id: str,
     body: ProbeBody,
 ) -> dict[str, Any]:
-    probe = await probe_feed_url(body.feed_url.strip())
+    probe = await probe_feed_url(_resolve_feed_url(body.feed_url))
     return {
         "guild_id": guild_id,
         "ok": probe.ok,
@@ -121,7 +146,7 @@ async def create_rss_feed(
             detail=error.as_detail(),
         ) from error
 
-    url = body.feed_url.strip()
+    url = _resolve_feed_url(body.feed_url)
     url_hash = feed_url_hash(url)
     dup = await session.scalar(
         select(RssFeedConfig.id).where(
@@ -132,7 +157,7 @@ async def create_rss_feed(
     if dup:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="This feed URL is already configured for this server.",
+            detail=RSS_FEED_DUPLICATE_DETAIL,
         )
 
     probe = await probe_feed_url(url)
@@ -145,13 +170,27 @@ async def create_rss_feed(
             },
         )
 
+    stored_url = probe.final_url or url
+    url_hash = feed_url_hash(stored_url)
+    dup_final = await session.scalar(
+        select(RssFeedConfig.id).where(
+            RssFeedConfig.guild_id == guild_id,
+            RssFeedConfig.feed_url_hash == url_hash,
+        )
+    )
+    if dup_final:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=RSS_FEED_DUPLICATE_DETAIL,
+        )
+
     interval = clamp_poll_interval(body.poll_interval_seconds)
     now = datetime.now(timezone.utc)
     feed = RssFeedConfig(
         guild_id=guild_id,
-        feed_url=url,
+        feed_url=stored_url,
         feed_url_hash=url_hash,
-        display_name=(body.display_name or probe.feed_title or None),
+        display_name=clamp_display_name(body.display_name or probe.feed_title),
         channel_id=body.channel_id,
         mention_role_id=body.mention_role_id,
         enabled=bool(body.enabled),
@@ -176,14 +215,20 @@ async def create_rss_feed(
             action="create",
             guild_id=guild_id,
             entity_id=str(feed.id),
-            changes={"feed_url": url, "channel_id": body.channel_id},
+            changes={"feed_url": stored_url, "channel_id": body.channel_id},
         )
         await session.commit()
     except IntegrityError as exc:
         await session.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="This feed URL is already configured for this server.",
+            detail=RSS_FEED_DUPLICATE_DETAIL,
+        ) from exc
+    except DBAPIError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=RSS_FEED_PERSIST_FAILED_DETAIL,
         ) from exc
     await session.refresh(feed)
     return serialize_feed(feed)
@@ -208,42 +253,45 @@ async def patch_rss_feed(
     changes: dict[str, Any] = {}
     url_changed = False
 
-    if body.feed_url is not None and body.feed_url.strip() != feed.feed_url:
-        url = body.feed_url.strip()
-        url_hash = feed_url_hash(url)
-        dup = await session.scalar(
-            select(RssFeedConfig.id).where(
-                RssFeedConfig.guild_id == guild_id,
-                RssFeedConfig.feed_url_hash == url_hash,
-                RssFeedConfig.id != feed.id,
+    if body.feed_url is not None:
+        canonical = _resolve_feed_url(body.feed_url)
+        if canonical != feed.feed_url:
+            url = canonical
+            url_hash = feed_url_hash(url)
+            dup = await session.scalar(
+                select(RssFeedConfig.id).where(
+                    RssFeedConfig.guild_id == guild_id,
+                    RssFeedConfig.feed_url_hash == url_hash,
+                    RssFeedConfig.id != feed.id,
+                )
             )
-        )
-        if dup:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="This feed URL is already configured for this server.",
+            if dup:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=RSS_FEED_DUPLICATE_DETAIL,
+                )
+            probe = await probe_feed_url(url)
+            if not probe.ok or probe.parsed is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail={
+                        "code": probe.error_code or "invalid_document",
+                        "message": probe.error or "Feed probe failed.",
+                    },
+                )
+            stored_url = probe.final_url or url
+            changes["feed_url"] = {"from": feed.feed_url, "to": stored_url}
+            feed.feed_url = stored_url
+            feed.feed_url_hash = feed_url_hash(stored_url)
+            feed.format_hint = probe.format_hint
+            feed.etag = probe.etag
+            feed.last_modified = probe.last_modified
+            await session.execute(
+                delete(RssFeedItem).where(RssFeedItem.feed_id == feed.id)
             )
-        probe = await probe_feed_url(url)
-        if not probe.ok or probe.parsed is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={
-                    "code": probe.error_code or "invalid_document",
-                    "message": probe.error or "Feed probe failed.",
-                },
-            )
-        changes["feed_url"] = {"from": feed.feed_url, "to": url}
-        feed.feed_url = url
-        feed.feed_url_hash = url_hash
-        feed.format_hint = probe.format_hint
-        feed.etag = probe.etag
-        feed.last_modified = probe.last_modified
-        await session.execute(
-            delete(RssFeedItem).where(RssFeedItem.feed_id == feed.id)
-        )
-        await session.flush()
-        await bootstrap_items(session, feed, probe.parsed)
-        url_changed = True
+            await session.flush()
+            await bootstrap_items(session, feed, probe.parsed)
+            url_changed = True
 
     if body.channel_id is not None and body.channel_id != feed.channel_id:
         changes["channel_id"] = {"from": feed.channel_id, "to": body.channel_id}

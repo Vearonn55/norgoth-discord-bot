@@ -5,6 +5,8 @@
  * automation message template.
  */
 
+export const DISCORD_MARKDOWN_SPEC_VERSION = 1;
+
 export function isSafeHttpUrl(href: string): boolean {
   try {
     const parsed = new URL(href);
@@ -22,16 +24,37 @@ function serializeChildren(node: Node): string {
   return output;
 }
 
-function serializeList(element: Element, ordered: boolean): string {
+function serializeList(element: Element, ordered: boolean, depth = 0): string {
   let output = "";
   let index = 1;
+  const indent = "  ".repeat(depth);
 
   element.childNodes.forEach((child) => {
-    if (child.nodeType === Node.ELEMENT_NODE && (child as Element).tagName === "LI") {
-      const content = serializeChildren(child).trim();
-      output += ordered ? `${index}. ${content}\n` : `- ${content}\n`;
-      index += 1;
-    }
+    if (child.nodeType !== Node.ELEMENT_NODE) return;
+    const li = child as Element;
+    if (li.tagName !== "LI") return;
+
+    let inline = "";
+    let nested = "";
+    li.childNodes.forEach((liChild) => {
+      if (liChild.nodeType === Node.ELEMENT_NODE) {
+        const nestedEl = liChild as Element;
+        if (nestedEl.tagName === "UL") {
+          nested += serializeList(nestedEl, false, depth + 1);
+        } else if (nestedEl.tagName === "OL") {
+          nested += serializeList(nestedEl, true, depth + 1);
+        } else {
+          inline += serializeNode(liChild);
+        }
+      } else {
+        inline += serializeNode(liChild);
+      }
+    });
+
+    const marker = ordered ? `${index}. ` : "- ";
+    output += `${indent}${marker}${inline.trim()}\n`;
+    if (nested) output += nested;
+    index += 1;
   });
 
   return output;
@@ -91,27 +114,28 @@ function serializeNode(node: Node): string {
       return `[${content}](${href})`;
     }
     case "H1":
-      return `# ${inner().trim()}\n`;
+      return `# ${inner().trim()}\n\n`;
     case "H2":
-      return `## ${inner().trim()}\n`;
+      return `## ${inner().trim()}\n\n`;
     case "H3":
+      return `### ${inner().trim()}\n\n`;
     case "H4":
     case "H5":
     case "H6":
-      return `### ${inner().trim()}\n`;
+      return `**${inner().trim()}**\n\n`;
     case "UL":
-      return serializeList(element, false);
+      return `${serializeList(element, false)}\n`;
     case "OL":
-      return serializeList(element, true);
+      return `${serializeList(element, true)}\n`;
     case "LI":
       return `${inner().trim()}\n`;
     case "BLOCKQUOTE": {
       const content = inner().trim();
       return content
-        ? content
+        ? `${content
             .split("\n")
             .map((line) => `> ${line}`)
-            .join("\n") + "\n"
+            .join("\n")}\n\n`
         : "";
     }
     case "P":
@@ -119,6 +143,10 @@ function serializeNode(node: Node): string {
       const content = inner();
       return content.trim() ? `${content.replace(/\n+$/, "")}\n\n` : "";
     }
+    case "SCRIPT":
+    case "STYLE":
+    case "IFRAME":
+      return "";
     default:
       return inner();
   }
@@ -167,6 +195,7 @@ export function discordMarkdownToHtml(markdown: string): string {
   const htmlParts: string[] = [];
   let listBuffer: string[] = [];
   let listOrdered = false;
+  let quoteBuffer: string[] = [];
   let codeBuffer: string[] | null = null;
 
   const flushList = () => {
@@ -176,6 +205,14 @@ export function discordMarkdownToHtml(markdown: string): string {
       `<${tag}>${listBuffer.map((item) => `<li>${item}</li>`).join("")}</${tag}>`,
     );
     listBuffer = [];
+  };
+
+  const flushQuote = () => {
+    if (quoteBuffer.length === 0) return;
+    htmlParts.push(
+      `<blockquote>${quoteBuffer.map((line) => inlineMarkdownToHtml(line)).join("<br />")}</blockquote>`,
+    );
+    quoteBuffer = [];
   };
 
   for (const line of lines) {
@@ -191,45 +228,52 @@ export function discordMarkdownToHtml(markdown: string): string {
 
     if (line.trim().startsWith("```")) {
       flushList();
+      flushQuote();
       codeBuffer = [];
       continue;
     }
 
-    const bulletMatch = line.match(/^\s*-\s+(.*)$/);
-    const orderedMatch = line.match(/^\s*\d+\.\s+(.*)$/);
+    const bulletMatch = line.match(/^(\s*)-\s+(.*)$/);
+    const orderedMatch = line.match(/^(\s*)\d+\.\s+(.*)$/);
 
     if (bulletMatch) {
+      flushQuote();
       if (listBuffer.length > 0 && listOrdered) flushList();
       listOrdered = false;
-      listBuffer.push(inlineMarkdownToHtml(bulletMatch[1]));
+      listBuffer.push(inlineMarkdownToHtml(bulletMatch[2]));
       continue;
     }
 
     if (orderedMatch) {
+      flushQuote();
       if (listBuffer.length > 0 && !listOrdered) flushList();
       listOrdered = true;
-      listBuffer.push(inlineMarkdownToHtml(orderedMatch[1]));
+      listBuffer.push(inlineMarkdownToHtml(orderedMatch[2]));
       continue;
     }
 
     flushList();
 
     const headingMatch = line.match(/^(#{1,3})\s+(.*)$/);
-
     if (headingMatch) {
+      flushQuote();
       const level = headingMatch[1].length;
-      htmlParts.push(`<h${level}>${inlineMarkdownToHtml(headingMatch[2])}</h${level}>`);
+      htmlParts.push(
+        `<h${level}>${inlineMarkdownToHtml(headingMatch[2])}</h${level}>`,
+      );
       continue;
     }
 
     const quoteMatch = line.match(/^&gt;\s+(.*)$/);
-
     if (quoteMatch) {
-      htmlParts.push(`<blockquote>${inlineMarkdownToHtml(quoteMatch[1])}</blockquote>`);
+      quoteBuffer.push(quoteMatch[1]);
       continue;
     }
 
+    flushQuote();
+
     if (line.trim() === "") {
+      htmlParts.push('<p class="prose-spacer">&nbsp;</p>');
       continue;
     }
 
@@ -241,6 +285,7 @@ export function discordMarkdownToHtml(markdown: string): string {
   }
 
   flushList();
+  flushQuote();
 
   return htmlParts.join("");
 }

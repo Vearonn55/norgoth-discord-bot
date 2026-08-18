@@ -13,6 +13,8 @@ export const RSS_ERROR_COPY_KEYS = {
   unsupported_content: "probeUnsupportedContent",
   invalid_document: "probeInvalidDocument",
   rss_feed_limit_reached: "limitReached",
+  rss_feed_duplicate: "duplicateFeed",
+  rss_feed_persist_failed: "persistFailed",
 } as const;
 
 export type RssErrorCopy = {
@@ -29,6 +31,10 @@ export type RssErrorCopy = {
   probeUnsupportedContent: string;
   probeInvalidDocument: string;
   limitReached: string;
+  duplicateFeed: string;
+  persistFailed: string;
+  saveSuccess: string;
+  probeBeforeSaveHint: string;
 };
 
 export function rssErrorMessage(
