@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 import time
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import UUID
@@ -20,6 +21,7 @@ from sqlalchemy.orm import selectinload
 from app.api.v1.dependencies_auth import guild_manager_dependency
 from app.core.config import get_settings
 from app.db.session import get_database_session
+from app.services.campaign_store import get_redis
 from app.security.internal_auth import require_internal_token
 from app.integrations.discord.bot_rest import DiscordBotAPIError, DiscordBotClient
 from app.models.embed_messages import (
@@ -87,6 +89,7 @@ class DeleteRequest(BaseModel):
 # freely recreate; feature-owned deployments are handled by their feature.
 OWNER_LIBRARY = "embed_library"
 OWNER_SAR = "self_assignable_role"
+RESYNC_LOCK_TTL_SECONDS = 30
 
 
 def _delivery_is_live(delivery: EmbedMessageDelivery) -> bool:
@@ -838,6 +841,80 @@ def _safe_discord_error(error: DiscordBotAPIError) -> str:
     return f"discord_http_{status}"
 
 
+def _resync_error_detail(code: str) -> dict[str, str]:
+    if code == "message_missing":
+        return {
+            "code": code,
+            "message": (
+                "The original Discord message is missing. "
+                "Use Deploy to publish a new copy."
+            ),
+        }
+    if code == "resync_message_count_mismatch":
+        return {
+            "code": code,
+            "message": (
+                "This draft now compiles into a different number of Discord messages. "
+                "Use Deploy to publish a new copy."
+            ),
+        }
+    if code == "resync_in_progress":
+        return {
+            "code": code,
+            "message": "A Re-Sync is already in progress for this draft.",
+        }
+    if code == "already_synced":
+        return {
+            "code": code,
+            "message": "This deployment is already synchronized.",
+        }
+    return {
+        "code": "invalid_payload",
+        "message": "Discord rejected the request.",
+    }
+
+
+async def _acquire_resync_lock(lock_key: str) -> tuple[Any | None, str | None]:
+    """Best-effort Redis lock. Fail open if Redis is unavailable."""
+
+    try:
+        redis_client = await get_redis()
+    except Exception:
+        return None, None
+    token = str(uuid.uuid4())
+    try:
+        acquired = bool(
+            await redis_client.set(
+                lock_key,
+                token,
+                nx=True,
+                ex=RESYNC_LOCK_TTL_SECONDS,
+            )
+        )
+    except Exception:
+        await redis_client.aclose()
+        return None, None
+    if not acquired:
+        await redis_client.aclose()
+        raise HTTPException(status_code=409, detail=_resync_error_detail("resync_in_progress"))
+    return redis_client, token
+
+
+async def _release_resync_lock(
+    redis_client: Any | None,
+    lock_key: str,
+    token: str | None,
+) -> None:
+    if redis_client is None:
+        return
+    try:
+        current = await redis_client.get(lock_key)
+        if token and current == token:
+            await redis_client.delete(lock_key)
+    finally:
+        await redis_client.aclose()
+
+
 def _http_exception_for_discord_error(error: DiscordBotAPIError) -> HTTPException:
     status = error.status_code
     if status == 403:
@@ -935,8 +1012,43 @@ def _log_embed_deploy(
     )
 
 
+def _log_embed_resync(
+    *,
+    request_id: str,
+    guild_id: str,
+    message_id: str,
+    delivery_id: str,
+    tracked_ids: list[str],
+    op: str,
+    prior_version: int | None,
+    target_version: int,
+    code: str | None,
+    discord_status: int | str | None,
+    duration_ms: int,
+    lock_suppressed: bool,
+) -> None:
+    logger.info(
+        "embed_resync request_id=%s guild_id=%s message_id=%s delivery_id=%s "
+        "tracked_ids=%s op=%s prior_version=%s target_version=%s code=%s "
+        "discord_status=%s duration_ms=%s lock_suppressed=%s",
+        request_id,
+        guild_id,
+        message_id,
+        delivery_id,
+        ",".join(tracked_ids),
+        op,
+        prior_version if prior_version is not None else "",
+        target_version,
+        code or "",
+        discord_status if discord_status is not None else "",
+        duration_ms,
+        lock_suppressed,
+    )
+
+
 @router.post("/guilds/{guild_id}/embed-messages/{message_id}/resync")
 async def resync_embed_message(
+    request: Request,
     guild_id: str = Path(pattern=SNOWFLAKE),
     message_id: UUID = Path(...),
     session: AsyncSession = Depends(get_database_session),
@@ -958,41 +1070,73 @@ async def resync_embed_message(
     if not settings.discord_bot_token:
         raise HTTPException(status_code=503, detail="Discord bot token not configured.")
 
-    message = await _load_message(session, guild_id, message_id)
-    sar_ids = await _sar_delivery_ids(guild_id)
-    deliveries = [d for d in message.deliveries if d.delivery_type == "bot"]
+    lock_key = f"embed_resync:{guild_id}:{message_id}"
+    request_id = str(getattr(request.state, "request_id", "unavailable"))
+    redis_client, lock_token = await _acquire_resync_lock(lock_key)
+    lock_suppressed = redis_client is None
+    try:
+        message = await _load_message(session, guild_id, message_id)
+        sar_ids = await _sar_delivery_ids(guild_id)
+        deliveries = [d for d in message.deliveries if d.delivery_type == "bot"]
 
-    payloads = _build_payloads(message)
-    prior_message_ids = {
-        str(delivery.id): delivery.discord_message_id
-        for delivery in message.deliveries
-    }
-    results: list[dict[str, Any]] = []
+        payloads = _build_payloads(message)
+        prior_message_ids = {
+            str(delivery.id): delivery.discord_message_id
+            for delivery in message.deliveries
+        }
+        results: list[dict[str, Any]] = []
+        first_error: dict[str, Any] | None = None
 
-    async with httpx.AsyncClient(timeout=20.0) as http_client:
-        bot = DiscordBotClient(settings.discord_bot_token, http_client)
-        for delivery in deliveries:
-            owner = _effective_owner(delivery, sar_ids)
-            outcome = await _resync_one_delivery(
-                bot=bot,
-                delivery=delivery,
-                message=message,
-                owner=owner,
-                payload=payloads[0],
-                payloads=payloads,
+        async with httpx.AsyncClient(timeout=20.0) as http_client:
+            bot = DiscordBotClient(settings.discord_bot_token, http_client)
+            for delivery in deliveries:
+                owner = _effective_owner(delivery, sar_ids)
+                started = time.perf_counter()
+                tracked_ids_before = _delivery_message_ids(delivery)
+                prior_version = delivery.deployed_version
+                outcome = await _resync_one_delivery(
+                    bot=bot,
+                    delivery=delivery,
+                    message=message,
+                    owner=owner,
+                    payload=payloads[0],
+                    payloads=payloads,
+                )
+                _log_embed_resync(
+                    request_id=request_id,
+                    guild_id=guild_id,
+                    message_id=str(message_id),
+                    delivery_id=str(delivery.id),
+                    tracked_ids=tracked_ids_before,
+                    op=str(outcome.get("status") or "unknown"),
+                    prior_version=prior_version,
+                    target_version=message.version or 1,
+                    code=str(outcome.get("code") or "") or None,
+                    discord_status=outcome.get("http_status"),
+                    duration_ms=int((time.perf_counter() - started) * 1000),
+                    lock_suppressed=lock_suppressed,
+                )
+                if first_error is None and outcome.get("status") == "error":
+                    first_error = outcome
+                results.append({"delivery_id": str(delivery.id), **outcome})
+
+        await session.commit()
+        message = await _load_message(session, guild_id, message_id)
+
+        changed = _changed_deliveries(message, prior_message_ids)
+        if changed:
+            await reapply_menu_components_for_deliveries(
+                guild_id, changed, settings.discord_bot_token
             )
-            results.append({"delivery_id": str(delivery.id), **outcome})
 
-    await session.commit()
-    message = await _load_message(session, guild_id, message_id)
+        if first_error is not None:
+            code = str(first_error.get("code") or "invalid_payload")
+            status_code = int(first_error.get("http_status") or 422)
+            raise HTTPException(status_code=status_code, detail=_resync_error_detail(code))
 
-    changed = _changed_deliveries(message, prior_message_ids)
-    if changed:
-        await reapply_menu_components_for_deliveries(
-            guild_id, changed, settings.discord_bot_token
-        )
-
-    return {**_serialize(message, sar_ids), "results": results}
+        return {**_serialize(message, sar_ids), "results": results}
+    finally:
+        await _release_resync_lock(redis_client, lock_key, lock_token)
 
 
 async def _resync_one_delivery(
@@ -1007,7 +1151,7 @@ async def _resync_one_delivery(
     """Reconcile a single deployment to the current draft content.
 
     Returns a per-delivery result dict: ``{"status": ...}`` where status is one
-    of ``skipped`` (already current), ``synced`` (edited/recreated),
+    of ``skipped`` (already current), ``synced`` (edited),
     ``needs_feature_repair`` (missing, feature-owned) or ``error``.
     """
 
@@ -1029,18 +1173,19 @@ async def _resync_one_delivery(
     try:
         if tracked_ids and delivery.status != "message_missing":
             try:
-                if len(tracked_ids) == len(all_payloads):
-                    for message_id, part in zip(tracked_ids, all_payloads, strict=True):
-                        await bot.edit_channel_message(
-                            delivery.channel_id,
-                            message_id,
-                            part,
-                        )
-                else:
+                if len(tracked_ids) != len(all_payloads):
+                    delivery.status = "error"
+                    delivery.error = "resync_message_count_mismatch"
+                    return {
+                        "status": "error",
+                        "code": "resync_message_count_mismatch",
+                        "http_status": 409,
+                    }
+                for message_id, part in zip(tracked_ids, all_payloads, strict=True):
                     await bot.edit_channel_message(
                         delivery.channel_id,
-                        tracked_ids[0],
-                        all_payloads[0],
+                        message_id,
+                        part,
                     )
                 delivery.status = "synced"
                 delivery.error = None
@@ -1052,32 +1197,32 @@ async def _resync_one_delivery(
                     raise
                 # Fell through: the message vanished — treat as missing below.
 
-        # Missing message: only the Embed Library may recreate a plain embed.
-        # Feature-owned deployments (e.g. SAR) need their components, so defer.
+        # Missing message: never recreate during Re-Sync. Feature-owned
+        # deployments still return needs_feature_repair for explicit UX copy.
+        delivery.status = "message_missing"
+        delivery.error = "Message missing in Discord."
         if owner != OWNER_LIBRARY:
-            delivery.status = "message_missing"
-            delivery.error = (
-                "Message missing; owning feature must repair (has components)."
-            )
             return {"status": "needs_feature_repair"}
-
-        sent_ids = await _post_payloads(bot, delivery.channel_id, all_payloads)
-        _apply_sent_ids(delivery, sent_ids)
-        delivery.status = "synced"
-        delivery.error = None
-        delivery.deployed_version = message.version
-        delivery.last_synced_at = now
-        return {"status": "synced"}
+        return {"status": "error", "code": "message_missing", "http_status": 404}
     except DiscordBotAPIError as error:
         delivery.status = _status_for_error(error)
         delivery.error = _safe_discord_error(error)
-        return {"status": "error", "error": _safe_discord_error(error)}
+        http_error = _http_exception_for_discord_error(error)
+        detail = http_error.detail if isinstance(http_error.detail, dict) else {}
+        code = detail.get("code") if isinstance(detail.get("code"), str) else "invalid_payload"
+        return {
+            "status": "error",
+            "error": _safe_discord_error(error),
+            "code": code,
+            "http_status": http_error.status_code,
+        }
 
 
 @router.post(
     "/guilds/{guild_id}/embed-messages/{message_id}/deliveries/{delivery_id}/resync"
 )
 async def resync_embed_delivery(
+    request: Request,
     guild_id: str = Path(pattern=SNOWFLAKE),
     message_id: UUID = Path(...),
     delivery_id: UUID = Path(...),
@@ -1095,50 +1240,72 @@ async def resync_embed_delivery(
     if not settings.discord_bot_token:
         raise HTTPException(status_code=503, detail="Discord bot token not configured.")
 
-    message = await _load_message(session, guild_id, message_id)
-    delivery = next(
-        (d for d in message.deliveries if d.id == delivery_id),
-        None,
-    )
-    if delivery is None:
-        raise HTTPException(status_code=404, detail="Delivery not found.")
+    lock_key = f"embed_resync:{guild_id}:{message_id}:{delivery_id}"
+    request_id = str(getattr(request.state, "request_id", "unavailable"))
+    redis_client, lock_token = await _acquire_resync_lock(lock_key)
+    lock_suppressed = redis_client is None
+    try:
+        message = await _load_message(session, guild_id, message_id)
+        delivery = next(
+            (d for d in message.deliveries if d.id == delivery_id),
+            None,
+        )
+        if delivery is None:
+            raise HTTPException(status_code=404, detail="Delivery not found.")
 
-    sar_ids = await _sar_delivery_ids(guild_id)
-    owner = _effective_owner(delivery, sar_ids)
-    prior_message_ids = {str(delivery.id): delivery.discord_message_id}
-    payloads = _build_payloads(message)
+        sar_ids = await _sar_delivery_ids(guild_id)
+        owner = _effective_owner(delivery, sar_ids)
+        prior_message_ids = {str(delivery.id): delivery.discord_message_id}
+        payloads = _build_payloads(message)
 
-    async with httpx.AsyncClient(timeout=20.0) as http_client:
-        bot = DiscordBotClient(settings.discord_bot_token, http_client)
-        outcome = await _resync_one_delivery(
-            bot=bot,
-            delivery=delivery,
-            message=message,
-            owner=owner,
-            payload=payloads[0],
-            payloads=payloads,
+        async with httpx.AsyncClient(timeout=20.0) as http_client:
+            bot = DiscordBotClient(settings.discord_bot_token, http_client)
+            started = time.perf_counter()
+            tracked_ids_before = _delivery_message_ids(delivery)
+            prior_version = delivery.deployed_version
+            outcome = await _resync_one_delivery(
+                bot=bot,
+                delivery=delivery,
+                message=message,
+                owner=owner,
+                payload=payloads[0],
+                payloads=payloads,
+            )
+        _log_embed_resync(
+            request_id=request_id,
+            guild_id=guild_id,
+            message_id=str(message_id),
+            delivery_id=str(delivery.id),
+            tracked_ids=tracked_ids_before,
+            op=str(outcome.get("status") or "unknown"),
+            prior_version=prior_version,
+            target_version=message.version or 1,
+            code=str(outcome.get("code") or "") or None,
+            discord_status=outcome.get("http_status"),
+            duration_ms=int((time.perf_counter() - started) * 1000),
+            lock_suppressed=lock_suppressed,
         )
 
-    if outcome.get("status") == "error":
         await session.commit()
-        raise HTTPException(
-            status_code=502,
-            detail={
-                "code": "bot_missing",
-                "message": "Discord rejected the re-sync.",
-            },
-        )
+        if outcome.get("status") == "error":
+            code = str(outcome.get("code") or "invalid_payload")
+            status_code = int(outcome.get("http_status") or 422)
+            raise HTTPException(
+                status_code=status_code,
+                detail=_resync_error_detail(code),
+            )
 
-    await session.commit()
-    message = await _load_message(session, guild_id, message_id)
+        message = await _load_message(session, guild_id, message_id)
 
-    changed = _changed_deliveries(message, prior_message_ids)
-    if changed:
-        await reapply_menu_components_for_deliveries(
-            guild_id, changed, settings.discord_bot_token
-        )
+        changed = _changed_deliveries(message, prior_message_ids)
+        if changed:
+            await reapply_menu_components_for_deliveries(
+                guild_id, changed, settings.discord_bot_token
+            )
 
-    return _serialize(message, sar_ids)
+        return _serialize(message, sar_ids)
+    finally:
+        await _release_resync_lock(redis_client, lock_key, lock_token)
 
 
 @router.post("/guilds/{guild_id}/embed-messages/{message_id}/reconcile")

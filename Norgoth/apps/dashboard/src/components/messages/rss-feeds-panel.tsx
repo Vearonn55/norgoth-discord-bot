@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   CAlert,
   CFormCheck,
@@ -54,13 +54,19 @@ const emptyDraft = (): Draft => ({
   enabled: true,
 });
 
+const PAGE_SIZE = 10;
+
 export function RssFeedsPanel() {
   const params = useParams();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const lang = String(params?.lang || "en");
   const dict = useLocaleDict();
   const d = dict.rssFeedsPage;
   const { guildId, resources, loading: guildLoading } = useFirstGuild();
   const feeds = useRssFeedsStore((s) => s.feeds);
+  const total = useRssFeedsStore((s) => s.total);
   const maxFeeds = useRssFeedsStore((s) => s.maxFeeds);
   const workerOnline = useRssFeedsStore((s) => s.workerOnline);
   const loading = useRssFeedsStore((s) => s.loading);
@@ -98,12 +104,44 @@ export function RssFeedsPanel() {
   const [probeResult, setProbeResult] = useState<RssProbeResult | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [localSuccess, setLocalSuccess] = useState<string | null>(null);
+  const previousGuildIdRef = useRef<string | null>(null);
+  const rawPage = Number.parseInt(searchParams.get("page") ?? "1", 10);
+  const currentPage = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1;
+  const totalPages = Math.max(1, Math.ceil(Math.max(0, total) / PAGE_SIZE));
+  const safePage = Math.min(Math.max(1, currentPage), totalPages);
+
+  function replacePage(nextPage: number) {
+    const next = Math.max(1, nextPage);
+    const qp = new URLSearchParams(searchParams.toString());
+    if (next <= 1) qp.delete("page");
+    else qp.set("page", String(next));
+    const nextQuery = qp.toString();
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, {
+      scroll: false,
+    });
+  }
+
+  useEffect(() => {
+    if (previousGuildIdRef.current && previousGuildIdRef.current !== guildId) {
+      replacePage(1);
+    }
+    previousGuildIdRef.current = guildId;
+  }, [guildId]);
 
   useEffect(() => {
     if (!guildId) return;
-    void load(guildId);
+    void load(guildId, {
+      limit: PAGE_SIZE,
+      offset: (safePage - 1) * PAGE_SIZE,
+    });
     void loadModules(guildId);
-  }, [guildId, load, loadModules]);
+  }, [guildId, load, loadModules, safePage]);
+
+  useEffect(() => {
+    if (currentPage !== safePage) {
+      replacePage(safePage);
+    }
+  }, [currentPage, safePage]);
 
   function openCreate() {
     setEditingId(null);
@@ -196,7 +234,14 @@ export function RssFeedsPanel() {
       setEditingId(null);
       setProbeResult(null);
       setLocalSuccess(d.saveSuccess);
-      await load(guildId);
+      if (!editingId) {
+        replacePage(1);
+      } else {
+        await load(guildId, {
+          limit: PAGE_SIZE,
+          offset: (safePage - 1) * PAGE_SIZE,
+        });
+      }
     } catch (e) {
       const code =
         e && typeof e === "object" && "code" in e
@@ -264,7 +309,7 @@ export function RssFeedsPanel() {
 
       <p className="small text-body-secondary mb-0">
         {d.worker}{" "}
-        {workerOnline ? d.workerOnline : d.workerOffline} · {feeds.length}/
+        {workerOnline ? d.workerOnline : d.workerOffline} · {total}/
         {maxFeeds} {d.feedsCount}
       </p>
 
@@ -471,7 +516,21 @@ export function RssFeedsPanel() {
                           disabled={saving}
                           onClick={() => {
                             if (window.confirm(d.deleteConfirm)) {
-                              void remove(guildId, feed.id);
+                              void remove(guildId, feed.id).then(() => {
+                                const remaining = Math.max(0, total - 1);
+                                const maxPage = Math.max(
+                                  1,
+                                  Math.ceil(remaining / PAGE_SIZE),
+                                );
+                                if (safePage > maxPage) {
+                                  replacePage(maxPage);
+                                } else {
+                                  void load(guildId, {
+                                    limit: PAGE_SIZE,
+                                    offset: (safePage - 1) * PAGE_SIZE,
+                                  });
+                                }
+                              });
                             }
                           }}
                         >
@@ -488,12 +547,39 @@ export function RssFeedsPanel() {
         <div className="d-flex justify-content-end mt-3">
           <Button
             variant="primary"
-            disabled={feeds.length >= maxFeeds || showForm}
+            disabled={total >= maxFeeds || showForm}
             onClick={openCreate}
           >
             {d.addFeed}
           </Button>
         </div>
+        {total > PAGE_SIZE ? (
+          <div className="d-flex align-items-center justify-content-between gap-3 flex-wrap norgoth-pagination-bar mt-3">
+            <span className="small text-body-secondary">
+              {formatDict(d.pageOf, { current: safePage, total: totalPages })}
+            </span>
+            <div className="d-flex align-items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={safePage <= 1}
+                onClick={() => replacePage(safePage - 1)}
+                aria-label={d.previous}
+              >
+                {d.previous}
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={safePage >= totalPages}
+                onClick={() => replacePage(safePage + 1)}
+                aria-label={d.next}
+              >
+                {d.next}
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </SectionCard>
       </MutedSection>
     </div>

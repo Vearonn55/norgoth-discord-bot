@@ -58,11 +58,10 @@ export function RichMessageEditor({
           }}
           init={{
             height,
-            min_height: 180,
-            min_width: 280,
+            min_height: height,
             menubar: false,
             statusbar: true,
-            resize: "both",
+            resize: true,
             skin: "oxide-dark",
             content_css: "dark",
             placeholder,

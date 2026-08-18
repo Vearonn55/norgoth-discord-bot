@@ -92,7 +92,7 @@ async def test_stale_live_delivery_is_edited_in_place() -> None:
 
 
 @pytest.mark.anyio
-async def test_missing_library_message_is_recreated() -> None:
+async def test_missing_library_message_returns_missing_error_without_recreate() -> None:
     bot = FakeBot()
     delivery = _delivery(
         status="message_missing", discord_message_id=None, deployed_version=1
@@ -107,10 +107,12 @@ async def test_missing_library_message_is_recreated() -> None:
         payload={"content": "x"},
     )
 
-    assert outcome["status"] == "synced"
-    assert bot.send_calls == ["chan"]
-    assert delivery.discord_message_id == "999"
-    assert delivery.status == "synced"
+    assert outcome["status"] == "error"
+    assert outcome["code"] == "message_missing"
+    assert outcome["http_status"] == 404
+    assert bot.send_calls == []
+    assert delivery.discord_message_id is None
+    assert delivery.status == "message_missing"
 
 
 @pytest.mark.anyio
@@ -136,7 +138,7 @@ async def test_missing_sar_message_flagged_for_feature_repair() -> None:
 
 
 @pytest.mark.anyio
-async def test_edit_404_falls_through_to_recreate_for_library() -> None:
+async def test_edit_404_marks_missing_without_recreate_for_library() -> None:
     bot = FakeBot(edit_404=True)
     delivery = _delivery(status="synced", deployed_version=1)
     message = _message(version=2)
@@ -149,7 +151,10 @@ async def test_edit_404_falls_through_to_recreate_for_library() -> None:
         payload={"content": "x"},
     )
 
-    assert outcome["status"] == "synced"
+    assert outcome["status"] == "error"
+    assert outcome["code"] == "message_missing"
+    assert outcome["http_status"] == 404
     assert bot.edit_calls == [("chan", "111")]
-    assert bot.send_calls == ["chan"]
-    assert delivery.discord_message_id == "999"
+    assert bot.send_calls == []
+    assert delivery.discord_message_id == "111"
+    assert delivery.status == "message_missing"

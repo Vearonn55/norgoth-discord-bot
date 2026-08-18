@@ -170,6 +170,39 @@ async def test_resync_edits_all_tracked_message_ids() -> None:
 
 
 @pytest.mark.anyio
+async def test_resync_returns_mismatch_error_when_payload_count_changes() -> None:
+    bot = CountingBot()
+    delivery = SimpleNamespace(
+        id="d-1",
+        channel_id="chan",
+        discord_message_id="111",
+        discord_message_ids=["111", "222"],
+        delivery_type="bot",
+        status="synced",
+        error=None,
+        deployed_version=1,
+        owner_feature=OWNER_LIBRARY,
+        last_synced_at=None,
+        created_at=None,
+    )
+    message = SimpleNamespace(id="m-1", version=2)
+    payloads = [{"content": "a"}]
+    outcome = await _resync_one_delivery(
+        bot=bot,
+        delivery=delivery,
+        message=message,
+        owner=OWNER_LIBRARY,
+        payload=payloads[0],
+        payloads=payloads,
+    )
+    assert outcome["status"] == "error"
+    assert outcome["code"] == "resync_message_count_mismatch"
+    assert outcome["http_status"] == 409
+    assert bot.edit_calls == []
+    assert bot.send_calls == 0
+
+
+@pytest.mark.anyio
 async def test_resync_skips_in_flight_pending_delivery() -> None:
     bot = CountingBot()
     delivery = SimpleNamespace(

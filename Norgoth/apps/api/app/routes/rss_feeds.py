@@ -6,9 +6,9 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -95,19 +95,31 @@ class PatchFeedBody(BaseModel):
 @router.get("/guilds/{guild_id}/rss-feeds")
 async def list_rss_feeds(
     guild_id: str,
+    limit: int = Query(default=10, ge=1, le=50),
+    offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_database_session),
 ) -> dict[str, Any]:
+    total = await session.scalar(
+        select(func.count())
+        .select_from(RssFeedConfig)
+        .where(RssFeedConfig.guild_id == guild_id)
+    )
     feeds = (
         await session.scalars(
             select(RssFeedConfig)
             .where(RssFeedConfig.guild_id == guild_id)
-            .order_by(RssFeedConfig.created_at.desc())
+            .order_by(RssFeedConfig.created_at.desc(), RssFeedConfig.id.desc())
+            .limit(limit)
+            .offset(offset)
         )
     ).all()
     online = await coordinator.worker_online()
     return {
         "guild_id": guild_id,
         "feeds": [serialize_feed(f) for f in feeds],
+        "total": int(total or 0),
+        "limit": limit,
+        "offset": offset,
         "max_feeds": MAX_FEEDS_PER_GUILD,
         "worker_online": online,
     }

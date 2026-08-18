@@ -54,12 +54,16 @@ export type PatchRssFeedInput = {
 
 type RssFeedsState = {
   feeds: RssFeed[];
+  total: number;
   maxFeeds: number;
   workerOnline: boolean;
   loading: boolean;
   saving: boolean;
   error: string | null;
-  load: (guildId: string) => Promise<void>;
+  load: (
+    guildId: string,
+    options?: { limit?: number; offset?: number },
+  ) => Promise<void>;
   create: (guildId: string, input: CreateRssFeedInput) => Promise<RssFeed>;
   update: (
     guildId: string,
@@ -72,6 +76,7 @@ type RssFeedsState = {
 
 const TIMEOUT_MS = 30_000;
 let latestLoadId = 0;
+let latestLoadGuildId: string | null = null;
 
 function errorWithCode(apiError: ApiErrorBody): Error {
   const error = new Error(apiError.message);
@@ -95,17 +100,30 @@ async function fetchWithTimeout(
 
 export const useRssFeedsStore = create<RssFeedsState>((set) => ({
   feeds: [],
+  total: 0,
   maxFeeds: 15,
   workerOnline: false,
   loading: false,
   saving: false,
   error: null,
-  load: async (guildId) => {
+  load: async (guildId, options) => {
     const requestId = ++latestLoadId;
-    set({ loading: true, error: null });
+    const guildChanged = latestLoadGuildId !== guildId;
+    latestLoadGuildId = guildId;
+    set({
+      loading: true,
+      error: null,
+      ...(guildChanged ? { feeds: [], total: 0 } : {}),
+    });
+    const limit = options?.limit ?? 10;
+    const offset = options?.offset ?? 0;
+    const query = new URLSearchParams({
+      limit: String(limit),
+      offset: String(offset),
+    }).toString();
     try {
       const response = await fetchWithTimeout(
-        apiUrl(`/guilds/${guildId}/rss-feeds`),
+        apiUrl(`/guilds/${guildId}/rss-feeds?${query}`),
         { cache: "no-store", credentials: "include" },
         TIMEOUT_MS,
       );
@@ -115,12 +133,16 @@ export const useRssFeedsStore = create<RssFeedsState>((set) => ({
       }
       const data = (await response.json()) as {
         feeds: RssFeed[];
+        total?: number;
+        limit?: number;
+        offset?: number;
         max_feeds?: number;
         worker_online?: boolean;
       };
       if (requestId !== latestLoadId) return;
       set({
         feeds: data.feeds ?? [],
+        total: data.total ?? 0,
         maxFeeds: data.max_feeds ?? 15,
         workerOnline: Boolean(data.worker_online),
       });

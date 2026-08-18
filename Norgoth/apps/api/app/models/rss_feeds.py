@@ -35,6 +35,12 @@ class RssFeedConfig(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ),
         Index("ix_rss_feed_configs_guild_id", "guild_id"),
         Index(
+            "ix_rss_feed_configs_guild_created_id",
+            "guild_id",
+            "created_at",
+            "id",
+        ),
+        Index(
             "ix_rss_feed_configs_enabled_next_poll",
             "enabled",
             "next_poll_at",

@@ -44,6 +44,19 @@ const DEPLOY_ERROR_KEYS = [
   "embed_total_exceeded",
 ] as const;
 
+const RESYNC_ERROR_KEYS = [
+  "already_synced",
+  "message_missing",
+  "resync_message_count_mismatch",
+  "resync_in_progress",
+  "permission_missing",
+  "unknown_channel",
+  "invalid_payload",
+  "rate_limited",
+  "timeout",
+  "bot_missing",
+] as const;
+
 function deployErrorCopy(
   d: Record<string, unknown>,
   code: string | null,
@@ -51,6 +64,17 @@ function deployErrorCopy(
 ): string {
   if (!code) return fallback;
   if (!(DEPLOY_ERROR_KEYS as readonly string[]).includes(code)) return fallback;
+  const localized = d[code];
+  return typeof localized === "string" && localized ? localized : fallback;
+}
+
+function resyncErrorCopy(
+  d: Record<string, unknown>,
+  code: string | null,
+  fallback: string
+): string {
+  if (!code) return fallback;
+  if (!(RESYNC_ERROR_KEYS as readonly string[]).includes(code)) return fallback;
   const localized = d[code];
   return typeof localized === "string" && localized ? localized : fallback;
 }
@@ -199,8 +223,13 @@ export function EmbedMessagesPanel({ lang }: Props) {
         );
         setFeedbackError(false);
       } else {
+        const state = useEmbedMessagesStore.getState();
         setFeedback(
-          useEmbedMessagesStore.getState().error ?? d.resyncFailed
+          resyncErrorCopy(
+            d as unknown as Record<string, unknown>,
+            state.errorCode,
+            state.error ?? d.resyncFailed
+          )
         );
         setFeedbackError(true);
       }

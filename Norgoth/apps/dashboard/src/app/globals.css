@@ -1181,10 +1181,8 @@ body {
   max-width: 100%;
 }
 
-@media (pointer: coarse) {
-  .norgoth-rich-editor .tox-edit-area iframe {
-    resize: vertical;
-  }
+.norgoth-rich-editor .tox-statusbar__resize-handle {
+  touch-action: none;
 }
 
 /* ==========================================================================

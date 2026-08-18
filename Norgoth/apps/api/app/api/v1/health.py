@@ -29,4 +29,11 @@ async def get_health() -> HealthResponse:
         version=settings.app_version,
         environment=settings.environment,
         release_sha=release_sha,
+        discord_client_id=settings.discord_client_id,
+        discord_application_id=settings.discord_application_id,
+        discord_identity_mismatch=(
+            settings.discord_client_id is not None
+            and settings.discord_application_id is not None
+            and settings.discord_client_id != settings.discord_application_id
+        ),
     )

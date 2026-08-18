@@ -1810,7 +1810,10 @@
     "edit": "Düzenle",
     "delete": "Sil",
     "deleteConfirm": "Bu akışı silmek istiyor musunuz?",
-    "feedFallback": "Akış"
+    "feedFallback": "Akış",
+    "previous": "Önceki",
+    "next": "Sonraki",
+    "pageOf": "Sayfa {current} / {total}"
   },
   "richLinkEmbedsPage": {
     "loading": "Bağlantı önizleme ayarları yükleniyor…",
@@ -2283,6 +2286,10 @@
     "timeout": "Discord zamanında yanıt vermedi. Yeniden deneyin.",
     "bot_missing": "Discord botu şu anda kullanılamıyor. Daha sonra yeniden deneyin.",
     "deploy_in_progress": "Bu yayınlama zaten devam ediyor.",
+    "already_synced": "Bu yayın zaten senkronize.",
+    "message_missing": "Orijinal Discord mesajı artık yok. Yeni bir kopya yayınlamak için Yayınla'yı kullanın.",
+    "resync_message_count_mismatch": "Bu taslak artık farklı sayıda Discord mesajına derleniyor. Yeni bir kopya yayınlamak için Yayınla'yı kullanın.",
+    "resync_in_progress": "Bu taslak için zaten bir yeniden senkron işlemi sürüyor.",
     "content_too_long_for_delivery": "Bu içerik tek teslimatta gönderilebilecek Discord mesaj sayısını aşıyor. Kısaltın veya taslağı bölün.",
     "embed_total_exceeded": "Bu taslaktaki bir embed Discord'un 6000 karakterlik toplam sınırını aşıyor.",
     "embedDescription": "Embed açıklaması",
@@ -2309,6 +2316,15 @@
     "oauth_invalid": "Bu doğrulama bağlantısı geçersiz veya süresi doldu. Discord’daki bağlantıyı yeniden açın.",
     "oauth_expired": "Bu doğrulama oturumunun süresi doldu. Discord’daki bağlantıyı yeniden açın.",
     "not_in_guild": "Doğrulamak için bu Discord sunucusunun üyesi olmalısınız.",
+    "verification_not_configured": "Bu sunucu için doğrulama yapılandırılmamış.",
+    "verification_setup_incomplete": "Bu sunucunun doğrulama kurulumu eksik.",
+    "verification_disabled": "Bu sunucu için doğrulama şu anda devre dışı.",
+    "guild_metadata_unavailable": "Bu sunucu için doğrulama geçici olarak kullanılamıyor.",
+    "risk_provider_unavailable": "Bir risk denetimi sağlayıcısı geçici olarak kullanılamadığı için doğrulama tamamlanamadı.",
+    "client_ip_unavailable": "Doğrulama ağ bilgilerinizi belirleyemedi. Lütfen kısa süre sonra tekrar deneyin.",
+    "verification_processing_failed": "Doğrulama hizmeti beklenmedik şekilde başarısız olduğu için doğrulama tamamlanamadı.",
+    "vpn_or_proxy_detected": "Bir VPN veya proxy bağlantısı algılandı.",
+    "shared_ip_detected": "Bu bağlantı başka bir yakın tarihli doğrulama girişimiyle eşleşiyor ve inceleme gerektiriyor.",
     "internal_error": "Bir şeyler ters gitti. Kısa süre sonra tekrar deneyin.",
     "reference": "Referans {cid}"
   }

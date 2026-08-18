@@ -29,6 +29,9 @@ Everything reads a single `Norgoth/.env` (see `.env.example`):
   (all three together, or none). Uncomment in `.env` and set the Client
   Secret; redirect must match the Discord Developer Portal. Missing config
   yields HTTP 503 (not a generic 500) on authorize.
+- `NORGOTH_PROXYCHECK_API_KEY` — required in environments where Member
+  Verification keeps VPN/proxy detection enabled; otherwise callback can only
+  fail closed with a provider-unavailable result.
 - `NORGOTH_PUBLIC_API_URL` — optional public API base for Discord verify-panel
   link buttons (defaults to local API)
 - `NEXT_PUBLIC_DASHBOARD_URL` — dashboard origin for ticket transcript links
@@ -75,7 +78,7 @@ in Redis, a discord.py cog, FastAPI routes, and a dashboard page:
    Developer Portal → Application → **General Information** → **App Icon** —
    not the Bot Avatar and not any NorBot-hosted favicon. Upload a high-res App
    Icon on the production application whose `client_id` matches
-   `DISCORD_APPLICATION_ID` / `DISCORD_CLIENT_ID`, wait for Discord CDN cache,
+   `DISCORD_APPLICATION_ID` / `NORGOTH_DISCORD_CLIENT_ID`, wait for Discord CDN cache,
    then verify the authorize URL’s `client_id`. Bot avatar / Server Profiles
    only affect the bot user inside guilds.
 4. Installation context: enable **Guild Install** (not User Install). Default
@@ -84,8 +87,9 @@ in Redis, a discord.py cog, FastAPI routes, and a dashboard page:
    Send Messages, Manage Messages, Manage Channels (tickets),
    Manage Server (invite tracking), View Channels.
 6. Keep the bot's role **above** the verified/auto/reward roles.
-7. Register the OAuth redirect:
-   `http://127.0.0.1:8000/api/v1/oauth/discord/callback`
+7. Register the OAuth redirects on the same production application:
+   `https://api.norbot.io/api/v1/oauth/discord/callback`
+   and `https://api.norbot.io/api/v1/oauth/discord/dashboard/callback`
 8. Auto-mod testing tip: staff with Manage Messages are exempt by default.
    Turn off **Exempt Manage Messages** in Auto-Moderation (or test with a
    non-privileged account). Save config before expecting rules to fire;

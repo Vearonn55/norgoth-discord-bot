@@ -1810,7 +1810,10 @@
     "edit": "Edit",
     "delete": "Delete",
     "deleteConfirm": "Delete this feed?",
-    "feedFallback": "Feed"
+    "feedFallback": "Feed",
+    "previous": "Previous",
+    "next": "Next",
+    "pageOf": "Page {current} / {total}"
   },
   "richLinkEmbedsPage": {
     "loading": "Loading link embeds…",
@@ -2283,6 +2286,10 @@
     "timeout": "Discord did not respond in time. Try again.",
     "bot_missing": "The Discord bot is unavailable. Try again later.",
     "deploy_in_progress": "This deploy is already in progress.",
+    "already_synced": "This deployment is already synchronized.",
+    "message_missing": "The original Discord message is missing. Use Deploy to publish a new copy.",
+    "resync_message_count_mismatch": "This draft now compiles into a different number of Discord messages. Use Deploy to publish a new copy.",
+    "resync_in_progress": "A Re-Sync is already in progress for this draft.",
     "content_too_long_for_delivery": "This content needs more Discord messages than NorBot can send in one delivery. Shorten it or split the draft.",
     "embed_total_exceeded": "An embed in this draft exceeds Discord's 6000-character total.",
     "embedDescription": "Embed description",
@@ -2309,6 +2316,15 @@
     "oauth_invalid": "This verification link expired or is invalid. Open the link from Discord again.",
     "oauth_expired": "This verification session expired. Open the link from Discord again.",
     "not_in_guild": "You must be a member of this Discord server to verify.",
+    "verification_not_configured": "Verification is not configured for this server.",
+    "verification_setup_incomplete": "Verification setup is incomplete for this server.",
+    "verification_disabled": "Verification is currently disabled for this server.",
+    "guild_metadata_unavailable": "Verification is temporarily unavailable for this server.",
+    "risk_provider_unavailable": "Verification could not complete because a risk-check provider is temporarily unavailable.",
+    "client_ip_unavailable": "Verification could not determine your network information. Please try again shortly.",
+    "verification_processing_failed": "Verification could not complete because the verification service failed unexpectedly.",
+    "vpn_or_proxy_detected": "A VPN or proxy connection was detected.",
+    "shared_ip_detected": "This connection matches another recent verification attempt and needs review.",
     "internal_error": "Something went wrong. Please try again shortly.",
     "reference": "Reference {cid}"
   }

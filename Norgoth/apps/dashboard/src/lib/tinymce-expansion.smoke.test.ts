@@ -47,11 +47,12 @@ describe("leaderboard Top Upvote label", () => {
 });
 
 describe("TinyMCE native resize", () => {
-  it("enables statusbar resize and does not clip the handle", () => {
+  it("uses vertical-only statusbar resize and does not clip the handle", () => {
     const src = readFileSync(editorPath, "utf8");
     expect(src).toContain("statusbar: true");
-    expect(src).toContain('resize: "both"');
-    expect(src).toContain("min_height: 180");
+    expect(src).toContain("resize: true");
+    expect(src).toContain("min_height: height");
+    expect(src).not.toContain("min_width:");
     expect(src).toContain("norgoth-rich-editor");
     expect(src).not.toContain("overflow-hidden");
   });
@@ -63,6 +64,10 @@ describe("TinyMCE native resize", () => {
     );
     expect(css).toMatch(/\.prose-preview\s*\{[^}]*overflow:\s*visible/s);
     expect(css).toContain(".norgoth-rich-editor .tox-tinymce");
+    expect(css).toContain(".norgoth-rich-editor .tox-statusbar__resize-handle");
+    expect(css).toContain("touch-action: none");
+    expect(css).not.toContain(".norgoth-rich-editor .tox-edit-area iframe");
+    expect(css).not.toContain("resize: vertical");
     expect(css).not.toMatch(
       /\.norgoth-embed-creator-preview\s*\{[^}]*position:\s*sticky/s
     );
