@@ -21,7 +21,7 @@ import {
 import { Icon } from "@/components/ui/icon";
 import { SectionCard } from "@/components/ui/section-card";
 import { formatDateTime } from "@/lib/datetime";
-import { invitedByLabel } from "@/lib/invite-attribution";
+import { invitedByLabel, invitationSourceLabel } from "@/lib/invite-attribution";
 import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import { useInvitesStore } from "@/stores/invites-store";
@@ -284,12 +284,7 @@ export function InvitesPanel() {
               {
                 key: "code",
                 header: d.colCode,
-                cell: (row) =>
-                  row.code && row.code !== "vanity" ? (
-                    <Badge variant="neutral">{row.code}</Badge>
-                  ) : (
-                    "—"
-                  ),
+                cell: (row) => invitationSourceLabel(row, d),
               },
               {
                 key: "flags",

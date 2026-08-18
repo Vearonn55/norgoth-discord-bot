@@ -1423,6 +1423,8 @@
     "attributionDeleted": "silinmiş davet",
     "attributionAmbiguous": "belirsiz (eşzamanlı katılım)",
     "attributionUnavailable": "kullanılamıyor (Sunucuyu Yönet eksik)",
+    "attributionConsumedOneUse": "tek kullanımlık davet",
+    "invitationSourceOneUse": "Tek kullanımlık davet",
     "colCode": "Kod",
     "colFlags": "Bayraklar",
     "flagFirstJoin": "İlk katılım",
@@ -1627,7 +1629,8 @@
     "creating": "Oluşturuluyor…",
     "createLogging": "Günlüklemeyi oluştur",
     "verificationCategory": "Doğrulama Günlükleri",
-    "verificationCategoryDesc": "Üye doğrulama sonuçları ve manuel inceleme kararları."
+    "verificationCategoryDesc": "Üye doğrulama sonuçları ve manuel inceleme kararları.",
+    "missingViewAuditLog": "NorBot'ta Denetim Günlüğünü Görüntüle izni eksik. Kanal güncelleme günlüklerinde değişikliği kimin yaptığını göstermek için bu izni verin. Mevcut sunucularda botu yeniden davet etmeniz veya bot rolünü düzenlemeniz gerekir."
   },
   "auditLogsPage": {
     "loading": "Denetim günlükleri yükleniyor…",

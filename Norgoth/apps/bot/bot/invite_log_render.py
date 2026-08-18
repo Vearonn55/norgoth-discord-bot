@@ -10,7 +10,17 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-AttributionStatus = Literal["attributed", "vanity", "unknown"]
+AttributionStatus = Literal[
+    "attributed",
+    "vanity",
+    "unknown",
+    "consumed_one_use",
+    "deleted",
+    "ambiguous",
+    "unavailable",
+]
+
+_CREDITED_STATUSES = frozenset({"attributed", "consumed_one_use", "deleted"})
 
 JOIN_VARIABLES = frozenset(
     {
@@ -51,7 +61,13 @@ _PLACEHOLDER_RE = re.compile(r"\{([a-z0-9_]+)\}")
 _UNSAFE_MENTION_RE = re.compile(r"@(everyone|here)\b", re.IGNORECASE)
 
 
-def attribution_status(code: str | None, inviter_id: str | None) -> AttributionStatus:
+def attribution_status(
+    code: str | None,
+    inviter_id: str | None,
+    stored: str | None = None,
+) -> str:
+    if stored:
+        return stored
     if code == "vanity":
         return "vanity"
     if inviter_id:
@@ -106,9 +122,13 @@ def validate_template(
     return errors
 
 
-def invite_source_label(code: str | None, status: AttributionStatus) -> str:
+def invite_source_label(code: str | None, status: str) -> str:
     if status == "vanity" or code == "vanity":
         return "Vanity URL"
+    if status == "consumed_one_use":
+        if code:
+            return f"Single-use invitation ({code})"
+        return "Single-use invitation"
     if code:
         return code
     return "Unknown"
@@ -116,7 +136,7 @@ def invite_source_label(code: str | None, status: AttributionStatus) -> str:
 
 def inviter_display(
     *,
-    status: AttributionStatus,
+    status: str,
     inviter_id: str | None,
     inviter_name: str | None,
     inviter_in_guild: bool | None = None,
@@ -125,7 +145,13 @@ def inviter_display(
 
     if status == "vanity":
         return ("Vanity URL", "Vanity URL")
-    if status == "unknown" or not inviter_id:
+    if status in {"unknown", "ambiguous", "unavailable"} or not inviter_id:
+        if status == "deleted" and not inviter_id:
+            return ("Deleted invite", "Deleted invite")
+        if status == "ambiguous":
+            return ("Ambiguous", "Ambiguous")
+        if status == "unavailable":
+            return ("Unavailable", "Unavailable")
         return ("Unknown", "Unknown")
 
     name = (inviter_name or inviter_id).strip() or inviter_id
@@ -149,8 +175,9 @@ def build_template_context(
     joined_at: str | None,
     left_at: str | None = None,
     inviter_in_guild: bool | None = None,
+    attribution: str | None = None,
 ) -> dict[str, str]:
-    status = attribution_status(invite_code, inviter_id)
+    status = attribution_status(invite_code, inviter_id, stored=attribution)
     inviter_label, inviter_mention = inviter_display(
         status=status,
         inviter_id=inviter_id,
@@ -160,8 +187,8 @@ def build_template_context(
     username = member_username or member_name
     count = (
         str(inviter_count)
-        if inviter_count is not None and status == "attributed"
-        else ("0" if status == "attributed" else "—")
+        if inviter_count is not None and status in _CREDITED_STATUSES
+        else ("0" if status in _CREDITED_STATUSES else "—")
     )
     ctx: dict[str, str] = {
         "user": member_name,
@@ -219,10 +246,11 @@ def build_invite_log_fields(
     joined_at: str | None,
     left_at: str | None = None,
     inviter_in_guild: bool | None = None,
+    attribution: str | None = None,
 ) -> dict[str, str]:
     """Structured embed fields for invite join/leave logs."""
 
-    status = attribution_status(invite_code, inviter_id)
+    status = attribution_status(invite_code, inviter_id, stored=attribution)
     inviter_label, inviter_mention = inviter_display(
         status=status,
         inviter_id=inviter_id,
@@ -236,14 +264,14 @@ def build_invite_log_fields(
     }
     if kind == "join":
         fields["Invited By"] = (
-            inviter_mention if status == "attributed" else inviter_label
+            inviter_mention if status in _CREDITED_STATUSES else inviter_label
         )
     else:
         fields["Original Inviter"] = (
-            inviter_mention if status == "attributed" else inviter_label
+            inviter_mention if status in _CREDITED_STATUSES else inviter_label
         )
 
-    if status == "attributed":
+    if status in _CREDITED_STATUSES:
         fields["Inviter Total Invites"] = str(
             inviter_count if inviter_count is not None else 0
         )

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 import uuid
 from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
@@ -27,6 +28,7 @@ from bot.audit_detail import (
 from bot.logging_presentation import compose_log_embed_spec
 from bot.permission_diff import (
     channel_overwrite_fields,
+    diff_channel_overwrite_items,
     diff_channel_overwrites,
     diff_role_permissions,
     role_permission_fields,
@@ -87,6 +89,97 @@ def event_log_key(guild_id: int | str) -> str:
     return f"norgoth:guild:{guild_id}:eventlog"
 
 
+ACTOR_MISSING_PERMISSION = (
+    "Unavailable — NorBot is missing View Audit Log permission"
+)
+ACTOR_UNAVAILABLE = "Unavailable — Discord audit entry not available"
+ACTOR_SYSTEM = "System/Integration action"
+ACTOR_NORBOT = "Executed by NorBot"
+_AUDIT_FORBIDDEN_LOG_INTERVAL_S = 3600.0
+_AUDIT_RETRY_AFTER_CAP_S = 2.0
+
+_OVERWRITE_ACTIONS = frozenset(
+    {
+        discord.AuditLogAction.overwrite_create,
+        discord.AuditLogAction.overwrite_update,
+        discord.AuditLogAction.overwrite_delete,
+    }
+)
+
+
+def actor_fallback_text(status: str) -> str:
+    if status == "missing_permission":
+        return ACTOR_MISSING_PERMISSION
+    return ACTOR_UNAVAILABLE
+
+
+def format_audit_actor_name(
+    user: Any,
+    *,
+    reason: str | None,
+    bot_user_id: int | None,
+) -> str:
+    if user is None:
+        return ACTOR_SYSTEM
+    reason_text = reason or ""
+    user_id = getattr(user, "id", None)
+    if (
+        bot_user_id is not None
+        and user_id == bot_user_id
+        and reason_text.startswith("NorBot")
+    ):
+        return ACTOR_NORBOT
+    name = str(user)
+    if getattr(user, "bot", False) is True:
+        return f"{name} (bot)"
+    return name
+
+
+def _http_retry_after_seconds(error: BaseException) -> float:
+    retry_after = getattr(error, "retry_after", None)
+    if retry_after is not None:
+        try:
+            return min(max(float(retry_after), 0.0), _AUDIT_RETRY_AFTER_CAP_S)
+        except (TypeError, ValueError):
+            pass
+    response = getattr(error, "response", None)
+    headers = getattr(response, "headers", None) if response is not None else None
+    if headers is not None:
+        raw = None
+        try:
+            raw = headers.get("Retry-After") or headers.get("retry-after")
+        except Exception:  # noqa: BLE001
+            raw = None
+        if raw is not None:
+            try:
+                return min(max(float(raw), 0.0), _AUDIT_RETRY_AFTER_CAP_S)
+            except (TypeError, ValueError):
+                pass
+    return 1.0
+
+
+def _entry_extra_id(entry: Any) -> int | None:
+    extra = getattr(entry, "extra", None)
+    extra_id = getattr(extra, "id", None) if extra is not None else None
+    if extra_id is None:
+        return None
+    try:
+        return int(extra_id)
+    except (TypeError, ValueError):
+        return None
+
+
+def _entry_target_id(entry: Any) -> int | None:
+    target = getattr(entry, "target", None)
+    target_id = getattr(target, "id", None) if target is not None else None
+    if target_id is None:
+        return None
+    try:
+        return int(target_id)
+    except (TypeError, ValueError):
+        return None
+
+
 def build_log_embed(
     title: str,
     description: str,
@@ -121,6 +214,9 @@ def build_log_embed(
 class ServerLoggingCog(commands.Cog):
     def __init__(self, bot: "NorgothBot") -> None:
         self.bot = bot
+        self._audit_rate_limited_until: dict[int, float] = {}
+        self._audit_forbidden_logged_at: dict[int, float] = {}
+        self._enrich_tasks: set[asyncio.Task[Any]] = set()
 
     async def get_config(self, guild_id: int) -> dict[str, Any]:
         stored = await self.bot.state.get_json(logging_config_key(guild_id))
@@ -144,12 +240,12 @@ class ServerLoggingCog(commands.Cog):
         fields: dict[str, str],
         *,
         actor_name: str | None = None,
-    ) -> bool:
+    ) -> list[tuple[str, str]]:
         """Send a standardised embed to the channel/colour resolved for an event.
 
         Prefers the API-managed routing snapshot (event_type -> channel + colour).
         Falls back to the legacy Redis logging config when no snapshot matches.
-        Returns True when the event was routed to at least one channel.
+        Returns ``(channel_id, message_id)`` pairs for messages that were sent.
         """
 
         channel_ids: set[str] = set()
@@ -179,7 +275,7 @@ class ServerLoggingCog(commands.Cog):
                 event_type,
                 category,
             )
-            return False
+            return []
 
         footer = f"NorBot · {category} event"
         if actor_name:
@@ -194,7 +290,7 @@ class ServerLoggingCog(commands.Cog):
         )
 
         allowed = discord.AllowedMentions(everyone=False, roles=False, users=True)
-        sent = False
+        posted: list[tuple[str, str]] = []
         for channel_id in channel_ids:
             channel = await self._resolve_text_channel(
                 guild, channel_id, event_type=event_type
@@ -202,8 +298,8 @@ class ServerLoggingCog(commands.Cog):
             if channel is None:
                 continue
             try:
-                await channel.send(embed=embed, allowed_mentions=allowed)
-                sent = True
+                message = await channel.send(embed=embed, allowed_mentions=allowed)
+                posted.append((str(channel.id), str(message.id)))
             except discord.Forbidden as error:
                 logger.warning(
                     "log delivery failed class=forbidden guild_id=%s "
@@ -224,7 +320,7 @@ class ServerLoggingCog(commands.Cog):
                     getattr(error, "status", None),
                     getattr(error, "code", None),
                 )
-        if not sent and category in _ROUTE_WARN_CATEGORIES:
+        if not posted and category in _ROUTE_WARN_CATEGORIES:
             logger.warning(
                 "log delivery failed class=undelivered guild_id=%s "
                 "event_type=%s channel_ids=%s",
@@ -232,7 +328,7 @@ class ServerLoggingCog(commands.Cog):
                 event_type,
                 sorted(channel_ids),
             )
-        return sent
+        return posted
 
     async def _resolve_text_channel(
         self,
@@ -396,61 +492,118 @@ class ServerLoggingCog(commands.Cog):
         actions: Sequence[discord.AuditLogAction] | None = None,
         since: datetime | None = None,
         max_wait_s: float = 0.0,
+        retry_delays: Sequence[float] | None = None,
+        overwrite_target_ids: set[int] | None = None,
     ) -> tuple[str | None, str | None, str, str | None]:
         """Return (actor_id, actor_name, status, reason).
 
-        status is found, delayed, ambiguous, or unavailable.
-        Strict correlation (``since`` set) requires exactly one match.
-        Reason is taken from the matching Discord audit-log entry when present.
+        status is found, delayed, ambiguous, missing_permission, rate_limited,
+        or unavailable. Unique actor ID is required when a time window is set.
         """
 
-        action_set = tuple(actions) if actions else (action,)
-        matches = await self._collect_audit_actor_matches(
-            guild,
-            action_set,
-            target_id=target_id,
-            since=since,
-        )
-        if matches is None:
-            return None, None, "unavailable", None
-        if matches:
-            return self._finish_audit_actor_matches(matches, delayed=False)
+        action_set = tuple(dict.fromkeys(actions if actions else (action,)))
+        if retry_delays is None:
+            delays: list[float] = [0.0]
+            if max_wait_s > 0:
+                delays.append(max_wait_s)
+        else:
+            delays = list(retry_delays)[:3]
 
-        if max_wait_s > 0:
-            try:
-                await asyncio.sleep(max_wait_s)
-            except asyncio.CancelledError:
-                raise
-            matches = await self._collect_audit_actor_matches(
+        last_error: str | None = None
+        delayed = False
+        for index, delay in enumerate(delays):
+            if delay > 0:
+                try:
+                    await asyncio.sleep(delay)
+                except asyncio.CancelledError:
+                    raise
+                delayed = True
+            matches, error = await self._collect_audit_actor_matches(
                 guild,
                 action_set,
                 target_id=target_id,
                 since=since,
+                overwrite_target_ids=overwrite_target_ids,
             )
-            if matches is None:
-                return None, None, "unavailable", None
+            if error == "missing_permission":
+                return None, None, "missing_permission", None
+            if error:
+                last_error = error
+                continue
             if matches:
-                return self._finish_audit_actor_matches(matches, delayed=True)
-
-        return None, None, "unavailable", None
+                return self._finish_audit_actor_matches(matches, delayed=delayed)
+            last_error = None
+            _ = index
+        return None, None, last_error or "unavailable", None
 
     def _finish_audit_actor_matches(
         self,
-        matches: list[tuple[str, str, str | None]],
+        matches: list[tuple[str | None, str, str | None, bool]],
         *,
         delayed: bool,
     ) -> tuple[str | None, str | None, str, str | None]:
+        preferred = [item for item in matches if item[3]] or list(matches)
         unique: dict[str, str] = {}
         reasons: dict[str, str | None] = {}
-        for actor_id, actor_name, reason in matches:
-            unique.setdefault(actor_id, actor_name)
-            if actor_id not in reasons or not reasons[actor_id]:
-                reasons[actor_id] = reason
+        for actor_id, actor_name, reason, _signature in preferred:
+            key = actor_id or ""
+            unique.setdefault(key, actor_name)
+            if key not in reasons or not reasons[key]:
+                reasons[key] = reason
         if len(unique) != 1:
             return None, None, "ambiguous", None
-        actor_id, actor_name = next(iter(unique.items()))
+        actor_key, actor_name = next(iter(unique.items()))
         status = "delayed" if delayed else "found"
-        return actor_id, actor_name, status, reasons.get(actor_id)
+        actor_id = actor_key or None
+        return actor_id, actor_name, status, reasons.get(actor_key)
+
+    def _audit_entry_matches(
+        self,
+        entry: Any,
+        *,
+        target_id: int | None,
+        overwrite_target_ids: set[int] | None,
+        since: datetime | None,
+    ) -> bool:
+        if since is not None:
+            created = getattr(entry, "created_at", None)
+            if created is not None:
+                if created.tzinfo is None:
+                    created = created.replace(tzinfo=timezone.utc)
+                if created < since:
+                    return False
+
+        action = getattr(entry, "action", None)
+        entry_target = _entry_target_id(entry)
+        extra_id = _entry_extra_id(entry)
+        if action in _OVERWRITE_ACTIONS:
+            extra_ok = (
+                extra_id is None
+                or not overwrite_target_ids
+                or extra_id in overwrite_target_ids
+            )
+            target_ok = (
+                target_id is None
+                or entry_target is None
+                or entry_target == target_id
+            )
+            if overwrite_target_ids and extra_id in overwrite_target_ids:
+                return target_ok
+            return extra_ok and target_ok
+        if target_id is not None and entry_target is not None:
+            return entry_target == target_id
+        return True
+
+    def _log_missing_audit_permission(self, guild_id: int) -> None:
+        now = time.monotonic()
+        last = self._audit_forbidden_logged_at.get(guild_id, 0.0)
+        if now - last < _AUDIT_FORBIDDEN_LOG_INTERVAL_S:
+            return
+        self._audit_forbidden_logged_at[guild_id] = now
+        logger.warning(
+            "channel_actor_status=missing_permission guild_id=%s",
+            guild_id,
+        )
 
     async def _collect_audit_actor_matches(
         self,
@@ -459,56 +612,103 @@ class ServerLoggingCog(commands.Cog):
         *,
         target_id: int | None,
         since: datetime | None,
-    ) -> list[tuple[str, str, str | None]] | None:
-        """Return matching (id, name, reason) triples, or None on API failure.
+        overwrite_target_ids: set[int] | None = None,
+        _retried_429: bool = False,
+    ) -> tuple[list[tuple[str | None, str, str | None, bool]] | None, str | None]:
+        """Return (matches, error). Empty matches means a successful miss."""
 
-        An empty list means a successful lookup with no match.
-        """
+        cooldown_until = self._audit_rate_limited_until.get(guild.id, 0.0)
+        if time.monotonic() < cooldown_until:
+            return None, "rate_limited"
 
-        action_set = set(actions)
-        limit = 6 if len(action_set) == 1 else 12
-        matches: list[tuple[str, str, str | None]] = []
-        try:
-            if len(action_set) == 1:
-                iterator = guild.audit_logs(limit=limit, action=next(iter(action_set)))
-            else:
-                iterator = guild.audit_logs(limit=limit)
-            async for entry in iterator:
-                if entry.action not in action_set:
-                    continue
-                if target_id is not None and entry.target is not None:
-                    if getattr(entry.target, "id", None) != target_id:
+        bot_user_id = getattr(getattr(guild, "me", None), "id", None)
+        matches: list[tuple[str | None, str, str | None, bool]] = []
+        queried: list[discord.AuditLogAction] = []
+        for action in actions:
+            if action in queried:
+                continue
+            if len(queried) >= 3:
+                break
+            queried.append(action)
+            try:
+                async for entry in guild.audit_logs(limit=6, action=action):
+                    if entry.action != action:
                         continue
-                if since is not None:
-                    created = getattr(entry, "created_at", None)
-                    if created is not None:
-                        if created.tzinfo is None:
-                            created = created.replace(tzinfo=timezone.utc)
-                        if created < since:
-                            continue
-                user = entry.user
-                if user is None:
-                    continue
-                raw_reason = getattr(entry, "reason", None)
-                reason = (
-                    str(raw_reason).strip()[:512]
-                    if isinstance(raw_reason, str) and raw_reason.strip()
-                    else None
+                    if not self._audit_entry_matches(
+                        entry,
+                        target_id=target_id,
+                        overwrite_target_ids=overwrite_target_ids,
+                        since=since,
+                    ):
+                        continue
+                    raw_reason = getattr(entry, "reason", None)
+                    reason = (
+                        str(raw_reason).strip()[:512]
+                        if isinstance(raw_reason, str) and raw_reason.strip()
+                        else None
+                    )
+                    user = entry.user
+                    extra_id = _entry_extra_id(entry)
+                    signature = bool(
+                        action in _OVERWRITE_ACTIONS
+                        and overwrite_target_ids
+                        and extra_id in overwrite_target_ids
+                    )
+                    if user is None:
+                        matches.append((None, ACTOR_SYSTEM, reason, signature))
+                        continue
+                    matches.append(
+                        (
+                            str(user.id),
+                            format_audit_actor_name(
+                                user,
+                                reason=reason,
+                                bot_user_id=bot_user_id,
+                            ),
+                            reason,
+                            signature,
+                        )
+                    )
+            except discord.Forbidden:
+                self._log_missing_audit_permission(guild.id)
+                return None, "missing_permission"
+            except discord.HTTPException as error:
+                status = getattr(error, "status", None)
+                if status == 429:
+                    delay = _http_retry_after_seconds(error)
+                    self._audit_rate_limited_until[guild.id] = (
+                        time.monotonic() + delay
+                    )
+                    if not _retried_429:
+                        try:
+                            await asyncio.sleep(delay)
+                        except asyncio.CancelledError:
+                            raise
+                        return await self._collect_audit_actor_matches(
+                            guild,
+                            actions,
+                            target_id=target_id,
+                            since=since,
+                            overwrite_target_ids=overwrite_target_ids,
+                            _retried_429=True,
+                        )
+                    logger.warning(
+                        "channel_actor_status=rate_limited guild_id=%s "
+                        "discord_status=%s discord_code=%s",
+                        guild.id,
+                        status,
+                        getattr(error, "code", None),
+                    )
+                    return None, "rate_limited"
+                logger.warning(
+                    "audit actor lookup failed guild_id=%s discord_status=%s "
+                    "discord_code=%s",
+                    guild.id,
+                    status,
+                    getattr(error, "code", None),
                 )
-                matches.append((str(user.id), str(user), reason))
-                if since is None and matches:
-                    return matches
-        except discord.Forbidden:
-            return None
-        except discord.HTTPException as error:
-            logger.warning(
-                "audit actor lookup failed guild_id=%s discord_status=%s discord_code=%s",
-                guild.id,
-                getattr(error, "status", None),
-                getattr(error, "code", None),
-            )
-            return None
-        return matches
+                return None, "unavailable"
+        return matches, None
 
     async def record_event(
         self,
@@ -522,9 +722,9 @@ class ServerLoggingCog(commands.Cog):
         actor_id: str | None = None,
         actor_name: str | None = None,
         detail: AuditDetail | dict[str, Any] | None = None,
-    ) -> None:
+    ) -> dict[str, Any]:
         if not await self.bot.state.is_module_enabled(guild.id, "logging"):
-            return
+            return {"id": None, "posted": [], "fields": dict(fields or {})}
 
         entry_fields = dict(fields or {})
         if actor_name and "Actor" not in entry_fields:
@@ -565,8 +765,9 @@ class ServerLoggingCog(commands.Cog):
                 exc_info=True,
             )
 
+        posted: list[tuple[str, str]] = []
         try:
-            await self.route_event(
+            posted = await self.route_event(
                 guild,
                 event_type,
                 category,
@@ -577,6 +778,35 @@ class ServerLoggingCog(commands.Cog):
             )
         except Exception:  # noqa: BLE001 - routing must not break event capture
             logger.exception("Failed to route log event %s", event_type)
+
+        if posted:
+            channel_id, message_id = posted[0]
+            try:
+                await self._patch_server_event(
+                    guild.id,
+                    str(entry["id"]),
+                    {
+                        "discord_channel_id": channel_id,
+                        "discord_message_id": message_id,
+                    },
+                )
+            except Exception:  # noqa: BLE001
+                logger.debug(
+                    "Server event message-id patch failed guild_id=%s event_type=%s",
+                    guild.id,
+                    event_type,
+                    exc_info=True,
+                )
+
+        return {
+            "id": entry["id"],
+            "posted": posted,
+            "fields": entry_fields,
+            "action": action,
+            "description": description,
+            "event_type": event_type,
+            "category": category,
+        }
 
     async def _ingest_server_event(
         self,
@@ -620,6 +850,227 @@ class ServerLoggingCog(commands.Cog):
                         "detail": detail_payload,
                     },
                 },
+            )
+
+    async def _patch_server_event(
+        self,
+        guild_id: int,
+        source_event_id: str,
+        body: dict[str, Any],
+    ) -> None:
+        base = getattr(self.bot.state, "_api_base_url", "") or ""
+        token = getattr(self.bot.state, "_bot_token", "") or ""
+        if not isinstance(base, str) or not base:
+            return
+        if not isinstance(token, str) or not token:
+            return
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.patch(
+                f"{base}/internal/ingest/{guild_id}/server-event/{source_event_id}",
+                headers={
+                    "X-Norgoth-Internal-Token": token,
+                    "X-Norgoth-Bot-Token": token,
+                },
+                json=body,
+            )
+
+    async def _rewrite_event_log_actor(
+        self,
+        guild_id: int,
+        source_event_id: str,
+        *,
+        actor_id: str | None,
+        actor_name: str,
+    ) -> None:
+        try:
+            await self.bot.state.update_list_entry_by_id(
+                event_log_key(guild_id),
+                source_event_id,
+                {
+                    "actor_id": actor_id,
+                    "actor_name": actor_name,
+                    "fields": {"Actor": actor_name, **(
+                        {"Actor ID": actor_id} if actor_id else {}
+                    )},
+                },
+            )
+        except Exception:  # noqa: BLE001
+            logger.debug(
+                "Event log actor rewrite failed guild_id=%s source_event_id=%s",
+                guild_id,
+                source_event_id,
+                exc_info=True,
+            )
+
+    async def _edit_routed_log_messages(
+        self,
+        guild: discord.Guild,
+        posted: list[tuple[str, str]],
+        *,
+        event_type: str,
+        category: str,
+        title: str,
+        description: str,
+        fields: dict[str, str],
+        actor_name: str | None,
+    ) -> None:
+        color = CATEGORY_COLORS.get(category, discord.Color.dark_grey())
+        snapshot = await self.get_routing_snapshot(guild.id)
+        routed = snapshot["events"].get(event_type) if snapshot else None
+        if routed and routed.get("color") is not None:
+            try:
+                color = discord.Color(int(routed["color"]))
+            except (ValueError, TypeError):
+                pass
+        footer = f"NorBot · {category} event"
+        if actor_name:
+            footer = f"{footer} · by {actor_name}"
+        embed = build_log_embed(
+            title,
+            description,
+            color=color,
+            fields=fields,
+            footer=footer,
+            event_type=event_type,
+        )
+        for channel_id, message_id in posted:
+            channel = await self._resolve_text_channel(
+                guild, channel_id, event_type=event_type
+            )
+            if channel is None:
+                continue
+            try:
+                message = await channel.fetch_message(int(message_id))
+                await message.edit(embed=embed)
+            except (discord.HTTPException, ValueError, TypeError):
+                logger.debug(
+                    "Late actor embed edit failed guild_id=%s channel_id=%s "
+                    "message_id=%s",
+                    guild.id,
+                    channel_id,
+                    message_id,
+                    exc_info=True,
+                )
+
+    def _schedule_channel_actor_enrichment(
+        self,
+        *,
+        guild: discord.Guild,
+        source_event_id: str | None,
+        posted: list[tuple[str, str]],
+        actions: Sequence[discord.AuditLogAction],
+        target_id: int,
+        overwrite_target_ids: set[int],
+        event_type: str,
+        category: str,
+        title: str,
+        description: str,
+        fields: dict[str, str],
+        detail: AuditDetail,
+    ) -> None:
+        if not source_event_id or not posted:
+            return
+        task = asyncio.create_task(
+            self._enrich_channel_update_actor(
+                guild,
+                source_event_id=source_event_id,
+                posted=posted,
+                actions=actions,
+                target_id=target_id,
+                overwrite_target_ids=overwrite_target_ids,
+                event_type=event_type,
+                category=category,
+                title=title,
+                description=description,
+                fields=dict(fields),
+                detail=detail,
+            )
+        )
+        self._enrich_tasks.add(task)
+        task.add_done_callback(self._enrich_tasks.discard)
+
+    async def _enrich_channel_update_actor(
+        self,
+        guild: discord.Guild,
+        *,
+        source_event_id: str,
+        posted: list[tuple[str, str]],
+        actions: Sequence[discord.AuditLogAction],
+        target_id: int,
+        overwrite_target_ids: set[int],
+        event_type: str,
+        category: str,
+        title: str,
+        description: str,
+        fields: dict[str, str],
+        detail: AuditDetail,
+    ) -> None:
+        try:
+            await asyncio.sleep(1.2)
+            since = datetime.now(timezone.utc) - timedelta(seconds=8)
+            actor_id, actor_name, status, reason = (
+                await self._resolve_audit_actor_detailed(
+                    guild,
+                    actions[0],
+                    target_id=target_id,
+                    actions=actions,
+                    since=since,
+                    retry_delays=(0.0,),
+                    overwrite_target_ids=overwrite_target_ids or None,
+                )
+            )
+            if status not in {"found", "delayed"} or not actor_name:
+                logger.info(
+                    "channel_actor_status=%s guild_id=%s event_type=%s",
+                    status,
+                    guild.id,
+                    event_type,
+                )
+                return
+            fields["Actor"] = actor_name
+            if actor_id:
+                fields["Actor ID"] = actor_id
+            detail.actor = {"id": actor_id, "name": actor_name}
+            detail.reason = reason
+            await self._rewrite_event_log_actor(
+                guild.id,
+                source_event_id,
+                actor_id=actor_id,
+                actor_name=actor_name,
+            )
+            await self._patch_server_event(
+                guild.id,
+                source_event_id,
+                {
+                    "actor_id": actor_id,
+                    "actor_name": actor_name,
+                    "actor_field": actor_name,
+                    "detail_actor": detail.actor,
+                },
+            )
+            await self._edit_routed_log_messages(
+                guild,
+                posted,
+                event_type=event_type,
+                category=category,
+                title=title,
+                description=description,
+                fields=fields,
+                actor_name=actor_name,
+            )
+            logger.info(
+                "channel_actor_status=enriched guild_id=%s event_type=%s",
+                guild.id,
+                event_type,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001
+            logger.debug(
+                "channel actor enrichment failed guild_id=%s source_event_id=%s",
+                guild.id,
+                source_event_id,
+                exc_info=True,
             )
 
     # ---- member events -------------------------------------------------
@@ -973,7 +1424,7 @@ class ServerLoggingCog(commands.Cog):
                 actor_status,
             )
         if actor_status not in {"found", "delayed"}:
-            fields["Actor"] = "Unknown"
+            fields["Actor"] = actor_fallback_text(actor_status)
 
         await self.record_event(
             after.guild,
@@ -1058,22 +1509,36 @@ class ServerLoggingCog(commands.Cog):
         if detail.is_empty():
             return
 
-        wait_s = 0.6 if not overwrite_diff.is_empty() else 0.0
-        since = (
-            datetime.now(timezone.utc) - timedelta(seconds=5)
-            if wait_s
-            else None
-        )
-        actions: list[discord.AuditLogAction] = [discord.AuditLogAction.channel_update]
-        if not overwrite_diff.is_empty():
-            actions.extend(
-                [
-                    discord.AuditLogAction.overwrite_create,
-                    discord.AuditLogAction.overwrite_update,
-                    discord.AuditLogAction.overwrite_delete,
-                ]
-            )
+        overwrite_items = diff_channel_overwrite_items(before, after)
+        overwrite_target_ids: set[int] = set()
+        for item in overwrite_items:
+            try:
+                overwrite_target_ids.add(int(item.target_id))
+            except (TypeError, ValueError):
+                continue
 
+        since = datetime.now(timezone.utc) - timedelta(seconds=5)
+        actions: list[discord.AuditLogAction] = []
+        overwrite_actions: list[discord.AuditLogAction] = []
+        if overwrite_items or not overwrite_diff.is_empty():
+            kinds = {item.change for item in overwrite_items}
+            if "overwrite_added" in kinds:
+                overwrite_actions.append(discord.AuditLogAction.overwrite_create)
+            if "transition" in kinds or (
+                not overwrite_items and not overwrite_diff.is_empty()
+            ):
+                overwrite_actions.append(discord.AuditLogAction.overwrite_update)
+            if "overwrite_removed" in kinds:
+                overwrite_actions.append(discord.AuditLogAction.overwrite_delete)
+            if not overwrite_actions:
+                overwrite_actions.append(discord.AuditLogAction.overwrite_update)
+        if detail.field_changes:
+            actions.append(discord.AuditLogAction.channel_update)
+        actions = list(dict.fromkeys([*overwrite_actions, *actions]))[:3]
+        if not actions:
+            actions = [discord.AuditLogAction.channel_update]
+
+        first_delay = 0.6 if overwrite_items else 0.4
         actor_id, actor_name, actor_status, reason = (
             await self._resolve_audit_actor_detailed(
                 after.guild,
@@ -1081,11 +1546,18 @@ class ServerLoggingCog(commands.Cog):
                 target_id=after.id,
                 actions=actions,
                 since=since,
-                max_wait_s=wait_s,
+                retry_delays=(0.0, first_delay, 1.2),
+                overwrite_target_ids=overwrite_target_ids or None,
             )
         )
+        logger.info(
+            "channel_actor_status=%s guild_id=%s event_type=channel_update",
+            actor_status,
+            after.guild.id,
+        )
         if actor_status not in {"found", "delayed"}:
-            actor_id, actor_name = None, None
+            actor_id = None
+            actor_name = None
             reason = None
         detail.actor = (
             {"id": actor_id, "name": actor_name}
@@ -1102,7 +1574,7 @@ class ServerLoggingCog(commands.Cog):
             fields["Type"] = str(channel_type)
         fields.update(channel_overwrite_fields(overwrite_diff))
         if actor_status not in {"found", "delayed"}:
-            fields["Actor"] = "Unknown"
+            fields["Actor"] = actor_fallback_text(actor_status)
 
         if not overwrite_diff.is_empty():
             logger.info(
@@ -1116,7 +1588,7 @@ class ServerLoggingCog(commands.Cog):
                 actor_status,
             )
 
-        await self.record_event(
+        recorded = await self.record_event(
             after.guild,
             "channel",
             "Channel updated",
@@ -1127,6 +1599,21 @@ class ServerLoggingCog(commands.Cog):
             actor_name=actor_name,
             detail=detail,
         )
+        if actor_status in {"unavailable", "rate_limited"}:
+            self._schedule_channel_actor_enrichment(
+                guild=after.guild,
+                source_event_id=recorded.get("id"),
+                posted=list(recorded.get("posted") or []),
+                actions=actions,
+                target_id=after.id,
+                overwrite_target_ids=overwrite_target_ids,
+                event_type="channel_update",
+                category="channel",
+                title="Channel updated",
+                description=f"Channel **#{after.name}** was updated.",
+                fields=recorded.get("fields") or fields,
+                detail=detail,
+            )
 
     # ---- thread events -----------------------------------------------------
 

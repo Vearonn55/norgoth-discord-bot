@@ -139,6 +139,38 @@ class BotState:
         await self._redis.lpush(key, json.dumps(entry))
         await self._redis.ltrim(key, 0, cap - 1)
 
+    async def update_list_entry_by_id(
+        self,
+        key: str,
+        entry_id: str,
+        patch: dict[str, Any],
+    ) -> bool:
+        """Rewrite one JSON list item in place (guild-scoped event log)."""
+
+        raw_items = await self._redis.lrange(key, 0, -1)
+        for index, raw in enumerate(raw_items):
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(parsed, dict):
+                continue
+            if str(parsed.get("id")) != str(entry_id):
+                continue
+            merged = dict(parsed)
+            fields_patch = patch.get("fields")
+            if isinstance(fields_patch, dict):
+                merged_fields = dict(merged.get("fields") or {})
+                merged_fields.update(fields_patch)
+                merged["fields"] = merged_fields
+            for field_name, value in patch.items():
+                if field_name == "fields":
+                    continue
+                merged[field_name] = value
+            await self._redis.lset(key, index, json.dumps(merged))
+            return True
+        return False
+
     @property
     def redis(self) -> redis.Redis:
         return self._redis

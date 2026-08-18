@@ -122,8 +122,58 @@ class ServerEventLogEntry(UUIDPrimaryKeyMixin, Base):
     payload: Mapped[Any] = mapped_column(
         JSONB, nullable=False, server_default=func.jsonb_build_object()
     )
+    discord_channel_id: Mapped[str | None] = mapped_column(
+        DiscordSnowflake(), nullable=True
+    )
+    discord_message_id: Mapped[str | None] = mapped_column(
+        DiscordSnowflake(), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class InviteLifecycle(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """Create/delete snapshot for invite codes so one-use joins can be attributed."""
+
+    __tablename__ = "invite_lifecycle"
+    __table_args__ = (
+        UniqueConstraint("guild_id", "code", name="uq_invite_lifecycle_guild_code"),
+        Index(
+            "ix_invite_lifecycle_guild_status_disappeared",
+            "guild_id",
+            "status",
+            "disappeared_at",
+        ),
+    )
+
+    guild_id: Mapped[str] = mapped_column(DiscordSnowflake(), nullable=False)
+    code: Mapped[str] = mapped_column(String(64), nullable=False)
+    inviter_id: Mapped[str | None] = mapped_column(DiscordSnowflake(), nullable=True)
+    inviter_name_snapshot: Mapped[str | None] = mapped_column(
+        String(128), nullable=True
+    )
+    channel_id: Mapped[str | None] = mapped_column(DiscordSnowflake(), nullable=True)
+    uses: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_uses: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_age: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    temporary: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    created_at_discord: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    disappeared_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="active"
+    )
+    invite_kind: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="standard"
     )
 
 

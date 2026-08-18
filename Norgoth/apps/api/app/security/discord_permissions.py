@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+from typing import Any, Iterable
 from urllib.parse import urlencode
 
 ADMINISTRATOR = 1 << 3  # 0x8
+MANAGE_CHANNELS = 1 << 4  # 0x10
 MANAGE_GUILD = 1 << 5  # 0x20
+VIEW_AUDIT_LOG = 1 << 7  # 0x80
+VIEW_CHANNEL = 1 << 10  # 0x400
+SEND_MESSAGES = 1 << 11  # 0x800
 
 # Match Discord Developer Portal Guild Install links (not /api/oauth2).
 DISCORD_OAUTH_AUTHORIZE_URL = "https://discord.com/oauth2/authorize"
@@ -46,21 +51,92 @@ BOT_INVITE_PERMISSIONS = (
 )
 # Prefer non-Administrator bitmask for production invite CTA:
 BOT_INVITE_PERMISSIONS_MINIMAL = (
-    (1 << 10)  # VIEW_CHANNEL
-    | (1 << 11)  # SEND_MESSAGES
+    VIEW_CHANNEL
+    | SEND_MESSAGES
     | (1 << 14)  # EMBED_LINKS
     | (1 << 13)  # MANAGE_MESSAGES
     | (1 << 1)  # KICK_MEMBERS
     | (1 << 2)  # BAN_MEMBERS
     | (1 << 40)  # MODERATE_MEMBERS
-    | (1 << 4)  # MANAGE_CHANNELS
+    | MANAGE_CHANNELS
     | (1 << 28)  # MANAGE_ROLES
-    | (1 << 5)  # MANAGE_GUILD
+    | MANAGE_GUILD
+    | VIEW_AUDIT_LOG
     | (1 << 15)  # ATTACH_FILES
     | (1 << 16)  # READ_MESSAGE_HISTORY
     | (1 << 17)  # MENTION_EVERYONE (for ping roles in security alerts)
     | (1 << 29)  # MANAGE_WEBHOOKS (content notifications)
 )
+
+# Labels shown in logging health. Existing guilds must be granted View Audit Log.
+LOGGING_REQUIRED_PERMISSIONS: tuple[tuple[str, int], ...] = (
+    ("View Audit Log", VIEW_AUDIT_LOG),
+    ("Manage Server", MANAGE_GUILD),
+    ("Manage Channels", MANAGE_CHANNELS),
+    ("View Channels", VIEW_CHANNEL),
+    ("Send Messages", SEND_MESSAGES),
+)
+
+
+def compute_member_permissions(
+    *,
+    guild_id: str,
+    owner_id: str | None,
+    member_user_id: str | None,
+    member_roles: Iterable[str],
+    roles: Iterable[dict[str, Any]],
+) -> int:
+    """OR role permission bits for a guild member, including @everyone."""
+
+    if owner_id and member_user_id and str(owner_id) == str(member_user_id):
+        return (
+            ADMINISTRATOR
+            | VIEW_AUDIT_LOG
+            | MANAGE_GUILD
+            | MANAGE_CHANNELS
+            | VIEW_CHANNEL
+            | SEND_MESSAGES
+        )
+
+    by_id: dict[str, dict[str, Any]] = {}
+    for role in roles:
+        if not isinstance(role, dict):
+            continue
+        role_id = role.get("id")
+        if role_id is None:
+            continue
+        by_id[str(role_id)] = role
+
+    bits = 0
+    seen: set[str] = set()
+    for role_id in (str(guild_id), *[str(item) for item in member_roles]):
+        if role_id in seen:
+            continue
+        seen.add(role_id)
+        role = by_id.get(role_id)
+        if role is None:
+            continue
+        try:
+            bits |= int(role.get("permissions") or 0)
+        except (TypeError, ValueError):
+            continue
+    if bits & ADMINISTRATOR:
+        bits |= (
+            VIEW_AUDIT_LOG
+            | MANAGE_GUILD
+            | MANAGE_CHANNELS
+            | VIEW_CHANNEL
+            | SEND_MESSAGES
+        )
+    return bits
+
+
+def missing_logging_permissions(bits: int) -> list[str]:
+    return [
+        label
+        for label, mask in LOGGING_REQUIRED_PERMISSIONS
+        if not (bits & mask)
+    ]
 
 
 def build_bot_invite_url(
@@ -92,11 +168,18 @@ def build_bot_invite_url(
 
 __all__ = [
     "ADMINISTRATOR",
+    "MANAGE_CHANNELS",
     "MANAGE_GUILD",
+    "SEND_MESSAGES",
+    "VIEW_AUDIT_LOG",
+    "VIEW_CHANNEL",
     "BOT_INSTALL_SCOPES",
     "BOT_INVITE_PERMISSIONS_MINIMAL",
     "DISCORD_INTEGRATION_TYPE_GUILD",
+    "LOGGING_REQUIRED_PERMISSIONS",
     "build_bot_invite_url",
     "can_manage_guild",
+    "compute_member_permissions",
     "guild_role_label",
+    "missing_logging_permissions",
 ]

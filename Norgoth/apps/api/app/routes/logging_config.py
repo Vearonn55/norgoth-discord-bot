@@ -27,6 +27,13 @@ from app.integrations.discord.bot_rest import (
     DiscordBotAPIError,
     DiscordBotClient,
 )
+from app.security.discord_permissions import (
+    LOGGING_REQUIRED_PERMISSIONS,
+    MANAGE_GUILD,
+    VIEW_AUDIT_LOG,
+    compute_member_permissions,
+    missing_logging_permissions,
+)
 from app.models.logging_config import (
     DiscordLoggingEventType,
     LoggingChannel,
@@ -1109,24 +1116,46 @@ async def logging_permissions(
     if not settings.discord_bot_token:
         raise HTTPException(status_code=503, detail="Discord bot token not configured.")
 
+    required = [label for label, _mask in LOGGING_REQUIRED_PERMISSIONS]
     async with httpx.AsyncClient(timeout=15.0) as http_client:
         bot = DiscordBotClient(settings.discord_bot_token, http_client)
         try:
-            await bot.get_guild(guild_id)
-            bot_in_guild = True
+            guild = await bot.get_guild(guild_id)
+            bot_user = await bot.get_bot_user()
+            bot_user_id = str(bot_user.get("id") or "")
+            member = await bot.get_guild_member(guild_id, bot_user_id)
+            roles = await bot.list_guild_roles(guild_id)
         except DiscordBotAPIError as error:
             if error.status_code in (403, 404):
-                bot_in_guild = False
-            else:
-                raise HTTPException(
-                    status_code=502,
-                    detail=f"Could not verify bot permissions: {error}",
-                ) from error
+                return {
+                    "guild_id": guild_id,
+                    "bot_in_guild": False,
+                    "required_permissions": required,
+                    "missing_permissions": required,
+                    "has_view_audit_log": False,
+                    "has_manage_guild": False,
+                }
+            raise HTTPException(
+                status_code=502,
+                detail=f"Could not verify bot permissions: {error}",
+            ) from error
 
+    member_roles = member.get("roles") if isinstance(member.get("roles"), list) else []
+    bits = compute_member_permissions(
+        guild_id=guild_id,
+        owner_id=str(guild.get("owner_id") or "") or None,
+        member_user_id=bot_user_id or None,
+        member_roles=[str(role_id) for role_id in member_roles],
+        roles=roles,
+    )
+    missing = missing_logging_permissions(bits)
     return {
         "guild_id": guild_id,
-        "bot_in_guild": bot_in_guild,
-        "required_permissions": ["Manage Channels", "View Channels", "Send Messages"],
+        "bot_in_guild": True,
+        "required_permissions": required,
+        "missing_permissions": missing,
+        "has_view_audit_log": bool(bits & VIEW_AUDIT_LOG),
+        "has_manage_guild": bool(bits & MANAGE_GUILD),
     }
 
 

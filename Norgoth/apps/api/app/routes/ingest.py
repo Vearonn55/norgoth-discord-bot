@@ -8,14 +8,15 @@ and are rolled up here periodically.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.db.session import get_database_session
 from app.security.internal_auth import require_internal_token
@@ -24,6 +25,7 @@ from app.models.runtime_events import (
     HoneypotTrigger,
     InviteCounter,
     InviteJoinEvent,
+    InviteLifecycle,
     MemberXp,
     ModerationLogEntry,
     RaidIncident,
@@ -172,6 +174,17 @@ class ServerEventBody(BaseModel):
     actor_id: Optional[str] = Field(default=None, max_length=32)
     actor_name: Optional[str] = Field(default=None, max_length=128)
     created_at: Optional[datetime] = None
+    discord_channel_id: Optional[str] = Field(default=None, max_length=32)
+    discord_message_id: Optional[str] = Field(default=None, max_length=32)
+
+
+class ServerEventPatchBody(BaseModel):
+    actor_id: Optional[str] = Field(default=None, max_length=32)
+    actor_name: Optional[str] = Field(default=None, max_length=128)
+    actor_field: Optional[str] = Field(default=None, max_length=512)
+    discord_channel_id: Optional[str] = Field(default=None, max_length=32)
+    discord_message_id: Optional[str] = Field(default=None, max_length=32)
+    detail_actor: Optional[dict[str, Any]] = None
 
 
 @router.post("/{guild_id}/server-event")
@@ -205,6 +218,12 @@ async def ingest_server_event(
         source_event_id=source_id,
         has_detail=has_detail,
         payload=payload,
+        discord_channel_id=(
+            body.discord_channel_id if is_snowflake(body.discord_channel_id) else None
+        ),
+        discord_message_id=(
+            body.discord_message_id if is_snowflake(body.discord_message_id) else None
+        ),
     )
     if body.created_at is not None:
         entry.created_at = body.created_at
@@ -230,6 +249,57 @@ async def ingest_server_event(
     await _prune_oldest(session, ServerEventLogEntry, guild_id, EVENT_LOG_CAP)
     await session.commit()
     return {"id": str(entry.id)}
+
+
+@router.patch("/{guild_id}/server-event/{source_event_id}")
+async def patch_server_event(
+    body: ServerEventPatchBody,
+    guild_id: str = Path(pattern=SNOWFLAKE),
+    source_event_id: str = Path(min_length=1, max_length=36),
+    session: AsyncSession = Depends(get_database_session),
+) -> dict[str, Any]:
+    existing = (
+        await session.execute(
+            select(ServerEventLogEntry).where(
+                ServerEventLogEntry.guild_id == guild_id,
+                ServerEventLogEntry.source_event_id == source_event_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Server event not found.")
+
+    if body.actor_id is not None:
+        existing.actor_id = body.actor_id if is_snowflake(body.actor_id) else None
+    if body.actor_name is not None:
+        existing.actor_name = body.actor_name[:128]
+    if body.discord_channel_id is not None:
+        existing.discord_channel_id = (
+            body.discord_channel_id if is_snowflake(body.discord_channel_id) else None
+        )
+    if body.discord_message_id is not None:
+        existing.discord_message_id = (
+            body.discord_message_id if is_snowflake(body.discord_message_id) else None
+        )
+
+    payload = dict(existing.payload or {})
+    mutated = False
+    if body.actor_field is not None:
+        fields = dict(payload.get("fields") or {})
+        fields["Actor"] = body.actor_field
+        payload["fields"] = fields
+        mutated = True
+    if body.detail_actor is not None:
+        detail = dict(payload.get("detail") or {})
+        detail["actor"] = body.detail_actor
+        payload["detail"] = detail
+        mutated = True
+    if mutated:
+        existing.payload = payload
+        flag_modified(existing, "payload")
+
+    await session.commit()
+    return {"id": str(existing.id), "updated": True}
 
 
 class InviteEventBody(BaseModel):
@@ -299,7 +369,11 @@ async def ingest_invite_join(
         joined_at=body.joined_at or datetime.now(timezone.utc),
     )
     session.add(event)
-    if body.inviter_id and body.attribution == "attributed":
+    if body.inviter_id and body.attribution in {
+        "attributed",
+        "consumed_one_use",
+        "deleted",
+    }:
         counter = (
             await session.execute(
                 select(InviteCounter)
@@ -339,6 +413,193 @@ async def ingest_invite_join(
             "duplicate": True,
         }
     return {"id": str(event.id), "attribution": event.attribution}
+
+
+def _invite_kind(*, code: str, max_uses: int | None, invite_kind: str | None) -> str:
+    if code == "vanity" or invite_kind == "vanity":
+        return "vanity"
+    if invite_kind in {"one_use", "standard", "vanity"}:
+        if max_uses == 1:
+            return "one_use"
+        return invite_kind
+    if max_uses == 1:
+        return "one_use"
+    return "standard"
+
+
+class InviteLifecycleBody(BaseModel):
+    code: str = Field(min_length=1, max_length=64)
+    inviter_id: Optional[str] = Field(default=None, max_length=32)
+    inviter_name_snapshot: Optional[str] = Field(default=None, max_length=128)
+    channel_id: Optional[str] = Field(default=None, max_length=32)
+    uses: int = Field(default=0, ge=0)
+    max_uses: Optional[int] = Field(default=None, ge=0)
+    max_age: Optional[int] = Field(default=None, ge=0)
+    temporary: bool = False
+    created_at_discord: Optional[datetime] = None
+    status: str = Field(default="active", max_length=16)
+    invite_kind: Optional[str] = Field(default=None, max_length=16)
+    disappeared_at: Optional[datetime] = None
+
+
+class InviteLifecycleSnapshotBody(BaseModel):
+    invites: list[InviteLifecycleBody] = Field(default_factory=list, max_length=200)
+
+
+async def _upsert_invite_lifecycle(
+    session: AsyncSession,
+    guild_id: str,
+    body: InviteLifecycleBody,
+    *,
+    now: datetime,
+) -> InviteLifecycle:
+    row = (
+        await session.execute(
+            select(InviteLifecycle)
+            .where(
+                InviteLifecycle.guild_id == guild_id,
+                InviteLifecycle.code == body.code,
+            )
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    kind = _invite_kind(
+        code=body.code,
+        max_uses=body.max_uses,
+        invite_kind=body.invite_kind,
+    )
+    inviter_id = body.inviter_id if is_snowflake(body.inviter_id) else None
+    channel_id = body.channel_id if is_snowflake(body.channel_id) else None
+    if row is None:
+        row = InviteLifecycle(
+            guild_id=guild_id,
+            code=body.code[:64],
+            inviter_id=inviter_id,
+            inviter_name_snapshot=body.inviter_name_snapshot,
+            channel_id=channel_id,
+            uses=body.uses,
+            max_uses=body.max_uses,
+            max_age=body.max_age,
+            temporary=body.temporary,
+            created_at_discord=body.created_at_discord,
+            last_seen_at=now,
+            disappeared_at=body.disappeared_at,
+            status=body.status[:16],
+            invite_kind=kind,
+        )
+        session.add(row)
+        return row
+
+    if inviter_id and not row.inviter_id:
+        row.inviter_id = inviter_id
+    if body.inviter_name_snapshot and not row.inviter_name_snapshot:
+        row.inviter_name_snapshot = body.inviter_name_snapshot
+    if channel_id:
+        row.channel_id = channel_id
+    row.uses = body.uses
+    if body.max_uses is not None:
+        row.max_uses = body.max_uses
+    if body.max_age is not None:
+        row.max_age = body.max_age
+    row.temporary = body.temporary
+    if body.created_at_discord is not None:
+        row.created_at_discord = body.created_at_discord
+    row.last_seen_at = now
+    row.status = body.status[:16]
+    row.invite_kind = kind
+    if body.disappeared_at is not None:
+        row.disappeared_at = body.disappeared_at
+    elif body.status == "active":
+        row.disappeared_at = None
+    return row
+
+
+async def _prune_stale_invite_lifecycle(
+    session: AsyncSession,
+    guild_id: str,
+    *,
+    now: datetime,
+) -> None:
+    cutoff = now - timedelta(days=7)
+    await session.execute(
+        delete(InviteLifecycle).where(
+            InviteLifecycle.guild_id == guild_id,
+            InviteLifecycle.disappeared_at.is_not(None),
+            InviteLifecycle.disappeared_at < cutoff,
+        )
+    )
+
+
+@router.post("/{guild_id}/invite-lifecycle")
+async def ingest_invite_lifecycle(
+    body: InviteLifecycleBody,
+    guild_id: str = Path(pattern=SNOWFLAKE),
+    session: AsyncSession = Depends(get_database_session),
+) -> dict[str, Any]:
+    now = datetime.now(timezone.utc)
+    row = await _upsert_invite_lifecycle(session, guild_id, body, now=now)
+    await _prune_stale_invite_lifecycle(session, guild_id, now=now)
+    await session.commit()
+    return {
+        "id": str(row.id),
+        "code": row.code,
+        "status": row.status,
+        "invite_kind": row.invite_kind,
+        "inviter_id": row.inviter_id,
+    }
+
+
+@router.post("/{guild_id}/invite-lifecycle/snapshot")
+async def ingest_invite_lifecycle_snapshot(
+    body: InviteLifecycleSnapshotBody,
+    guild_id: str = Path(pattern=SNOWFLAKE),
+    session: AsyncSession = Depends(get_database_session),
+) -> dict[str, Any]:
+    now = datetime.now(timezone.utc)
+    upserted = 0
+    for item in body.invites:
+        await _upsert_invite_lifecycle(session, guild_id, item, now=now)
+        upserted += 1
+    await _prune_stale_invite_lifecycle(session, guild_id, now=now)
+    await session.commit()
+    return {"upserted": upserted}
+
+
+@router.get("/{guild_id}/invite-lifecycle/recent-vanished")
+async def get_recent_vanished_invites(
+    guild_id: str = Path(pattern=SNOWFLAKE),
+    since_seconds: int = Query(default=600, ge=1, le=3600),
+    session: AsyncSession = Depends(get_database_session),
+) -> dict[str, Any]:
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=since_seconds)
+    rows = (
+        await session.execute(
+            select(InviteLifecycle).where(
+                InviteLifecycle.guild_id == guild_id,
+                InviteLifecycle.status.in_(("consumed", "deleted", "expired")),
+                InviteLifecycle.disappeared_at.is_not(None),
+                InviteLifecycle.disappeared_at >= cutoff,
+            )
+        )
+    ).scalars().all()
+    return {
+        "invites": [
+            {
+                "code": row.code,
+                "inviter_id": row.inviter_id,
+                "inviter_name": row.inviter_name_snapshot,
+                "channel_id": row.channel_id,
+                "uses": row.uses,
+                "max_uses": row.max_uses,
+                "status": row.status,
+                "invite_kind": row.invite_kind,
+                "disappeared_at": (
+                    row.disappeared_at.isoformat() if row.disappeared_at else None
+                ),
+            }
+            for row in rows
+        ]
+    }
 
 
 class XpClearBody(BaseModel):

@@ -140,6 +140,8 @@ export function DiscordLogsPage() {
 
   const health = useLoggingConfigStore((s) => s.health);
 
+  const permissions = useLoggingConfigStore((s) => s.permissions);
+
   const loading = useLoggingConfigStore((s) => s.loading);
 
   const busy = useLoggingConfigStore((s) => s.busy);
@@ -441,6 +443,16 @@ export function DiscordLogsPage() {
             <CAlert color="danger" className="mb-0 py-2">
 
               {error}
+
+            </CAlert>
+
+          ) : null}
+
+          {permissions?.missing_permissions?.includes("View Audit Log") ? (
+
+            <CAlert color="warning" className="mb-0 py-2">
+
+              {d.missingViewAuditLog}
 
             </CAlert>
 

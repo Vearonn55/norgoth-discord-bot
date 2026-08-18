@@ -1423,6 +1423,8 @@
     "attributionDeleted": "deleted invite",
     "attributionAmbiguous": "ambiguous (concurrent joins)",
     "attributionUnavailable": "unavailable (missing Manage Server)",
+    "attributionConsumedOneUse": "single-use invitation",
+    "invitationSourceOneUse": "Single-use invitation",
     "colCode": "Code",
     "colFlags": "Flags",
     "flagFirstJoin": "First join",
@@ -1627,7 +1629,8 @@
     "creating": "Creating…",
     "createLogging": "Create logging",
     "verificationCategory": "Verification Logs",
-    "verificationCategoryDesc": "Member verification outcomes and manual review decisions."
+    "verificationCategoryDesc": "Member verification outcomes and manual review decisions.",
+    "missingViewAuditLog": "NorBot is missing View Audit Log. Grant this permission so Channel Update logs can show who made the change. Existing servers must re-invite the bot or edit its role."
   },
   "auditLogsPage": {
     "loading": "Loading audit logs…",

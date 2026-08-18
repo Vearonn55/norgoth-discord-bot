@@ -15,7 +15,10 @@ from app.api.v1.dependencies import get_http_client, get_settings
 from app.security.discord_permissions import (
     BOT_INSTALL_SCOPES,
     BOT_INVITE_PERMISSIONS_MINIMAL,
+    VIEW_AUDIT_LOG,
     build_bot_invite_url,
+    compute_member_permissions,
+    missing_logging_permissions,
 )
 from app.security.session import COOKIE_NAME, OperatorSession
 
@@ -42,6 +45,27 @@ def test_build_bot_invite_url_without_guild() -> None:
     assert "guild_id" not in query
     assert "disable_guild_select" not in query
     assert "client_secret" not in query
+
+
+def test_minimal_invite_bitmask_includes_view_audit_log() -> None:
+    assert BOT_INVITE_PERMISSIONS_MINIMAL & VIEW_AUDIT_LOG
+
+
+def test_compute_member_permissions_reports_missing_view_audit_log() -> None:
+    guild_id = "111"
+    roles = [
+        {"id": guild_id, "permissions": str(1 << 10)},  # VIEW_CHANNEL only
+    ]
+    bits = compute_member_permissions(
+        guild_id=guild_id,
+        owner_id="9",
+        member_user_id="8",
+        member_roles=[],
+        roles=roles,
+    )
+    missing = missing_logging_permissions(bits)
+    assert "View Audit Log" in missing
+    assert "Manage Server" in missing
 
 
 def test_build_bot_invite_url_with_guild_preselect() -> None:

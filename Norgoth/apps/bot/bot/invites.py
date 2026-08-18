@@ -8,6 +8,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 import discord
@@ -50,6 +52,72 @@ def invite_tombstone_key(guild_id: int | str, code: str) -> str:
     return f"norgoth:guild:{guild_id}:invites:tombstone:{code}"
 
 
+def _snowflake_or_none(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if text.isdigit() and 1 <= len(text) <= 25:
+        return text
+    return None
+
+
+def _is_one_use(meta: dict[str, Any] | None) -> bool:
+    if not meta:
+        return False
+    if meta.get("invite_kind") == "one_use":
+        return True
+    max_uses = meta.get("max_uses")
+    try:
+        return int(max_uses) == 1
+    except (TypeError, ValueError):
+        return False
+
+
+def classify_join_attribution(
+    previous: dict[str, int],
+    current: dict[str, int],
+    *,
+    vanished_meta: dict[str, dict[str, Any]] | None = None,
+) -> tuple[str | None, str, str]:
+    """Pick the invite code that explains a join.
+
+    Returns ``(code, attribution, method)`` where method is one of
+    ``usage_delta``, ``consumed_one_use``, ``tombstone``, ``vanity``.
+    """
+
+    meta = vanished_meta or {}
+    increased = [
+        code for code, uses in current.items() if uses > previous.get(code, 0)
+    ]
+    vanished = [code for code in previous if code not in current]
+    if len(increased) > 1:
+        return None, "ambiguous", "usage_delta"
+    if len(increased) == 1:
+        code = increased[0]
+        if code == "vanity":
+            return "vanity", "vanity", "vanity"
+        return code, "attributed", "usage_delta"
+
+    one_use_vanished = [
+        code
+        for code in vanished
+        if code != "vanity" and _is_one_use(meta.get(code))
+    ]
+    if len(one_use_vanished) > 1:
+        return None, "ambiguous", "consumed_one_use"
+    if len(one_use_vanished) == 1:
+        return one_use_vanished[0], "consumed_one_use", "consumed_one_use"
+
+    if len(vanished) > 1:
+        return None, "ambiguous", "tombstone"
+    if len(vanished) == 1:
+        code = vanished[0]
+        if code == "vanity":
+            return "vanity", "vanity", "vanity"
+        return code, "deleted", "tombstone"
+    return None, "unknown", "usage_delta"
+
+
 def resolve_invite_delta(
     previous: dict[str, int],
     current: dict[str, int],
@@ -61,23 +129,8 @@ def resolve_invite_delta(
     ``unknown``.
     """
 
-    increased = [
-        code for code, uses in current.items() if uses > previous.get(code, 0)
-    ]
-    vanished = [code for code in previous if code not in current]
-    if len(increased) > 1 or (not increased and len(vanished) > 1):
-        return None, "ambiguous"
-    if len(increased) == 1:
-        code = increased[0]
-        if code == "vanity":
-            return "vanity", "vanity"
-        return code, "attributed"
-    if len(vanished) == 1:
-        code = vanished[0]
-        if code == "vanity":
-            return "vanity", "vanity"
-        return code, "deleted"
-    return None, "unknown"
+    code, attribution, _method = classify_join_attribution(previous, current)
+    return code, attribution
 
 
 class InvitesCog(commands.Cog):
@@ -87,7 +140,12 @@ class InvitesCog(commands.Cog):
         self._invite_cache: dict[int, dict[str, int]] = {}
         # code -> (inviter_id, inviter_name) captured at create / list time.
         self._invite_inviters: dict[int, dict[str, tuple[str | None, str | None]]] = {}
+        # code -> {max_uses, channel_id, uses, ...} captured at create / list time.
+        self._invite_meta: dict[int, dict[str, dict[str, Any]]] = {}
+        # vanished markers kept until join correlation or TTL.
+        self._vanished: dict[int, dict[str, dict[str, Any]]] = {}
         self._guild_locks: dict[int, asyncio.Lock] = {}
+        self._invite_forbidden_logged_at: dict[int, float] = {}
         # Joins already attributed this session (guild_id, member_id).
         self._attributed: dict[tuple[int, int], tuple[str | None, str | None]] = {}
 
@@ -101,16 +159,25 @@ class InvitesCog(commands.Cog):
 
     # ---- invite cache ----------------------------------------------------
 
-    async def fetch_invite_uses(self, guild: discord.Guild) -> dict[str, int] | None:
+    async def fetch_invite_uses(
+        self,
+        guild: discord.Guild,
+        *,
+        snapshot_out: list[dict[str, Any]] | None = None,
+    ) -> dict[str, int] | None:
         """Current uses per invite code, or None when we lack permission."""
 
         try:
             invites = await guild.invites()
         except discord.Forbidden:
-            logger.warning(
-                "Cannot list invites in guild %s: missing Manage Server.",
-                guild.id,
-            )
+            now = time.monotonic()
+            last = self._invite_forbidden_logged_at.get(guild.id, 0.0)
+            if now - last >= 3600:
+                self._invite_forbidden_logged_at[guild.id] = now
+                logger.warning(
+                    "Cannot list invites in guild %s: missing Manage Server.",
+                    guild.id,
+                )
             return None
         except discord.HTTPException:
             logger.exception("Failed to fetch invites for guild %s", guild.id)
@@ -118,27 +185,89 @@ class InvitesCog(commands.Cog):
 
         uses = {invite.code: invite.uses or 0 for invite in invites}
         inviters = self._invite_inviters.setdefault(guild.id, {})
+        meta = self._invite_meta.setdefault(guild.id, {})
         for invite in invites:
             if invite.inviter:
                 inviters[invite.code] = (str(invite.inviter.id), str(invite.inviter))
             elif invite.code not in inviters:
                 inviters[invite.code] = (None, None)
+            channel = getattr(invite, "channel", None)
+            channel_id = str(channel.id) if channel is not None else None
+            max_uses = getattr(invite, "max_uses", None)
+            kind = (
+                "vanity"
+                if invite.code == "vanity"
+                else ("one_use" if max_uses == 1 else "standard")
+            )
+            meta[invite.code] = {
+                "max_uses": max_uses,
+                "channel_id": channel_id,
+                "uses": invite.uses or 0,
+                "max_age": getattr(invite, "max_age", None),
+                "temporary": bool(getattr(invite, "temporary", False)),
+                "invite_kind": kind,
+            }
+            if snapshot_out is not None:
+                inviter_id, inviter_name = inviters.get(invite.code, (None, None))
+                snapshot_out.append(
+                    {
+                        "code": invite.code,
+                        "inviter_id": inviter_id,
+                        "inviter_name_snapshot": inviter_name,
+                        "channel_id": channel_id,
+                        "uses": invite.uses or 0,
+                        "max_uses": max_uses,
+                        "max_age": getattr(invite, "max_age", None),
+                        "temporary": bool(getattr(invite, "temporary", False)),
+                        "status": "active",
+                        "invite_kind": kind,
+                    }
+                )
 
         if "VANITY_URL" in guild.features:
             try:
                 vanity = await guild.vanity_invite()
                 if vanity is not None:
                     uses["vanity"] = vanity.uses or 0
+                    meta["vanity"] = {
+                        "max_uses": None,
+                        "channel_id": None,
+                        "uses": vanity.uses or 0,
+                        "invite_kind": "vanity",
+                    }
+                    if snapshot_out is not None:
+                        snapshot_out.append(
+                            {
+                                "code": "vanity",
+                                "uses": vanity.uses or 0,
+                                "status": "active",
+                                "invite_kind": "vanity",
+                            }
+                        )
             except discord.HTTPException:
                 pass
 
         return uses
 
     async def prime_cache(self, guild: discord.Guild) -> None:
-        uses = await self.fetch_invite_uses(guild)
+        snapshot: list[dict[str, Any]] = []
+        uses = await self.fetch_invite_uses(guild, snapshot_out=snapshot)
 
-        if uses is not None:
+        if uses is None:
+            return
+        async with self.get_lock(guild.id):
             self._invite_cache[guild.id] = uses
+            keep = set(uses) | set(self._vanished.get(guild.id, {}))
+            inviters = self._invite_inviters.setdefault(guild.id, {})
+            for code in list(inviters):
+                if code not in keep:
+                    del inviters[code]
+            meta = self._invite_meta.setdefault(guild.id, {})
+            for code in list(meta):
+                if code not in keep:
+                    del meta[code]
+        if snapshot:
+            await self._ingest_invite_lifecycle_snapshot(guild.id, snapshot)
 
     @commands.Cog.listener()
     async def on_ready(self) -> None:
@@ -154,13 +283,42 @@ class InvitesCog(commands.Cog):
         if invite.guild is None:
             return
 
-        cache = self._invite_cache.setdefault(invite.guild.id, {})
-        cache[invite.code] = invite.uses or 0
         inviter_id = str(invite.inviter.id) if invite.inviter else None
         inviter_name = str(invite.inviter) if invite.inviter else None
-        self._invite_inviters.setdefault(invite.guild.id, {})[invite.code] = (
-            inviter_id,
-            inviter_name,
+        channel = getattr(invite, "channel", None)
+        channel_id = str(channel.id) if channel is not None else None
+        max_uses = getattr(invite, "max_uses", None)
+        kind = "one_use" if max_uses == 1 else "standard"
+        async with self.get_lock(invite.guild.id):
+            cache = self._invite_cache.setdefault(invite.guild.id, {})
+            cache[invite.code] = invite.uses or 0
+            self._invite_inviters.setdefault(invite.guild.id, {})[invite.code] = (
+                inviter_id,
+                inviter_name,
+            )
+            self._invite_meta.setdefault(invite.guild.id, {})[invite.code] = {
+                "max_uses": max_uses,
+                "channel_id": channel_id,
+                "uses": invite.uses or 0,
+                "max_age": getattr(invite, "max_age", None),
+                "temporary": bool(getattr(invite, "temporary", False)),
+                "invite_kind": kind,
+            }
+            self._vanished.get(invite.guild.id, {}).pop(invite.code, None)
+        await self._ingest_invite_lifecycle(
+            invite.guild.id,
+            {
+                "code": invite.code,
+                "inviter_id": inviter_id,
+                "inviter_name_snapshot": inviter_name,
+                "channel_id": channel_id,
+                "uses": invite.uses or 0,
+                "max_uses": max_uses,
+                "max_age": getattr(invite, "max_age", None),
+                "temporary": bool(getattr(invite, "temporary", False)),
+                "status": "active",
+                "invite_kind": kind,
+            },
         )
 
     @commands.Cog.listener()
@@ -168,20 +326,46 @@ class InvitesCog(commands.Cog):
         if invite.guild is None:
             return
 
-        uses = self._invite_cache.get(invite.guild.id, {}).pop(invite.code, 0)
-        inviter_id, inviter_name = self._invite_inviters.get(
-            invite.guild.id, {}
-        ).pop(invite.code, (None, None))
-        if invite.inviter:
-            inviter_id = str(invite.inviter.id)
-            inviter_name = str(invite.inviter)
-        payload = json.dumps(
-            {
+        disappeared_at = datetime.now(timezone.utc).isoformat()
+        async with self.get_lock(invite.guild.id):
+            cache = self._invite_cache.setdefault(invite.guild.id, {})
+            uses = cache.get(invite.code, invite.uses or 0)
+            inviter_id, inviter_name = self._invite_inviters.get(
+                invite.guild.id, {}
+            ).get(invite.code, (None, None))
+            if invite.inviter:
+                inviter_id = str(invite.inviter.id)
+                inviter_name = str(invite.inviter)
+                self._invite_inviters.setdefault(invite.guild.id, {})[invite.code] = (
+                    inviter_id,
+                    inviter_name,
+                )
+            meta = dict(self._invite_meta.get(invite.guild.id, {}).get(invite.code) or {})
+            max_uses = getattr(invite, "max_uses", None)
+            if max_uses is None:
+                max_uses = meta.get("max_uses")
+            channel = getattr(invite, "channel", None)
+            channel_id = (
+                str(channel.id) if channel is not None else meta.get("channel_id")
+            )
+            kind = (
+                "one_use"
+                if max_uses == 1 or meta.get("invite_kind") == "one_use"
+                else "standard"
+            )
+            status = "consumed" if kind == "one_use" else "deleted"
+            vanished = {
                 "uses": uses,
                 "inviter_id": inviter_id,
                 "inviter_name": inviter_name,
+                "max_uses": max_uses,
+                "channel_id": channel_id,
+                "invite_kind": kind,
+                "disappeared_at": disappeared_at,
             }
-        )
+            self._vanished.setdefault(invite.guild.id, {})[invite.code] = vanished
+            cache.pop(invite.code, None)
+            payload = json.dumps(vanished)
         try:
             await self.bot.state.redis.set(
                 invite_tombstone_key(invite.guild.id, invite.code),
@@ -190,6 +374,20 @@ class InvitesCog(commands.Cog):
             )
         except Exception:  # noqa: BLE001
             logger.exception("Failed to persist invite tombstone")
+        await self._ingest_invite_lifecycle(
+            invite.guild.id,
+            {
+                "code": invite.code,
+                "inviter_id": inviter_id,
+                "inviter_name_snapshot": inviter_name,
+                "channel_id": channel_id,
+                "uses": uses,
+                "max_uses": max_uses,
+                "status": status,
+                "invite_kind": kind,
+                "disappeared_at": disappeared_at,
+            },
+        )
 
     # ---- attribution ---------------------------------------------------
 
@@ -213,27 +411,73 @@ class InvitesCog(commands.Cog):
             inviter_name: str | None = None
             code: str | None = None
             attribution = "unavailable"
+            method = "usage_delta"
 
             current = await self.fetch_invite_uses(guild)
 
             if current is None:
                 attribution = "unavailable"
             else:
-                previous = self._invite_cache.get(guild.id, {})
-                code, attribution = resolve_invite_delta(previous, current)
+                self._expire_vanished(guild.id)
+                previous = dict(self._invite_cache.get(guild.id, {}))
+                vanished_meta: dict[str, dict[str, Any]] = {}
+                for stored_code, row in self._invite_meta.get(guild.id, {}).items():
+                    vanished_meta[stored_code] = dict(row)
+                for stored_code, row in self._vanished.get(guild.id, {}).items():
+                    previous.setdefault(stored_code, int(row.get("uses") or 0))
+                    merged = dict(vanished_meta.get(stored_code) or {})
+                    merged.update(row)
+                    vanished_meta[stored_code] = merged
+                code, attribution, method = classify_join_attribution(
+                    previous,
+                    current,
+                    vanished_meta=vanished_meta,
+                )
                 self._invite_cache[guild.id] = current
 
-                if attribution == "deleted" and code:
-                    tombstone = await self._load_tombstone(guild.id, code)
-                    if tombstone:
-                        inviter_id = tombstone.get("inviter_id")
-                        inviter_name = tombstone.get("inviter_name")
-                        if inviter_id:
-                            attribution = "attributed"
+                if attribution in {"unknown", "unavailable"}:
+                    lifecycle = await self._load_recent_vanished_lifecycle(guild.id)
+                    for row in lifecycle:
+                        vanished_code = str(row.get("code") or "")
+                        if not vanished_code or vanished_code in current:
+                            continue
+                        previous.setdefault(
+                            vanished_code, int(row.get("uses") or 0)
+                        )
+                        vanished_meta[vanished_code] = {
+                            **vanished_meta.get(vanished_code, {}),
+                            **row,
+                            "inviter_name": row.get("inviter_name"),
+                        }
+                    code, attribution, method = classify_join_attribution(
+                        previous,
+                        current,
+                        vanished_meta=vanished_meta,
+                    )
+
+                if attribution in {"deleted", "consumed_one_use"} and code:
+                    hint = (
+                        self._vanished.get(guild.id, {}).get(code)
+                        or vanished_meta.get(code)
+                        or await self._load_tombstone(guild.id, code)
+                    )
+                    if hint:
+                        inviter_id = _snowflake_or_none(hint.get("inviter_id")) or inviter_id
+                        inviter_name = hint.get("inviter_name") or hint.get(
+                            "inviter_name_snapshot"
+                        )
+                    if not inviter_id:
+                        stored = self._invite_inviters.get(guild.id, {}).get(
+                            code, (None, None)
+                        )
+                        inviter_id = _snowflake_or_none(stored[0]) or inviter_id
+                        inviter_name = stored[1] or inviter_name
+                    await self._consume_vanished(guild.id, code)
                 elif attribution == "attributed" and code:
                     inviter_id, inviter_name = self._invite_inviters.get(
                         guild.id, {}
                     ).get(code, (None, None))
+                    inviter_id = _snowflake_or_none(inviter_id)
                     if not inviter_id:
                         try:
                             invites = await guild.invites()
@@ -252,6 +496,13 @@ class InvitesCog(commands.Cog):
                     if not inviter_id:
                         attribution = "unknown"
 
+            logger.info(
+                "invite_attribution=%s method=%s guild_id=%s",
+                attribution,
+                method,
+                guild.id,
+            )
+
             await self.store_join(
                 member,
                 inviter_id=inviter_id,
@@ -267,6 +518,35 @@ class InvitesCog(commands.Cog):
                 self._attributed.clear()
 
             return result
+
+    def _expire_vanished(self, guild_id: int) -> None:
+        vanished = self._vanished.get(guild_id, {})
+        now = datetime.now(timezone.utc)
+        for code in list(vanished):
+            raw = vanished[code].get("disappeared_at")
+            if not raw:
+                continue
+            try:
+                disappeared = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+            except ValueError:
+                vanished.pop(code, None)
+                continue
+            if disappeared.tzinfo is None:
+                disappeared = disappeared.replace(tzinfo=timezone.utc)
+            if (now - disappeared).total_seconds() > TOMBSTONE_TTL_SECONDS:
+                vanished.pop(code, None)
+
+    async def _consume_vanished(self, guild_id: int, code: str) -> None:
+        self._vanished.get(guild_id, {}).pop(code, None)
+        self._invite_cache.get(guild_id, {}).pop(code, None)
+        try:
+            await self.bot.state.redis.delete(invite_tombstone_key(guild_id, code))
+        except Exception:  # noqa: BLE001
+            logger.debug(
+                "Failed to delete invite tombstone guild_id=%s",
+                guild_id,
+                exc_info=True,
+            )
 
     async def _load_tombstone(
         self, guild_id: int, code: str
@@ -366,6 +646,97 @@ class InvitesCog(commands.Cog):
         except Exception:  # noqa: BLE001
             logger.debug("Invite join ingest failed for guild %s", guild_id, exc_info=True)
 
+    def _ingest_headers(self) -> tuple[str, str] | None:
+        base = getattr(self.bot.state, "_api_base_url", "") or ""
+        token = getattr(self.bot.state, "_bot_token", "") or ""
+        if not base or not token:
+            return None
+        return base, token
+
+    async def _ingest_invite_lifecycle(
+        self,
+        guild_id: int,
+        body: dict[str, Any],
+    ) -> None:
+        creds = self._ingest_headers()
+        if creds is None:
+            return
+        base, token = creds
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                await client.post(
+                    f"{base}/internal/ingest/{guild_id}/invite-lifecycle",
+                    headers={
+                        "X-Norgoth-Internal-Token": token,
+                        "X-Norgoth-Bot-Token": token,
+                    },
+                    json=body,
+                )
+        except Exception:  # noqa: BLE001
+            logger.debug(
+                "Invite lifecycle ingest failed for guild %s",
+                guild_id,
+                exc_info=True,
+            )
+
+    async def _ingest_invite_lifecycle_snapshot(
+        self,
+        guild_id: int,
+        invites: list[dict[str, Any]],
+    ) -> None:
+        creds = self._ingest_headers()
+        if creds is None or not invites:
+            return
+        base, token = creds
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                await client.post(
+                    f"{base}/internal/ingest/{guild_id}/invite-lifecycle/snapshot",
+                    headers={
+                        "X-Norgoth-Internal-Token": token,
+                        "X-Norgoth-Bot-Token": token,
+                    },
+                    json={"invites": invites},
+                )
+        except Exception:  # noqa: BLE001
+            logger.debug(
+                "Invite lifecycle snapshot ingest failed for guild %s",
+                guild_id,
+                exc_info=True,
+            )
+
+    async def _load_recent_vanished_lifecycle(
+        self, guild_id: int
+    ) -> list[dict[str, Any]]:
+        creds = self._ingest_headers()
+        if creds is None:
+            return []
+        base, token = creds
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                response = await client.get(
+                    f"{base}/internal/ingest/{guild_id}/invite-lifecycle/recent-vanished",
+                    headers={
+                        "X-Norgoth-Internal-Token": token,
+                        "X-Norgoth-Bot-Token": token,
+                    },
+                    params={"since_seconds": TOMBSTONE_TTL_SECONDS},
+                )
+            if response.status_code != 200:
+                return []
+            data = response.json()
+            invites = data.get("invites") if isinstance(data, dict) else None
+            if not isinstance(invites, list):
+                return []
+            return [row for row in invites if isinstance(row, dict)]
+        except Exception:  # noqa: BLE001
+            logger.debug(
+                "Invite lifecycle lookup failed for guild %s",
+                guild_id,
+                exc_info=True,
+            )
+            return []
+
     async def _log_invite_event(
         self,
         guild: discord.Guild,
@@ -381,6 +752,7 @@ class InvitesCog(commands.Cog):
         invite_code: str | None,
         joined_at: str | None,
         left_at: str | None = None,
+        attribution: str | None = None,
     ) -> None:
         """Route an invite attribution event through central logging."""
 
@@ -416,6 +788,7 @@ class InvitesCog(commands.Cog):
             joined_at=joined_at,
             left_at=left_at,
             inviter_in_guild=inviter_in_guild,
+            attribution=attribution,
         )
         description = render_invite_log_description(
             kind="join" if kind == "join" else "leave",
@@ -433,9 +806,11 @@ class InvitesCog(commands.Cog):
             joined_at=joined_at,
             left_at=left_at,
             inviter_in_guild=inviter_in_guild,
+            attribution=attribution,
         )
-        status = attribution_status(invite_code, inviter_id)
-        fields["Attribution"] = status
+        fields["Attribution"] = attribution_status(
+            invite_code, inviter_id, stored=attribution
+        )
 
         try:
             await cog.record_event(
@@ -488,6 +863,7 @@ class InvitesCog(commands.Cog):
             inviter_name=record.get("inviter_name"),
             invite_code=record.get("code") or code,
             joined_at=record.get("joined_at"),
+            attribution=record.get("attribution"),
         )
 
     @commands.Cog.listener()
@@ -554,6 +930,7 @@ class InvitesCog(commands.Cog):
                 invite_code=record.get("code"),
                 joined_at=record.get("joined_at"),
                 left_at=left_at,
+                attribution=record.get("attribution"),
             )
 
     async def bump_counter(

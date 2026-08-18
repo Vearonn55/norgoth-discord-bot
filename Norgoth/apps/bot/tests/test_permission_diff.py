@@ -24,7 +24,7 @@ from bot.permission_diff import (  # noqa: E402
     pack_section_lines,
     role_permission_fields,
 )
-from bot.server_logging import ServerLoggingCog  # noqa: E402
+from bot.server_logging import ServerLoggingCog, actor_fallback_text  # noqa: E402
 
 
 def _role_target(role_id: int = 10, name: str = "Mods") -> Object:
@@ -236,7 +236,7 @@ def _logging_cog(*, module_on: bool = True) -> tuple[ServerLoggingCog, AsyncMock
     bot = MagicMock()
     bot.state = state
     cog = ServerLoggingCog(bot)
-    cog.route_event = AsyncMock(return_value=True)
+    cog.route_event = AsyncMock(return_value=[])
     return cog, state.append_capped_list
 
 
@@ -283,7 +283,9 @@ async def test_channel_overwrite_only_update_is_logged() -> None:
     entry = append.await_args.args[1]
     assert entry["event_type"] == "channel_update"
     assert "Overwrite added" in entry["fields"]
-    assert entry["fields"]["Actor"] == "Unknown"
+    assert entry["fields"]["Actor"] == (
+        "Unavailable — Discord audit entry not available"
+    )
 
 
 @pytest.mark.asyncio
@@ -411,13 +413,14 @@ async def test_audit_actor_unavailable_on_429() -> None:
     guild = MagicMock()
     guild.id = 1
     guild.audit_logs = MagicMock(side_effect=lambda **kwargs: _logs())
-    actor_id, _name, status, _reason = await cog._resolve_audit_actor_detailed(
-        guild,
-        discord.AuditLogAction.role_update,
-        target_id=5,
-        max_wait_s=0.6,
-    )
-    assert status == "unavailable"
+    with patch("bot.server_logging.asyncio.sleep", new=AsyncMock()):
+        actor_id, _name, status, _reason = await cog._resolve_audit_actor_detailed(
+            guild,
+            discord.AuditLogAction.role_update,
+            target_id=5,
+            max_wait_s=0.6,
+        )
+    assert status == "rate_limited"
     assert actor_id is None
 
 
@@ -427,3 +430,231 @@ async def test_event_log_key_is_guild_scoped() -> None:
 
     assert event_log_key(11) == "norgoth:guild:11:eventlog"
     assert event_log_key(11) != event_log_key(22)
+
+
+def _audit_user(*, user_id: int = 3, name: str = "Mod", bot: bool = False) -> MagicMock:
+    user = MagicMock()
+    user.id = user_id
+    user.bot = bot
+    user.__str__ = lambda self, n=name: n  # type: ignore[method-assign]
+    return user
+
+
+@pytest.mark.asyncio
+async def test_audit_actor_overwrite_extra_match() -> None:
+    cog, _append = _logging_cog()
+    user = _audit_user()
+    entry = SimpleNamespace(
+        action=discord.AuditLogAction.overwrite_create,
+        target=SimpleNamespace(id=99),
+        extra=SimpleNamespace(id=10),
+        created_at=datetime.now(timezone.utc),
+        user=user,
+        reason=None,
+    )
+
+    async def _logs(**_kwargs):
+        yield entry
+
+    guild = MagicMock()
+    guild.id = 1
+    guild.me = SimpleNamespace(id=9)
+    guild.audit_logs = MagicMock(side_effect=lambda **kwargs: _logs())
+    actor_id, name, status, _reason = await cog._resolve_audit_actor_detailed(
+        guild,
+        discord.AuditLogAction.overwrite_create,
+        target_id=99,
+        since=datetime.now(timezone.utc) - timedelta(seconds=5),
+        overwrite_target_ids={10},
+    )
+    assert status == "found"
+    assert actor_id == "3"
+    assert name == "Mod"
+
+
+@pytest.mark.asyncio
+async def test_audit_actor_wrong_target_rejected() -> None:
+    cog, _append = _logging_cog()
+    entry = SimpleNamespace(
+        action=discord.AuditLogAction.channel_update,
+        target=SimpleNamespace(id=50),
+        extra=None,
+        created_at=datetime.now(timezone.utc),
+        user=_audit_user(),
+        reason=None,
+    )
+
+    async def _logs(**_kwargs):
+        yield entry
+
+    guild = MagicMock()
+    guild.id = 1
+    guild.me = SimpleNamespace(id=9)
+    guild.audit_logs = MagicMock(side_effect=lambda **kwargs: _logs())
+    actor_id, _name, status, _reason = await cog._resolve_audit_actor_detailed(
+        guild,
+        discord.AuditLogAction.channel_update,
+        target_id=99,
+        since=datetime.now(timezone.utc) - timedelta(seconds=5),
+    )
+    assert status == "unavailable"
+    assert actor_id is None
+
+
+@pytest.mark.asyncio
+async def test_audit_actor_forbidden_is_missing_permission() -> None:
+    cog, _append = _logging_cog()
+    error = discord.Forbidden(MagicMock(status=403), "missing audit log")
+
+    async def _logs(**_kwargs):
+        raise error
+        yield  # pragma: no cover
+
+    guild = MagicMock()
+    guild.id = 1
+    guild.audit_logs = MagicMock(side_effect=lambda **kwargs: _logs())
+    _actor_id, _name, status, _reason = await cog._resolve_audit_actor_detailed(
+        guild,
+        discord.AuditLogAction.channel_update,
+        target_id=5,
+    )
+    assert status == "missing_permission"
+    assert actor_fallback_text(status).startswith("Unavailable — NorBot")
+
+
+@pytest.mark.asyncio
+async def test_audit_actor_bot_suffix_and_norbot_reason() -> None:
+    cog, _append = _logging_cog()
+    bot_user = _audit_user(user_id=42, name="NorBot", bot=True)
+    entry = SimpleNamespace(
+        action=discord.AuditLogAction.channel_update,
+        target=SimpleNamespace(id=5),
+        extra=None,
+        created_at=datetime.now(timezone.utc),
+        user=bot_user,
+        reason="NorBot: operator request",
+    )
+
+    async def _logs(**_kwargs):
+        yield entry
+
+    guild = MagicMock()
+    guild.id = 1
+    guild.me = SimpleNamespace(id=42)
+    guild.audit_logs = MagicMock(side_effect=lambda **kwargs: _logs())
+    actor_id, name, status, _reason = await cog._resolve_audit_actor_detailed(
+        guild,
+        discord.AuditLogAction.channel_update,
+        target_id=5,
+        since=datetime.now(timezone.utc) - timedelta(seconds=5),
+    )
+    assert status == "found"
+    assert actor_id == "42"
+    assert name == "Executed by NorBot"
+    assert "Initiated by" not in name
+
+
+@pytest.mark.asyncio
+async def test_audit_actor_bot_without_norbot_reason() -> None:
+    cog, _append = _logging_cog()
+    bot_user = _audit_user(user_id=7, name="OtherBot", bot=True)
+    entry = SimpleNamespace(
+        action=discord.AuditLogAction.channel_update,
+        target=SimpleNamespace(id=5),
+        extra=None,
+        created_at=datetime.now(timezone.utc),
+        user=bot_user,
+        reason=None,
+    )
+
+    async def _logs(**_kwargs):
+        yield entry
+
+    guild = MagicMock()
+    guild.id = 1
+    guild.me = SimpleNamespace(id=1)
+    guild.audit_logs = MagicMock(side_effect=lambda **kwargs: _logs())
+    _actor_id, name, status, _reason = await cog._resolve_audit_actor_detailed(
+        guild,
+        discord.AuditLogAction.channel_update,
+        target_id=5,
+        since=datetime.now(timezone.utc) - timedelta(seconds=5),
+    )
+    assert status == "found"
+    assert name == "OtherBot (bot)"
+
+
+@pytest.mark.asyncio
+async def test_late_enrich_edits_same_message_id() -> None:
+    cog, _append = _logging_cog()
+    cog._edit_routed_log_messages = AsyncMock()
+    cog._patch_server_event = AsyncMock()
+    cog._rewrite_event_log_actor = AsyncMock()
+    user = _audit_user()
+    entry = SimpleNamespace(
+        action=discord.AuditLogAction.channel_update,
+        target=SimpleNamespace(id=99),
+        extra=None,
+        created_at=datetime.now(timezone.utc),
+        user=user,
+        reason=None,
+    )
+
+    async def _logs(**_kwargs):
+        yield entry
+
+    guild = MagicMock()
+    guild.id = 1
+    guild.me = SimpleNamespace(id=9)
+    guild.audit_logs = MagicMock(side_effect=lambda **kwargs: _logs())
+    detail = SimpleNamespace(actor=None, reason=None)
+    with patch("bot.server_logging.asyncio.sleep", new=AsyncMock()):
+        await cog._enrich_channel_update_actor(
+            guild,
+            source_event_id="evt-1",
+            posted=[("10", "20")],
+            actions=(discord.AuditLogAction.channel_update,),
+            target_id=99,
+            overwrite_target_ids=set(),
+            event_type="channel_update",
+            category="channel",
+            title="Channel updated",
+            description="updated",
+            fields={"Channel": "#general", "Actor": actor_fallback_text("unavailable")},
+            detail=detail,  # type: ignore[arg-type]
+        )
+    cog._edit_routed_log_messages.assert_awaited_once()
+    posted = cog._edit_routed_log_messages.await_args.args[1]
+    assert posted == [("10", "20")]
+    cog._patch_server_event.assert_awaited()
+    assert cog.route_event.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_channel_name_update_uses_time_window() -> None:
+    cog, append = _logging_cog()
+    user = _audit_user()
+    entry = SimpleNamespace(
+        action=discord.AuditLogAction.channel_update,
+        target=SimpleNamespace(id=99),
+        extra=None,
+        created_at=datetime.now(timezone.utc),
+        user=user,
+        reason=None,
+    )
+
+    async def _logs(**_kwargs):
+        yield entry
+
+    guild = SimpleNamespace(id=42)
+    before = _channel(name="old")
+    after = _channel(name="new")
+    after.guild = guild
+    cog._resolve_audit_actor_detailed = AsyncMock(
+        return_value=("3", "Mod", "found", None)
+    )
+    await cog.on_guild_channel_update(before, after)
+    append.assert_awaited()
+    kwargs = cog._resolve_audit_actor_detailed.await_args.kwargs
+    assert kwargs["since"] is not None
+    assert kwargs["retry_delays"] == (0.0, 0.4, 1.2)

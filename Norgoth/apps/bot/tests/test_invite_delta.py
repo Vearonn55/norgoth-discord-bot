@@ -9,7 +9,7 @@ BOT_ROOT = Path(__file__).resolve().parents[1]
 if str(BOT_ROOT) not in sys.path:
     sys.path.insert(0, str(BOT_ROOT))
 
-from bot.invites import resolve_invite_delta  # noqa: E402
+from bot.invites import classify_join_attribution, resolve_invite_delta  # noqa: E402
 
 
 def test_single_use_increase_is_attributed() -> None:
@@ -40,3 +40,35 @@ def test_multiple_vanished_codes_are_ambiguous() -> None:
 
 def test_no_delta_is_unknown() -> None:
     assert resolve_invite_delta({"abc": 4}, {"abc": 4}) == (None, "unknown")
+
+
+def test_one_use_vanished_is_consumed_one_use() -> None:
+    code, attribution, method = classify_join_attribution(
+        {"oneuse": 0},
+        {},
+        vanished_meta={"oneuse": {"max_uses": 1}},
+    )
+    assert code == "oneuse"
+    assert attribution == "consumed_one_use"
+    assert method == "consumed_one_use"
+
+
+def test_two_one_use_vanished_are_ambiguous() -> None:
+    code, attribution, _method = classify_join_attribution(
+        {"a": 0, "b": 0},
+        {},
+        vanished_meta={"a": {"max_uses": 1}, "b": {"invite_kind": "one_use"}},
+    )
+    assert code is None
+    assert attribution == "ambiguous"
+
+
+def test_usage_increase_wins_over_vanished() -> None:
+    code, attribution, method = classify_join_attribution(
+        {"abc": 1, "oneuse": 0},
+        {"abc": 2},
+        vanished_meta={"oneuse": {"max_uses": 1}},
+    )
+    assert code == "abc"
+    assert attribution == "attributed"
+    assert method == "usage_delta"

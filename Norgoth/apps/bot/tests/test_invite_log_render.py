@@ -77,6 +77,26 @@ def test_vanity_fields() -> None:
     assert fields["Invitation Source"] == "Vanity URL"
 
 
+def test_consumed_one_use_fields_and_stored_attribution() -> None:
+    fields = build_invite_log_fields(
+        kind="join",
+        member_name="Alice",
+        member_id="1",
+        inviter_id="2",
+        inviter_name="Bob",
+        inviter_count=3,
+        invite_code="oneuse",
+        joined_at=None,
+        attribution="consumed_one_use",
+    )
+    assert fields["Invited By"] == "<@2>"
+    assert fields["Invitation Source"] == "Single-use invitation (oneuse)"
+    assert fields["Inviter Total Invites"] == "3"
+    assert attribution_status("oneuse", "2", stored="consumed_one_use") == (
+        "consumed_one_use"
+    )
+
+
 def test_template_render_and_sanitization() -> None:
     ctx = build_template_context(
         kind="join",

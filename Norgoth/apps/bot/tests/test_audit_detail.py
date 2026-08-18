@@ -315,7 +315,7 @@ def _logging_cog() -> tuple[ServerLoggingCog, AsyncMock]:
     bot = MagicMock()
     bot.state = state
     cog = ServerLoggingCog(bot)
-    cog.route_event = AsyncMock(return_value=True)
+    cog.route_event = AsyncMock(return_value=[])
     return cog, state.append_capped_list
 
 

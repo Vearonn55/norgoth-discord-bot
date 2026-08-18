@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -235,7 +236,8 @@ async def test_smoke_join_leave_route_to_different_channels() -> None:
 
     class _FakeTextChannel:
         def __init__(self) -> None:
-            self.send = AsyncMock()
+            self.id = 111
+            self.send = AsyncMock(return_value=SimpleNamespace(id=9001))
 
     redis = _FakeRedis()
     snapshot = {
@@ -265,7 +267,9 @@ async def test_smoke_join_leave_route_to_different_channels() -> None:
     logging_cog = ServerLoggingCog(bot)
 
     join_ch = _FakeTextChannel()
+    join_ch.id = 111
     leave_ch = _FakeTextChannel()
+    leave_ch.id = 222
 
     guild = MagicMock()
     guild.id = 1
@@ -310,7 +314,8 @@ async def test_smoke_join_leave_route_to_different_channels() -> None:
 async def test_smoke_route_fetches_on_cache_miss() -> None:
     class _FakeTextChannel:
         def __init__(self) -> None:
-            self.send = AsyncMock()
+            self.id = 111
+            self.send = AsyncMock(return_value=SimpleNamespace(id=222))
 
     redis = _FakeRedis()
     await redis.set(
@@ -352,7 +357,7 @@ async def test_smoke_route_fetches_on_cache_miss() -> None:
             "body",
             {},
         )
-    assert ok is True
+    assert ok
     guild.fetch_channel.assert_awaited_once_with(111)
     assert channel.send.await_count == 1
 
@@ -389,5 +394,5 @@ async def test_smoke_unmapped_invite_event_does_not_send() -> None:
         "body",
         {},
     )
-    assert ok is False
+    assert ok == []
 

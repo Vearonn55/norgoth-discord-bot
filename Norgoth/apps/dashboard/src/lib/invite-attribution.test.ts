@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { invitedByLabel } from "./invite-attribution";
+import { invitedByLabel, invitationSourceLabel } from "./invite-attribution";
 
 const copy = {
   vanityUrl: "vanity URL",
@@ -7,6 +7,8 @@ const copy = {
   attributionDeleted: "deleted invite",
   attributionAmbiguous: "ambiguous",
   attributionUnavailable: "unavailable",
+  attributionConsumedOneUse: "single-use invitation",
+  invitationSourceOneUse: "Single-use invitation",
 };
 
 describe("invitedByLabel", () => {
@@ -86,5 +88,28 @@ describe("invitedByLabel", () => {
         copy,
       ),
     ).toBe("unavailable");
+  });
+
+  it("labels consumed one-use joins and keeps the code in the source", () => {
+    expect(
+      invitedByLabel(
+        {
+          inviter_name: null,
+          inviter_id: null,
+          code: "oneuse",
+          attribution: "consumed_one_use",
+        },
+        copy,
+      ),
+    ).toBe("single-use invitation");
+    expect(
+      invitationSourceLabel(
+        {
+          code: "oneuse",
+          attribution: "consumed_one_use",
+        },
+        copy,
+      ),
+    ).toBe("Single-use invitation (oneuse)");
   });
 });

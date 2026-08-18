@@ -43,6 +43,7 @@ export function LoggingConfigurationsPanel() {
   const config = useLoggingConfigStore((s) => s.config);
   const catalog = useLoggingConfigStore((s) => s.catalog);
   const health = useLoggingConfigStore((s) => s.health);
+  const permissions = useLoggingConfigStore((s) => s.permissions);
   const loading = useLoggingConfigStore((s) => s.loading);
   const busy = useLoggingConfigStore((s) => s.busy);
   const error = useLoggingConfigStore((s) => s.error);
@@ -153,6 +154,11 @@ export function LoggingConfigurationsPanel() {
           {error ? (
             <CAlert color="danger" className="mb-0 py-2">
               {error}
+            </CAlert>
+          ) : null}
+          {permissions?.missing_permissions?.includes("View Audit Log") ? (
+            <CAlert color="warning" className="mb-0 py-2">
+              {d.missingViewAuditLog}
             </CAlert>
           ) : null}
           {feedback ? (

@@ -43,6 +43,7 @@ def test_router_exposes_state_patch_endpoint() -> None:
     assert (CONFIG_PATH, "PATCH") in operations
     assert (CONFIG_PATH, "PUT") in operations
     assert (CONFIG_PATH, "GET") in operations
+    assert ("/guilds/{guild_id}/logging/permissions", "GET") in operations
 
 
 def test_state_body_only_carries_enabled() -> None:
@@ -123,6 +124,12 @@ def test_catalog_payload_lists_all_supported_groups() -> None:
     assert keys == set(EVENT_GROUPS.keys())
     assert "voice" in keys
     assert "invites" in keys
+
+
+def test_invite_lifecycle_unique_on_guild_and_code() -> None:
+    from app.models.runtime_events import InviteLifecycle
+
+    assert frozenset({"guild_id", "code"}) in _unique_columns(InviteLifecycle)
 
 
 

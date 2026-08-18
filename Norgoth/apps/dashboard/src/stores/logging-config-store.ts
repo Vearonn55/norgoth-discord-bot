@@ -68,6 +68,15 @@ export type LoggingHealth = {
   channels: LoggingChannelHealth[];
 };
 
+export type LoggingPermissions = {
+  guild_id: string;
+  bot_in_guild: boolean;
+  required_permissions: string[];
+  missing_permissions: string[];
+  has_view_audit_log: boolean;
+  has_manage_guild: boolean;
+};
+
 /**
  * Resolve a stable display label for a logging channel row.
  *
@@ -95,6 +104,7 @@ type LoggingConfigState = {
   config: LoggingConfig | null;
   catalog: LoggingCatalog | null;
   health: LoggingHealth | null;
+  permissions: LoggingPermissions | null;
   loading: boolean;
   busy: boolean;
   error: string | null;
@@ -151,6 +161,7 @@ export const useLoggingConfigStore = create<LoggingConfigState>((set, get) => ({
   config: null,
   catalog: null,
   health: null,
+  permissions: null,
   loading: false,
   busy: false,
   error: null,
@@ -159,9 +170,10 @@ export const useLoggingConfigStore = create<LoggingConfigState>((set, get) => ({
   load: async (guildId) => {
     set({ loading: true, error: null });
     try {
-      const [configRes, catalogRes] = await Promise.all([
+      const [configRes, catalogRes, permRes] = await Promise.all([
         fetch(apiUrl(`${base(guildId)}/config`), { cache: "no-store" }),
         fetch(apiUrl(`${base(guildId)}/event-types`), { cache: "no-store" }),
+        fetch(apiUrl(`${base(guildId)}/permissions`), { cache: "no-store" }),
       ]);
       if (configRes.ok) {
         const body = (await configRes.json()) as { config: LoggingConfig | null };
@@ -171,6 +183,11 @@ export const useLoggingConfigStore = create<LoggingConfigState>((set, get) => ({
       }
       if (catalogRes.ok) {
         set({ catalog: (await catalogRes.json()) as LoggingCatalog });
+      }
+      if (permRes.ok) {
+        set({
+          permissions: (await permRes.json()) as LoggingPermissions,
+        });
       }
     } catch {
       set({ error: "Could not reach the NorBot API." });
@@ -389,15 +406,21 @@ export const useLoggingConfigStore = create<LoggingConfigState>((set, get) => ({
   reconcile: async (guildId) => {
     set({ busy: true, error: null });
     try {
-      const res = await fetch(apiUrl(`${base(guildId)}/reconcile`), {
-        method: "POST",
-      });
+      const [res, permRes] = await Promise.all([
+        fetch(apiUrl(`${base(guildId)}/reconcile`), {
+          method: "POST",
+        }),
+        fetch(apiUrl(`${base(guildId)}/permissions`), { cache: "no-store" }),
+      ]);
       if (!res.ok) {
         set({ error: await readError(res) });
         return null;
       }
       const health = (await res.json()) as LoggingHealth;
-      set({ health });
+      const permissions = permRes.ok
+        ? ((await permRes.json()) as LoggingPermissions)
+        : get().permissions;
+      set({ health, permissions: permissions ?? null });
       return health;
     } catch {
       set({ error: "Could not reach the NorBot API." });
