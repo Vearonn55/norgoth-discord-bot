@@ -45,13 +45,17 @@ jobs:
           docker push "ghcr.io/${OWNER}/norbot-web:${TAG}"
       - name: Resolve VDS SSH target
         id: vds
+        continue-on-error: true
         uses: ./.github/actions/vds-ssh-target
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           port: ${{ secrets.DEPLOY_PORT }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
+          retries: "2"
+          connect_timeout: "8"
       - name: Prepare VDS staging directory
+        if: steps.vds.outcome == 'success'
         uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
         with:
           host: ${{ steps.vds.outputs.ip }}
@@ -61,6 +65,7 @@ jobs:
           timeout: 60s
           script: mkdir -p "/var/tmp/norbot-git-${{ github.run_id }}"
       - name: Sync compose and scripts to VDS
+        if: steps.vds.outcome == 'success'
         uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
         with:
           host: ${{ steps.vds.outputs.ip }}
@@ -73,6 +78,7 @@ jobs:
           rm: false
           overwrite: true
       - name: Deploy over SSH
+        if: steps.vds.outcome == 'success'
         uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
         env:
           GHCR_PULL_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -83,32 +89,22 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT }}
           timeout: 60s
+          command_timeout: 20m
           envs: GHCR_PULL_TOKEN,GHCR_PULL_USER
           script: |
             set -euo pipefail
             trap 'rm -rf "/var/tmp/norbot-git-${{ github.run_id }}"' EXIT
-            export NORBOT_IMAGE_TAG="${{ github.sha }}"
-            export NORBOT_API_IMAGE="ghcr.io/${{ steps.meta.outputs.owner }}/norbot-api"
-            export NORBOT_BOT_IMAGE="ghcr.io/${{ steps.meta.outputs.owner }}/norbot-bot"
-            export NORBOT_WEB_IMAGE="ghcr.io/${{ steps.meta.outputs.owner }}/norbot-web"
-            export NORBOT_ENV_FILE="/opt/norbot/env/production.env"
-            rsync -a --delete "/var/tmp/norbot-git-${{ github.run_id }}/Norgoth/deploy/" /opt/norbot/deploy/
-            rsync -a "/var/tmp/norbot-git-${{ github.run_id }}/Norgoth/scripts/docker/" /opt/norbot/scripts/
-            chmod +x /opt/norbot/scripts/*.sh
-            cd /opt/norbot
-            /opt/norbot/scripts/ghcr-login.sh
-            /opt/norbot/scripts/backup-db.sh production
-            docker compose --env-file /opt/norbot/env/production.env -f deploy/compose.yml -f deploy/compose.production.yml pull
-            /opt/norbot/scripts/migrate.sh production
-            compose_ok=0
-            docker compose --env-file /opt/norbot/env/production.env -f deploy/compose.yml -f deploy/compose.production.yml up -d || compose_ok=1
-            docker logout ghcr.io >/dev/null 2>&1 || true
-            if [[ "${compose_ok}" -ne 0 ]]; then
-              /opt/norbot/scripts/dump-compose-logs.sh production || true
-              exit 1
-            fi
-            if ! /opt/norbot/scripts/smoke-check.sh production; then
-              /opt/norbot/scripts/dump-compose-logs.sh production || true
-              exit 1
-            fi
-            /opt/norbot/scripts/record-release.sh "${NORBOT_IMAGE_TAG}" production
+            export NORBOT_IMAGE_OWNER="${{ steps.meta.outputs.owner }}"
+            bash "/var/tmp/norbot-git-${{ github.run_id }}/Norgoth/scripts/docker/apply-release.sh" \
+              production "${{ github.sha }}" "/var/tmp/norbot-git-${{ github.run_id }}"
+      - name: Deploy over HTTPS (SSH unreachable)
+        if: steps.vds.outcome != 'success'
+        uses: ./.github/actions/vds-https-apply
+        with:
+          url: ${{ secrets.DEPLOY_APPLY_URL }}
+          secret: ${{ secrets.DEPLOY_APPLY_SECRET }}
+          env_name: production
+          sha: ${{ github.sha }}
+          owner: ${{ steps.meta.outputs.owner }}
+          ghcr_user: ${{ github.actor }}
+          ghcr_token: ${{ secrets.GITHUB_TOKEN }}

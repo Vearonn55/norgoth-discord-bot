@@ -1,0 +1,22 @@
+[Unit]
+Description=NorBot GitHub Actions HTTPS deploy agent
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+User=norbot
+Group=docker
+WorkingDirectory=/opt/norbot
+Environment=NORBOT_CI_APPLY_SECRET_FILE=/opt/norbot/env/ci-apply.secret
+Environment=NORBOT_CI_APPLY_SCRIPT=/opt/norbot/scripts/apply-release.sh
+Environment=NORBOT_CI_APPLY_LOCK=/opt/norbot/ci-apply/apply.lock
+Environment=NORBOT_CI_APPLY_LOG=/opt/norbot/ci-apply/last.log
+ExecStart=/usr/bin/python3 /opt/norbot/ci-apply/ci-apply-agent.py
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

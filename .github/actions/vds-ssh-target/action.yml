@@ -68,6 +68,22 @@ runs:
         echo "ip=${ip}" >> "${GITHUB_OUTPUT}"
         echo "Resolved VDS SSH target (IPv4, port length=${#DEPLOY_PORT})."
 
+        cf="$(curl -fsSL --max-time 10 https://www.cloudflare.com/ips-v4 2>/dev/null || true)"
+        if [[ -n "${cf}" ]]; then
+          if ! CF_CIDRS="${cf}" python3 - "${ip}" <<'PY'
+        import ipaddress, os, sys
+        ip = ipaddress.ip_address(sys.argv[1])
+        for line in os.environ.get("CF_CIDRS", "").splitlines():
+            line = line.strip()
+            if line and ip in ipaddress.ip_network(line):
+                raise SystemExit(2)
+        PY
+          then
+            echo "::error::DEPLOY_HOST resolved to a Cloudflare proxy IP. SSH to that address on a non-80/443 port always times out. Set DEPLOY_HOST to the VDS origin IPv4 (grey-cloud DNS, or the address from the provider panel)."
+            exit 1
+          fi
+        fi
+
     - name: Wait for SSH
       shell: bash
       env:
@@ -100,6 +116,12 @@ runs:
           -o ConnectTimeout="${VDS_CONNECT_TIMEOUT}"
         )
 
+        if timeout 8 bash -c "echo >/dev/tcp/${VDS_HOST}/${VDS_PORT}" 2>/dev/null; then
+          echo "TCP ${VDS_PORT} is reachable; continuing with SSH handshake."
+        else
+          echo "TCP ${VDS_PORT} did not accept a connection from this runner (filtered, dropped, or wrong host)."
+        fi
+
         attempts="${VDS_RETRIES}"
         for (( i = 1; i <= attempts; i++ )); do
           if ssh "${ssh_opts[@]}" "${VDS_USER}@${VDS_HOST}" true; then
@@ -112,5 +134,5 @@ runs:
           fi
         done
 
-        echo "::error::Cannot reach the VDS SSH port from this GitHub-hosted runner (TCP/auth timeout). Images may already be on GHCR. On the VDS check: host is up, sshd listens on DEPLOY_PORT, ufw/cloud firewall allows inbound TCP, fail2ban is not blocking Azure Actions IPs."
+        echo "::error::Cannot reach the VDS SSH port from this GitHub-hosted runner. Images may already be on GHCR. Typical causes: DEPLOY_HOST is Cloudflare-proxied; provider/ufw firewall allows only your home IP; fail2ban DROP of Azure Actions IPs; sshd not on DEPLOY_PORT. Workflows fall back to HTTPS apply when DEPLOY_APPLY_SECRET is set."
         exit 1

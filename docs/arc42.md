@@ -29,7 +29,7 @@ Paste this whole document as system or project context. Follow these rules when 
 
 ### 0.3 Hard production truths (2026-08)
 
-1. **SSH to the VDS is not port 22.** Use `secrets.DEPLOY_PORT` (historically **35342**). `deploy-production.yml`, `deploy-test.yml`, and `rehydrate-test-db.yml` must pass `port: ${{ secrets.DEPLOY_PORT }}`. Defaulting to 22 times out (`dial tcp …:22: i/o timeout`). Prefer an IPv4 `DEPLOY_HOST`; workflows resolve A records only so GitHub-hosted runners do not stall on AAAA.
+1. **SSH to the VDS is not port 22.** Use `secrets.DEPLOY_PORT` (historically **35342**). `deploy-production.yml`, `deploy-test.yml`, and `rehydrate-test-db.yml` must pass `port: ${{ secrets.DEPLOY_PORT }}`. Defaulting to 22 times out (`dial tcp …:22: i/o timeout`). Prefer an IPv4 `DEPLOY_HOST` that is the **origin** address, not a Cloudflare proxy. GitHub-hosted runners often cannot reach that SSH port (cloud firewall / fail2ban / Azure egress); workflows then HMAC-POST `https://api.norbot.io/__norbot/ci-apply` when `DEPLOY_APPLY_SECRET` is set.
 2. **Manual compose on the VDS needs image env vars.** Actions export them; a bare `docker compose -f deploy/compose.yml -f deploy/compose.production.yml` fails with `NORBOT_*_IMAGE is missing`. Export:
    - `NORBOT_IMAGE_TAG` = SHA from `/opt/norbot/releases/CURRENT`
    - `NORBOT_API_IMAGE=ghcr.io/vearonn55/norbot-api`

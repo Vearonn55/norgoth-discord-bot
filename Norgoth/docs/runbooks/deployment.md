@@ -23,19 +23,24 @@
    Later deploys restore these from git (do not edit compose on the VDS).
 4. Create `/opt/norbot/env/production.env` and `test.env` from the examples.
 5. Install Nginx configs from `deploy/nginx/` and run `scripts/vds/install-certbot.sh`.
-6. Create GitHub Environments `test` and `production` with secrets:
-   - `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_PORT`
+6. Run `scripts/vds/install-ci-apply.sh` so GitHub Actions can deploy over
+   HTTPS when inbound SSH is filtered. Store the printed secret as
+   `DEPLOY_APPLY_SECRET` on both GitHub Environments.
+7. Create GitHub Environments `test` and `production` with secrets:
+   - `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_PORT`, `DEPLOY_APPLY_SECRET`
    - `DEPLOY_HOST` should be an **IPv4** address (or a hostname with an A
      record). GitHub-hosted runners often stall on an unreachable IPv6/AAAA.
+     Do not use a Cloudflare-proxied hostname for SSH.
    - `DEPLOY_PORT` must match the VDS SSH listen port (default **35342** from
      `setup-firewall.sh`). Required for **both** environments — without it,
      appleboy defaults to port 22 and times out (`dial tcp …:22: i/o timeout`).
-7. Optional: create `/opt/norbot/env/ghcr.pull.token` (mode 600) with a GHCR
+8. Optional: create `/opt/norbot/env/ghcr.pull.token` (mode 600) with a GHCR
    **pull-only** credential (`packages:read`) for **manual** `docker pull` /
    `rollback-app.sh` on the host. CI deploy logs in with a job-scoped
    `GITHUB_TOKEN` (`GHCR_PULL_TOKEN`) and logs out after `compose pull`/`up`,
-   so this file is not required for GitHub Actions deploys.
-8. Push to `test` to trigger staging deploy; promote via PR into `main` for production.
+   so this file is not required for GitHub Actions deploys (HTTPS apply can
+   use the job token in the signed POST).
+9. Push to `test` to trigger staging deploy; promote via PR into `main` for production.
 
 ## After deploy: bot online check
 
@@ -62,20 +67,62 @@ Keep `/opt/norbot/scripts/` in sync with `Norgoth/scripts/docker/` (including
 
 ## SSH timeout from GitHub Actions
 
-`dial tcp …: i/o timeout` on `Prepare VDS staging directory` means the runner
-never completed a TCP handshake to `DEPLOY_HOST:DEPLOY_PORT`. Image push to
-GHCR can still succeed. Workflows now pin IPv4 and retry SSH before appleboy.
+`dial tcp …: i/o timeout` / `Connection timed out` means the GitHub-hosted
+runner never completed a TCP handshake to `DEPLOY_HOST:DEPLOY_PORT`. Image
+push to GHCR can still succeed. Extra SSH retries will not help if the port
+is filtered.
 
-If it still fails after retries, on the VDS:
+Typical causes:
 
-1. Confirm sshd is listening on `DEPLOY_PORT` (`ss -lntp | grep sshd`).
-2. `ufw status` / provider firewall allows inbound TCP on that port.
-3. `fail2ban-client status sshd` (or the jail for the custom port) is not
-   banning GitHub-hosted runner IPs (Azure).
-4. The `production` / `test` GitHub Environment actually has `DEPLOY_HOST` and
-   `DEPLOY_PORT` set (environment secrets override repo secrets when present).
+1. `DEPLOY_HOST` is a **Cloudflare-proxied** hostname. SSH to a Cloudflare
+   anycast IP on port 35342 always times out. Set `DEPLOY_HOST` to the VDS
+   **origin IPv4** (provider panel, or grey-cloud DNS).
+2. Provider cloud firewall / ufw allows SSH only from your home IP. GitHub
+   Actions egress from rotating Azure ranges.
+3. `fail2ban` DROP of those Azure IPs (`fail2ban-client status sshd`).
+4. sshd is not listening on `DEPLOY_PORT`.
 
-Then re-run **Deploy production**. Images for the failed SHA are already on GHCR.
+### HTTPS apply fallback (port 443)
+
+Workflows try SSH first. If that fails, they POST a short-lived HMAC request
+to `https://api.norbot.io/__norbot/ci-apply` (test: `api.test.norbot.io`).
+That path is served by nginx on **443** (already public) and proxied to a
+loopback agent.
+
+One-time on the VDS (from your laptop SSH, not from Actions):
+
+```bash
+# from a git checkout of this repo
+sudo bash Norgoth/scripts/vds/install-ci-apply.sh
+```
+
+Then set GitHub Environment secrets `test` and `production`:
+
+- `DEPLOY_APPLY_SECRET` — printed by the installer (same value as
+  `/opt/norbot/env/ci-apply.secret`)
+- `DEPLOY_APPLY_URL` — optional; defaults as above
+
+If Cloudflare WAF sits in front of `api.norbot.io`, skip that path or it
+will 403.
+
+### Apply a SHA GitHub already pushed (manual)
+
+Images for a failed deploy are on GHCR. From an SSH session that *does*
+reach the box:
+
+```bash
+export NORBOT_IMAGE_TAG=<40-char-sha>
+export NORBOT_IMAGE_OWNER=vearonn55
+# job token is gone; use the host pull credential
+# /opt/norbot/env/ghcr.pull.token  (mode 600)
+sudo -u norbot -H /opt/norbot/scripts/apply-release.sh production "${NORBOT_IMAGE_TAG}"
+```
+
+If `apply-release.sh` is not on the VDS yet, copy it from
+`Norgoth/scripts/docker/apply-release.sh` or run the installer above.
+
+Then re-run **Deploy production** after HTTPS apply is installed, or rely on
+the next push to `main`.
 
 ## Normal production deploy
 

@@ -2,7 +2,7 @@
 
 - [ ] `test` and `main` branch protections enabled (PR required, no force-push)
 - [ ] GitHub Environments `test` and `production` created (`production` requires reviewers)
-- [ ] Environment secrets set: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`
+- [ ] Environment secrets set: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_PORT`, `DEPLOY_APPLY_SECRET`
 - [ ] GHCR packages `norbot-api`, `norbot-bot`, `norbot-web` publishing works
 - [ ] Images tagged by git SHA; `/opt/norbot/releases/CURRENT` + `PREVIOUS` written
 - [ ] `norbot_prod` / `norbot_test` isolated credentials and volumes

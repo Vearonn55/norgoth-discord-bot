@@ -28,10 +28,17 @@ Create Environments:
 
 Secrets on both environments (or repo secrets if preferred):
 
-- `DEPLOY_HOST` — VDS public IPv4 (hostname only if it has an A record)
+- `DEPLOY_HOST` — VDS public IPv4 (hostname only if it has an A record).
+  **Do not** use a Cloudflare-proxied hostname; SSH to Cloudflare IPs times out.
 - `DEPLOY_PORT` — SSH listen port (historically **35342**, not 22)
 - `DEPLOY_USER` — `norbot`
 - `DEPLOY_SSH_KEY` — private key for Actions → VDS (not the repo Deploy Key)
+- `DEPLOY_APPLY_SECRET` — HMAC secret for the HTTPS deploy fallback
+  (`/opt/norbot/env/ci-apply.secret`). Required when GitHub-hosted runners
+  cannot reach `DEPLOY_PORT`.
+- `DEPLOY_APPLY_URL` — optional. Defaults to
+  `https://api.norbot.io/__norbot/ci-apply` (production) or
+  `https://api.test.norbot.io/__norbot/ci-apply` (test).
 
 ## Packages
 

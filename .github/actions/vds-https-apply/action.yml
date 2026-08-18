@@ -1,0 +1,100 @@
+name: Apply release over HTTPS
+description: >
+  HMAC-signed POST to the VDS loopback ci-apply agent (proxied on :443) so a
+  deploy can finish when GitHub-hosted runners cannot reach SSH.
+
+inputs:
+  url:
+    required: false
+    default: ""
+  secret:
+    required: true
+  env_name:
+    required: true
+  sha:
+    required: true
+  owner:
+    required: true
+  ghcr_user:
+    required: true
+  ghcr_token:
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: POST signed apply
+      shell: bash
+      env:
+        APPLY_URL: ${{ inputs.url }}
+        APPLY_SECRET: ${{ inputs.secret }}
+        APPLY_ENV: ${{ inputs.env_name }}
+        APPLY_SHA: ${{ inputs.sha }}
+        APPLY_OWNER: ${{ inputs.owner }}
+        GHCR_PULL_USER: ${{ inputs.ghcr_user }}
+        GHCR_PULL_TOKEN: ${{ inputs.ghcr_token }}
+      run: |
+        set -euo pipefail
+        if [[ -z "${APPLY_SECRET}" ]]; then
+          echo "::error::SSH to the VDS timed out and DEPLOY_APPLY_SECRET is empty. Either open inbound TCP on DEPLOY_PORT for GitHub Actions (or set DEPLOY_HOST to the origin IPv4, not a Cloudflare proxy), or install Norgoth/scripts/vds/install-ci-apply.sh on the VDS and set DEPLOY_APPLY_SECRET."
+          exit 1
+        fi
+        if [[ -z "${APPLY_URL}" ]]; then
+          if [[ "${APPLY_ENV}" == "test" ]]; then
+            APPLY_URL="https://api.test.norbot.io/__norbot/ci-apply"
+          else
+            APPLY_URL="https://api.norbot.io/__norbot/ci-apply"
+          fi
+        fi
+        python3 - <<'PY'
+        import hashlib, hmac, json, os, sys, time, urllib.error, urllib.request
+
+        url = os.environ["APPLY_URL"]
+        secret = os.environ["APPLY_SECRET"].strip().encode()
+        if len(secret) < 32:
+            print("::error::DEPLOY_APPLY_SECRET is too short.", file=sys.stderr)
+            sys.exit(1)
+        payload = {
+            "env": os.environ["APPLY_ENV"],
+            "sha": os.environ["APPLY_SHA"].lower(),
+            "owner": os.environ["APPLY_OWNER"].lower(),
+            "ghcr_user": os.environ["GHCR_PULL_USER"],
+            "ghcr_token": os.environ["GHCR_PULL_TOKEN"],
+        }
+        body = json.dumps(payload, separators=(",", ":")).encode()
+        ts = str(int(time.time()))
+        sig = hmac.new(secret, f"{ts}.".encode() + body, hashlib.sha256).hexdigest()
+        req = urllib.request.Request(
+            url,
+            data=body,
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "X-Norbot-Timestamp": ts,
+                "X-Norbot-Signature": f"sha256={sig}",
+            },
+        )
+        print(f"POST {url} env={payload['env']} sha={payload['sha']}")
+        try:
+            with urllib.request.urlopen(req, timeout=960) as resp:
+                raw = resp.read().decode()
+                status = resp.status
+        except urllib.error.HTTPError as exc:
+            raw = exc.read().decode(errors="replace")
+            print(raw)
+            print(f"::error::HTTPS apply returned HTTP {exc.code}. If 404, install nginx location /__norbot/ci-apply and the ci-apply systemd unit.")
+            sys.exit(1)
+        except urllib.error.URLError as exc:
+            print(f"::error::HTTPS apply could not reach {url}: {exc}")
+            sys.exit(1)
+        print(raw)
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            print("::error::HTTPS apply returned non-JSON.")
+            sys.exit(1)
+        if status != 200 or not parsed.get("ok"):
+            print("::error::HTTPS apply failed.")
+            sys.exit(1)
+        print("HTTPS apply succeeded.")
+        PY
