@@ -11,8 +11,13 @@ import pytest
 from fastapi import FastAPI
 from starlette.requests import Request
 
-from app.api.v1.oauth import _get_client_ip, authorize_discord
+from app.api.v1.oauth import (
+    _get_client_ip,
+    _proxycheck_vpn_or_proxy_detected,
+    authorize_discord,
+)
 from app.integrations.discord.cdn import discord_icon_url
+from app.integrations.proxycheck import ProxycheckError
 from app.models.enums import RiskAction
 from app.services.verification_html import (
     render_verification_result_page,
@@ -142,6 +147,40 @@ def test_get_client_ip_ignores_spoofed_headers_from_untrusted_peer() -> None:
         "scheme": "http",
     }
     assert _get_client_ip(Request(scope)) == "8.8.8.8"
+
+
+@pytest.mark.asyncio
+async def test_proxycheck_failure_does_not_block_verification_flow() -> None:
+    request = Request(
+        {
+            "type": "http",
+            "asgi": {"version": "3.0"},
+            "http_version": "1.1",
+            "method": "GET",
+            "path": "/api/v1/oauth/discord/callback",
+            "raw_path": b"/api/v1/oauth/discord/callback",
+            "query_string": b"",
+            "headers": [],
+            "client": ("127.0.0.1", 12345),
+            "server": ("test", 80),
+            "scheme": "https",
+        }
+    )
+    request.state.request_id = "verify-risk-fallback"
+    proxycheck_client = SimpleNamespace(
+        check_ip=AsyncMock(side_effect=ProxycheckError("provider unavailable"))
+    )
+
+    result = await _proxycheck_vpn_or_proxy_detected(
+        request=request,
+        configuration=_config(deny_vpn_or_proxy=True),
+        proxycheck_client=proxycheck_client,
+        client_ip="203.0.113.5",
+        guild_id="99",
+    )
+
+    assert result is False
+    proxycheck_client.check_ip.assert_awaited_once_with("203.0.113.5")
 
 
 @pytest.mark.asyncio

@@ -169,6 +169,39 @@ def _log_callback_event(
     )
 
 
+async def _proxycheck_vpn_or_proxy_detected(
+    *,
+    request: Request,
+    configuration: ConfigurationView,
+    proxycheck_client: ProxycheckClientDependency,
+    client_ip: str,
+    guild_id: str,
+) -> bool:
+    """Return the VPN/proxy signal, degrading open if the provider is unavailable."""
+
+    if not configuration.deny_vpn_or_proxy:
+        return False
+
+    try:
+        proxycheck_result = await proxycheck_client.check_ip(client_ip)
+    except (InvalidProxycheckIPAddressError, ProxycheckError):
+        logger.warning(
+            "verification_callback code=risk_provider_unavailable_skipped guild_id=%s",
+            guild_id,
+            exc_info=True,
+        )
+        _log_callback_event(
+            request,
+            stage="risk_provider",
+            code="risk_provider_unavailable_skipped",
+            guild_id=guild_id,
+            outcome="continued",
+        )
+        return False
+
+    return proxycheck_result.vpn_or_proxy_detected
+
+
 @router.get(
     "/authorize/{discord_guild_id}",
     response_class=RedirectResponse,
@@ -524,31 +557,13 @@ async def discord_callback(
                 membership_error.status_code,
             )
 
-    vpn_or_proxy_detected = False
-    if configuration.deny_vpn_or_proxy:
-        try:
-            proxycheck_result = await proxycheck_client.check_ip(client_ip)
-            vpn_or_proxy_detected = proxycheck_result.vpn_or_proxy_detected
-        except InvalidProxycheckIPAddressError:
-            _log_callback_event(
-                request,
-                stage="risk_provider",
-                code="risk_provider_unavailable",
-                guild_id=verified_state.discord_guild_id,
-            )
-            return _verify_result_redirect(
-                request, lang=lang, outcome="error", reason="risk_provider_unavailable"
-            )
-        except ProxycheckError:
-            _log_callback_event(
-                request,
-                stage="risk_provider",
-                code="risk_provider_unavailable",
-                guild_id=verified_state.discord_guild_id,
-            )
-            return _verify_result_redirect(
-                request, lang=lang, outcome="error", reason="risk_provider_unavailable"
-            )
+    vpn_or_proxy_detected = await _proxycheck_vpn_or_proxy_detected(
+        request=request,
+        configuration=configuration,
+        proxycheck_client=proxycheck_client,
+        client_ip=client_ip,
+        guild_id=verified_state.discord_guild_id,
+    )
 
     try:
         verification_result = await verification_service.verify(
