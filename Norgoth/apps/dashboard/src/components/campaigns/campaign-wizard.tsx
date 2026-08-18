@@ -7,7 +7,6 @@ import {
   CCol,
   CFormInput,
   CFormLabel,
-  CFormSelect,
   CRow,
 } from "@coreui/react";
 import { Card } from "@/components/ui/card";

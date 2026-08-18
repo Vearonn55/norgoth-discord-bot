@@ -152,13 +152,24 @@ function serializeNode(node: Node): string {
   }
 }
 
+function parseHtmlBody(html: string): ParentNode {
+  if (typeof DOMParser !== "undefined") {
+    return new DOMParser().parseFromString(html, "text/html").body;
+  }
+
+  // Vitest runs in Node; happy-dom provides DOMParser for htmlToDiscordMarkdown tests.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { Window } = require("happy-dom") as typeof import("happy-dom");
+  const window = new Window();
+  return new window.DOMParser().parseFromString(html, "text/html").body;
+}
+
 export function htmlToDiscordMarkdown(html: string): string {
-  if (typeof window === "undefined" || !html) {
+  if (!html) {
     return html;
   }
 
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  const markdown = serializeChildren(doc.body);
+  const markdown = serializeChildren(parseHtmlBody(html));
 
   return markdown.replace(/\n{3,}/g, "\n\n").trim();
 }
