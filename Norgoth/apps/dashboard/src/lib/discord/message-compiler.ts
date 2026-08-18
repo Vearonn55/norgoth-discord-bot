@@ -156,6 +156,10 @@ function packEmbedGroups(cards: PreviewEmbed[]): PreviewEmbed[][] {
   return groups;
 }
 
+function hasMedia(url?: string): boolean {
+  return Boolean(url?.trim());
+}
+
 /** Preview-oriented compile: mirrors backend stacked-embed chunking. */
 export function compileForPreview(
   content: string,

@@ -30,6 +30,8 @@ import {
 } from "@/stores/embed-messages-store";
 import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 
+const PAGE_SIZE = 10;
+
 const DEPLOY_ERROR_KEYS = [
   "permission_missing",
   "unknown_channel",
