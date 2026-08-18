@@ -237,5 +237,5 @@ export function compileForPreview(
     if (payload.content || payload.embeds?.length) payloads.push(payload);
   }
 
-  return { payloads, warnings: [], errors };
+  return { payloads, warnings: [], errors: [] };
 }
