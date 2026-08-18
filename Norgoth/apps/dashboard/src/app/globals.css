@@ -1348,6 +1348,110 @@ body {
   overflow-y: auto;
 }
 
+.norgoth-verify-wrap {
+  min-height: 100%;
+}
+
+.norgoth-verify-center {
+  max-width: 680px;
+}
+
+.norgoth-verify-card {
+  border: 1px solid var(--cui-card-border-color);
+  border-left: 3px solid var(--cui-primary);
+  border-radius: 0.9rem;
+  padding: 1.25rem;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.03) 0%,
+    var(--norgoth-surface) 42%
+  );
+  box-shadow: var(--cui-card-box-shadow);
+}
+
+.norgoth-verify-accent-primary {
+  border-left-color: var(--cui-primary);
+}
+
+.norgoth-verify-accent-info {
+  border-left-color: var(--cui-info);
+}
+
+.norgoth-verify-accent-success {
+  border-left-color: var(--cui-success);
+}
+
+.norgoth-verify-accent-warning {
+  border-left-color: var(--cui-warning);
+}
+
+.norgoth-verify-accent-danger {
+  border-left-color: var(--cui-danger);
+}
+
+.norgoth-verify-brand-dot {
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: var(--cui-body-color);
+  background: var(--cui-secondary-bg);
+  border: 1px solid var(--cui-card-border-color);
+}
+
+.norgoth-verify-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  list-style: none;
+  padding: 0;
+}
+
+.norgoth-verify-steps li {
+  border: 1px solid var(--cui-card-border-color);
+  border-radius: 0.65rem;
+  padding: 0.45rem 0.5rem;
+  font-size: 0.8rem;
+  color: var(--cui-tertiary-color);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.norgoth-verify-steps li.is-active {
+  color: var(--cui-body-color);
+  border-color: rgba(110, 168, 254, 0.55);
+  background: rgba(110, 168, 254, 0.14);
+}
+
+.norgoth-verify-trust {
+  border: 1px solid var(--cui-card-border-color);
+  border-radius: 0.75rem;
+  padding: 0.9rem 1rem;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.norgoth-verify-footer {
+  text-align: center;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 576px) {
+  .norgoth-verify-card {
+    padding: 1rem;
+  }
+
+  .norgoth-verify-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .norgoth-verify-card .btn {
+    width: 100%;
+  }
+}
+
 .norgoth-sidebar-guild {
   width: 100%;
   min-width: 0;

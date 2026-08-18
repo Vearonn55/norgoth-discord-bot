@@ -27,6 +27,17 @@ class DiscordOAuthState:
     lang: str = "en"
 
 
+@dataclass(frozen=True, slots=True)
+class VerificationDisplayContext:
+    """Signed, short-lived public display context for verification UI."""
+
+    guild_id: str
+    guild_name: str
+    guild_icon_url: str | None
+    issued_at: int
+    lang: str = "en"
+
+
 class DiscordOAuthStateService:
     """Create and verify stateless signed Discord OAuth state values."""
 
@@ -157,6 +168,103 @@ class DiscordOAuthStateService:
             lang=lang,
         )
 
+    def create_display_context(
+        self,
+        *,
+        guild_id: str,
+        guild_name: str,
+        guild_icon_url: str | None,
+        lang: str,
+        current_time: int | None = None,
+    ) -> str:
+        """Create a signed display-context token for public verification pages."""
+
+        self._validate_discord_snowflake(guild_id)
+        issued_at = int(time.time()) if current_time is None else current_time
+        payload = {
+            "guild_id": guild_id,
+            "guild_name": guild_name.strip()[:120],
+            "guild_icon_url": guild_icon_url.strip() if guild_icon_url else None,
+            "iat": issued_at,
+            "lang": lang if lang in {"en", "tr"} else "en",
+        }
+        encoded_payload = self._encode_json(payload)
+        signature = self._sign(encoded_payload)
+        return f"{encoded_payload}.{signature}"
+
+    def verify_display_context(
+        self,
+        token: str,
+        *,
+        current_time: int | None = None,
+    ) -> VerificationDisplayContext:
+        """Verify and decode a signed verification display-context token."""
+
+        try:
+            encoded_payload, supplied_signature = token.split(".", maxsplit=1)
+        except ValueError as error:
+            message = "Verification display context has an invalid format."
+            raise InvalidOAuthStateError(message) from error
+
+        expected_signature = self._sign(encoded_payload)
+        if not hmac.compare_digest(supplied_signature, expected_signature):
+            message = "Verification display context signature is invalid."
+            raise InvalidOAuthStateError(message)
+
+        payload = self._decode_json(encoded_payload)
+        guild_id = payload.get("guild_id")
+        guild_name = payload.get("guild_name")
+        guild_icon_url = payload.get("guild_icon_url")
+        issued_at = payload.get("iat")
+        lang = payload.get("lang", "en")
+
+        if not isinstance(guild_id, str):
+            raise InvalidOAuthStateError(
+                "Verification display context is missing a valid guild ID."
+            )
+        try:
+            self._validate_discord_snowflake(guild_id)
+        except ValueError as error:
+            raise InvalidOAuthStateError(
+                "Verification display context contains an invalid guild ID."
+            ) from error
+
+        if not isinstance(guild_name, str) or not guild_name.strip():
+            raise InvalidOAuthStateError(
+                "Verification display context is missing a valid guild name."
+            )
+        normalized_name = guild_name.strip()[:120]
+
+        if guild_icon_url is not None and not isinstance(guild_icon_url, str):
+            raise InvalidOAuthStateError(
+                "Verification display context contains an invalid icon URL."
+            )
+        normalized_icon_url = guild_icon_url.strip() if guild_icon_url else None
+
+        if not isinstance(issued_at, int) or isinstance(issued_at, bool):
+            raise InvalidOAuthStateError(
+                "Verification display context is missing a valid issue time."
+            )
+
+        if not isinstance(lang, str) or lang not in {"en", "tr"}:
+            lang = "en"
+
+        resolved_current_time = int(time.time()) if current_time is None else current_time
+        if issued_at > resolved_current_time + 60:
+            raise InvalidOAuthStateError(
+                "Verification display context issue time is invalid."
+            )
+        if resolved_current_time - issued_at > self._lifetime_seconds:
+            raise InvalidOAuthStateError("Verification display context has expired.")
+
+        return VerificationDisplayContext(
+            guild_id=guild_id,
+            guild_name=normalized_name,
+            guild_icon_url=normalized_icon_url,
+            issued_at=issued_at,
+            lang=lang,
+        )
+
     def _sign(self, encoded_payload: str) -> str:
         """Return a URL-safe HMAC signature."""
 
@@ -232,4 +340,5 @@ __all__ = [
     "DiscordOAuthState",
     "DiscordOAuthStateService",
     "InvalidOAuthStateError",
+    "VerificationDisplayContext",
 ]

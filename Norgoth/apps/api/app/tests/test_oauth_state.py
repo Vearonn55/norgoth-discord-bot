@@ -176,3 +176,35 @@ def test_rejects_state_signed_with_different_secret() -> None:
             state_value,
             current_time=1_100,
         )
+
+
+def test_create_and_verify_display_context() -> None:
+    service = _build_service()
+    token = service.create_display_context(
+        guild_id=DISCORD_GUILD_ID,
+        guild_name="Norgoth Guild",
+        guild_icon_url="https://cdn.discordapp.com/icons/1/abc.png?size=128",
+        lang="tr",
+        current_time=1_000,
+    )
+    context = service.verify_display_context(token, current_time=1_200)
+    assert context.guild_id == DISCORD_GUILD_ID
+    assert context.guild_name == "Norgoth Guild"
+    assert context.guild_icon_url == "https://cdn.discordapp.com/icons/1/abc.png?size=128"
+    assert context.lang == "tr"
+
+
+def test_rejects_tampered_display_context() -> None:
+    service = _build_service()
+    token = service.create_display_context(
+        guild_id=DISCORD_GUILD_ID,
+        guild_name="Guild",
+        guild_icon_url=None,
+        lang="en",
+        current_time=1_000,
+    )
+    encoded_payload, signature = token.split(".", maxsplit=1)
+    replacement = "A" if encoded_payload[-1] != "A" else "B"
+    tampered = f"{encoded_payload[:-1]}{replacement}.{signature}"
+    with pytest.raises(InvalidOAuthStateError, match="signature"):
+        service.verify_display_context(tampered, current_time=1_100)

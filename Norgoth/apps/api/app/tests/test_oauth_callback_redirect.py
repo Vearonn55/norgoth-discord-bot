@@ -51,6 +51,24 @@ def test_verify_result_redirect_omits_code_and_state(monkeypatch) -> None:
     assert "SECRET" not in location
 
 
+def test_verify_result_redirect_can_include_display_context(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.api.v1.oauth.get_settings",
+        lambda: SimpleNamespace(dashboard_public_url="https://www.norbot.io"),
+    )
+    response = _verify_result_redirect(
+        _request(),
+        lang="en",
+        outcome="granted",
+        reason="allowed",
+        display_context="signed-context-token",
+    )
+    location = response.headers["location"]
+    assert "ctx=signed-context-token" in location
+    assert "code=" not in location
+    assert "state=" not in location
+
+
 def test_oauth_error_reason_split() -> None:
     assert (
         _reason_from_oauth_error(

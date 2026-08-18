@@ -2313,6 +2313,7 @@
     "role_grant_failed": "Doğrulandı, ancak Discord üye rolünü veremedi. Bir moderatöre başvurun.",
     "discord_unavailable": "Discord geçici olarak kullanılamıyor. Kısa süre sonra tekrar deneyin.",
     "discord_rate_limited": "Discord bu isteği hız sınırladı. Biraz bekleyip tekrar deneyin.",
+    "oauth_denied": "Discord yetkilendirmesi iptal edildi. Hazır olduğunuzda doğrulamayı yeniden başlatın.",
     "oauth_invalid": "Bu doğrulama bağlantısı geçersiz veya süresi doldu. Discord’daki bağlantıyı yeniden açın.",
     "oauth_expired": "Bu doğrulama oturumunun süresi doldu. Discord’daki bağlantıyı yeniden açın.",
     "not_in_guild": "Doğrulamak için bu Discord sunucusunun üyesi olmalısınız.",
@@ -2327,5 +2328,38 @@
     "shared_ip_detected": "Bu bağlantı başka bir yakın tarihli doğrulama girişimiyle eşleşiyor ve inceleme gerektiriyor.",
     "internal_error": "Bir şeyler ters gitti. Kısa süre sonra tekrar deneyin.",
     "reference": "Referans {cid}"
+  },
+  "verifyPublicPage": {
+    "brand": "NorBot Doğrulama",
+    "readyTitle": "Doğrulamaya hazır",
+    "readyDescription": "Bu sunucu için doğrulamayı tamamlamak üzere Discord hesabınızı bağlayın.",
+    "connectDiscord": "Discord'u bağla",
+    "retry": "Yeniden dene",
+    "returnDiscord": "Discord'a dön",
+    "trustTitle": "Gizlilik ve güvenlik",
+    "trustBody": "NorBot, üyeliği doğrulamak ve rolleri uygulamak için yalnızca gerekli minimum Discord verisini kullanır.",
+    "footer": "NorBot Doğrulama",
+    "reference": "Referans {cid}",
+    "stepConnect": "Discord'u bağla",
+    "stepSecurity": "Güvenlik kontrolleri",
+    "stepRole": "Doğrulanmış rol",
+    "contactAdmin": "Yardım için bir sunucu yöneticisine başvurun.",
+    "genericUnavailable": "Doğrulama kullanılamıyor",
+    "stateMessages": {
+      "not_configured": "Doğrulama yapılandırılmamış",
+      "incomplete": "Doğrulama kurulumu eksik",
+      "disabled": "Doğrulama şu anda devre dışı",
+      "degraded": "Doğrulama kaynakları kullanılamıyor",
+      "error": "Doğrulama geçici olarak kullanılamıyor",
+      "guild_not_found": "Doğrulama bağlantısı geçersiz veya güncel değil"
+    },
+    "stateDetails": {
+      "not_configured": "Bu sunucu doğrulama kurulumunu henüz tamamlamadı.",
+      "incomplete": "Bu sunucuda gerekli doğrulama kanalları veya rolleri eksik.",
+      "disabled": "Bu sunucu için doğrulama şu anda devre dışı.",
+      "degraded": "Bazı Discord kaynakları şu anda kullanılamıyor. Kısa süre sonra yeniden deneyebilirsiniz.",
+      "error": "Discord geçici olarak kullanılamıyor. Lütfen kısa süre sonra tekrar deneyin.",
+      "guild_not_found": "Bu doğrulama bağlantısı artık geçerli değil."
+    }
   }
 }

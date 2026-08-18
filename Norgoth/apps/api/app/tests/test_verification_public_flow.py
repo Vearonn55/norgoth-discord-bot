@@ -195,7 +195,10 @@ async def test_authorize_not_configured_html(monkeypatch: pytest.MonkeyPatch) ->
     )
     configuration_service = SimpleNamespace(get_by_guild_id=AsyncMock(return_value=None))
     oauth_client = SimpleNamespace(build_authorization_url=MagicMock())
-    oauth_state_service = SimpleNamespace(create=MagicMock())
+    oauth_state_service = SimpleNamespace(
+        create=MagicMock(),
+        create_display_context=MagicMock(return_value="ctx-token"),
+    )
 
     async def fake_meta(**kwargs):  # noqa: ANN003
         return SimpleNamespace(
@@ -239,12 +242,9 @@ async def test_authorize_not_configured_html(monkeypatch: pytest.MonkeyPatch) ->
         bot_client=None,
     )
 
-    assert response.status_code == 200
-    body = response.body.decode("utf-8")
-    assert "Verification unavailable" in body
-    assert "not configured" in body.lower()
-    assert "NorBot Verification" in body
-    assert "cdn.discordapp.com" in body
+    assert response.status_code == 303
+    assert "verify?state=not_configured" in response.headers["location"]
+    assert "ctx=ctx-token" in response.headers["location"]
     oauth_client.build_authorization_url.assert_not_called()
 
 
@@ -265,7 +265,10 @@ async def test_authorize_active_redirects(monkeypatch: pytest.MonkeyPatch) -> No
     oauth_client = SimpleNamespace(
         build_authorization_url=MagicMock(return_value="https://discord.com/oauth")
     )
-    oauth_state_service = SimpleNamespace(create=MagicMock(return_value="signed.state"))
+    oauth_state_service = SimpleNamespace(
+        create=MagicMock(return_value="signed.state"),
+        create_display_context=MagicMock(return_value="ctx-token"),
+    )
 
     async def fake_meta(**kwargs):  # noqa: ANN003
         return SimpleNamespace(
@@ -304,8 +307,23 @@ async def test_authorize_active_redirects(monkeypatch: pytest.MonkeyPatch) -> No
         configuration_service=configuration_service,
         bot_client=None,
     )
-    assert response.status_code == 307
-    assert response.headers["location"] == "https://discord.com/oauth"
+    assert response.status_code == 303
+    assert "verify?state=ready" in response.headers["location"]
+    assert "ctx=ctx-token" in response.headers["location"]
+    oauth_client.build_authorization_url.assert_not_called()
+
+    start_response = await authorize_discord(
+        request=Request(scope),
+        discord_guild_id="99",
+        oauth_client=oauth_client,
+        oauth_state_service=oauth_state_service,
+        guild_service=guild_service,
+        configuration_service=configuration_service,
+        bot_client=None,
+        start=True,
+    )
+    assert start_response.status_code == 307
+    assert start_response.headers["location"] == "https://discord.com/oauth"
 
 
 def test_configuration_router_exposes_setup_and_validate() -> None:

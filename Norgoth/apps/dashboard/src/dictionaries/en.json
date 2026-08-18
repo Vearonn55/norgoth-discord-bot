@@ -2313,6 +2313,7 @@
     "role_grant_failed": "Verified, but Discord could not grant the member role. Contact a moderator.",
     "discord_unavailable": "Discord is temporarily unavailable. Please try again shortly.",
     "discord_rate_limited": "Discord rate-limited this request. Wait a moment and try again.",
+    "oauth_denied": "Discord authorization was cancelled. Start verification again when ready.",
     "oauth_invalid": "This verification link expired or is invalid. Open the link from Discord again.",
     "oauth_expired": "This verification session expired. Open the link from Discord again.",
     "not_in_guild": "You must be a member of this Discord server to verify.",
@@ -2327,5 +2328,38 @@
     "shared_ip_detected": "This connection matches another recent verification attempt and needs review.",
     "internal_error": "Something went wrong. Please try again shortly.",
     "reference": "Reference {cid}"
+  },
+  "verifyPublicPage": {
+    "brand": "NorBot Verification",
+    "readyTitle": "Ready to verify",
+    "readyDescription": "Connect your Discord account to complete verification for this server.",
+    "connectDiscord": "Connect Discord",
+    "retry": "Retry",
+    "returnDiscord": "Return to Discord",
+    "trustTitle": "Privacy and security",
+    "trustBody": "NorBot only uses the minimum Discord data required to verify membership and apply roles.",
+    "footer": "NorBot Verification",
+    "reference": "Reference {cid}",
+    "stepConnect": "Connect Discord",
+    "stepSecurity": "Security checks",
+    "stepRole": "Verified role",
+    "contactAdmin": "Please contact a server administrator for help.",
+    "genericUnavailable": "Verification unavailable",
+    "stateMessages": {
+      "not_configured": "Verification is not configured",
+      "incomplete": "Verification setup is incomplete",
+      "disabled": "Verification is currently disabled",
+      "degraded": "Verification resources are unavailable",
+      "error": "Verification is temporarily unavailable",
+      "guild_not_found": "Verification link is invalid or outdated"
+    },
+    "stateDetails": {
+      "not_configured": "This server has not finished verification setup yet.",
+      "incomplete": "This server is missing required verification channels or roles.",
+      "disabled": "Verification is currently disabled for this server.",
+      "degraded": "Some Discord resources are currently unavailable. You can retry shortly.",
+      "error": "Discord is temporarily unavailable. Please try again shortly.",
+      "guild_not_found": "This verification link is no longer valid."
+    }
   }
 }

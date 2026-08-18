@@ -1,8 +1,14 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { hasLocale } from "../../../dictionaries";
 import { getDictionary } from "../../../dictionaries";
 import type { Locale } from "@/i18n/config";
-import { formatDict } from "@/lib/locale-format";
+import { browserApiUrl } from "@/lib/api";
+import { VerificationPublicShell } from "../_components/verification-public-shell";
+import {
+  mapOutcomeToVisualState,
+  resolveDisplayContext,
+} from "../_lib/verification-public";
 
 const OUTCOME_TITLES: Record<string, "titleGranted" | "titlePending" | "titleDenied" | "titleError"> =
   {
@@ -11,6 +17,12 @@ const OUTCOME_TITLES: Record<string, "titleGranted" | "titlePending" | "titleDen
     denied: "titleDenied",
     error: "titleError",
   };
+
+export async function generateMetadata(): Promise<Metadata> {
+  return {
+    robots: { index: false, follow: false },
+  };
+}
 
 export default async function VerifyResultPage({
   params,
@@ -21,8 +33,7 @@ export default async function VerifyResultPage({
     outcome?: string;
     reason?: string;
     cid?: string;
-    code?: string;
-    state?: string;
+    ctx?: string;
   }>;
 }) {
   const { lang } = await params;
@@ -30,9 +41,12 @@ export default async function VerifyResultPage({
   const query = await searchParams;
   const dict = await getDictionary(lang as Locale);
   const copy = dict.verifyResultPage;
+  const shellCopy = dict.verifyPublicPage;
   const outcome = (query.outcome || "error").toLowerCase();
   const reason = (query.reason || "").toLowerCase();
   const titleKey = OUTCOME_TITLES[outcome] ?? "titleError";
+  const context = await resolveDisplayContext(query.ctx);
+  const visualState = mapOutcomeToVisualState(outcome);
   const reasonCopy =
     (copy as Record<string, string>)[reason] ||
     (outcome === "granted"
@@ -43,15 +57,45 @@ export default async function VerifyResultPage({
           ? copy.denied
           : copy.internal_error);
 
+  const retryableReasons = new Set([
+    "oauth_invalid",
+    "oauth_expired",
+    "discord_rate_limited",
+    "discord_unavailable",
+    "client_ip_unavailable",
+    "verification_processing_failed",
+  ]);
+  const retryAction =
+    context && (outcome === "error" || retryableReasons.has(reason))
+      ? {
+          label: shellCopy.retry,
+          href: browserApiUrl(
+            `/api/v1/oauth/discord/authorize/${context.guild_id}?lang=${encodeURIComponent(lang)}&start=1`,
+          ),
+        }
+      : undefined;
+
+  const returnAction =
+    outcome === "granted" || outcome === "pending"
+      ? {
+          label: shellCopy.returnDiscord,
+          href: "https://discord.com/app",
+        }
+      : undefined;
+
   return (
-    <main className="container py-5" style={{ maxWidth: 560 }}>
-      <h1 className="h3 mb-3">{copy[titleKey]}</h1>
-      <p className="text-body-secondary">{reasonCopy}</p>
-      {query.cid ? (
-        <p className="small text-body-tertiary mb-0">
-          {formatDict(copy.reference, { cid: query.cid })}
-        </p>
-      ) : null}
-    </main>
+    <VerificationPublicShell
+      copy={shellCopy}
+      state={visualState}
+      title={copy[titleKey]}
+      description={reasonCopy}
+      guildName={context?.guild_name}
+      guildIconUrl={context?.guild_icon_url}
+      primaryAction={returnAction}
+      secondaryAction={retryAction}
+      referenceId={query.cid}
+      progressStep={outcome === "granted" ? 2 : outcome === "pending" ? 1 : 1}
+      liveMessage={copy[titleKey]}
+    />
   );
 }
