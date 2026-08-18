@@ -125,8 +125,35 @@ export function splitMarkdown(
   return chunks.filter(Boolean);
 }
 
-function hasMedia(url?: string): boolean {
-  return Boolean(url?.trim());
+function previewEmbedChars(embed: PreviewEmbed): number {
+  return (
+    (embed.title?.length ?? 0) +
+    (embed.description?.length ?? 0) +
+    (embed.footer?.length ?? 0) +
+    (embed.author?.name?.length ?? 0) +
+    fieldsChars(embed.fields)
+  );
+}
+
+function packEmbedGroups(cards: PreviewEmbed[]): PreviewEmbed[][] {
+  const groups: PreviewEmbed[][] = [];
+  let current: PreviewEmbed[] = [];
+  let currentChars = 0;
+  for (const card of cards) {
+    const chars = previewEmbedChars(card);
+    const overflowCount = current.length >= DISCORD_DELIVERY_LIMITS.maxEmbedsPerMessage;
+    const overflowChars =
+      current.length > 0 && currentChars + chars > DISCORD_DELIVERY_LIMITS.total;
+    if (overflowCount || overflowChars) {
+      groups.push(current);
+      current = [];
+      currentChars = 0;
+    }
+    current.push(card);
+    currentChars += chars;
+  }
+  if (current.length) groups.push(current);
+  return groups;
 }
 
 /** Preview-oriented compile: mirrors backend stacked-embed chunking. */
@@ -199,16 +226,9 @@ export function compileForPreview(
     }
   }
 
-  const embedGroups: PreviewEmbed[][] = [];
-  if (embedCards.length) {
-    for (let start = 0; start < embedCards.length; start += DISCORD_DELIVERY_LIMITS.maxEmbedsPerMessage) {
-      embedGroups.push(
-        embedCards.slice(start, start + DISCORD_DELIVERY_LIMITS.maxEmbedsPerMessage),
-      );
-    }
-  } else {
-    embedGroups.push([]);
-  }
+  const embedGroups: PreviewEmbed[][] = embedCards.length
+    ? packEmbedGroups(embedCards)
+    : [[]];
 
   const parts = contentParts.length ? [...contentParts] : [""];
   const segmentCount = Math.max(parts.length, embedGroups.length, 1);

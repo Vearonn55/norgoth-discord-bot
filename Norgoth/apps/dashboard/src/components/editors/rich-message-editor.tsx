@@ -44,7 +44,7 @@ export function RichMessageEditor({
 
   return (
     <div className="d-flex flex-column gap-2">
-      <div className="border rounded overflow-hidden">
+      <div className="norgoth-rich-editor border rounded">
         <Editor
           tinymceScriptSrc="/tinymce/tinymce.min.js"
           licenseKey="gpl"
@@ -58,8 +58,11 @@ export function RichMessageEditor({
           }}
           init={{
             height,
+            min_height: 180,
+            min_width: 280,
             menubar: false,
-            statusbar: false,
+            statusbar: true,
+            resize: "both",
             skin: "oxide-dark",
             content_css: "dark",
             placeholder,

@@ -13,6 +13,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -71,6 +72,14 @@ class EmbedMessageDelivery(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __table_args__ = (
         Index("ix_embed_message_deliveries_guild_id", "guild_id"),
         Index("ix_embed_message_deliveries_message", "embed_message_id"),
+        Index(
+            "uq_embed_delivery_idempotency",
+            "embed_message_id",
+            "channel_id",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=text("idempotency_key IS NOT NULL"),
+        ),
     )
 
     embed_message_id: Mapped[UUID] = mapped_column(
@@ -84,6 +93,8 @@ class EmbedMessageDelivery(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     guild_id: Mapped[str] = mapped_column(String(32), nullable=False)
     channel_id: Mapped[str] = mapped_column(String(32), nullable=False)
     discord_message_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    discord_message_ids: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
     delivery_type: Mapped[str] = mapped_column(
         String(16), nullable=False, default="bot"
     )

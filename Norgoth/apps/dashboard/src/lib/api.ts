@@ -1,3 +1,5 @@
+import { readApiError } from "@/lib/api-error";
+
 /**
  * Resolve the API base URL at call time.
  * - Browser: same-origin `/norgoth-api` proxy (LAN-safe; only port 3000 needed)
@@ -31,18 +33,9 @@ export function browserApiUrl(path: string): string {
 
 /**
  * Extract a human-readable error message from a failed API response.
- * Understands FastAPI's `{ detail: string | object }` convention and falls
- * back to the HTTP status when the body is missing or unparseable.
+ * Understands `{ error: { code, message } }` and FastAPI `{ detail }`.
  */
 export async function readError(response: Response): Promise<string> {
-  try {
-    const data = await response.json();
-    if (data && typeof data === "object" && "detail" in data) {
-      const detail = (data as { detail: unknown }).detail;
-      return typeof detail === "string" ? detail : JSON.stringify(detail);
-    }
-  } catch {
-    /* ignore malformed / empty bodies */
-  }
-  return `Request failed (${response.status}).`;
+  const parsed = await readApiError(response);
+  return parsed.message;
 }

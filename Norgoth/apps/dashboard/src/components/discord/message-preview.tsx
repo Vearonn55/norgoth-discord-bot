@@ -301,7 +301,7 @@ function MediaSlotView({
 }) {
   const label = slot === "thumbnail" ? "Thumbnail" : "Main image";
   const sizeStyle = banner
-    ? { width: "100%", maxHeight: 220 }
+    ? { width: "100%", maxWidth: "100%", height: "auto" }
     : { width: 72, height: 72 };
   const trimmed = typeof url === "string" ? url.trim() : "";
 
@@ -312,7 +312,7 @@ function MediaSlotView({
         src={trimmed}
         alt={label}
         className="rounded"
-        style={{ ...sizeStyle, objectFit: "cover" }}
+        style={{ ...sizeStyle, objectFit: banner ? "contain" : "cover" }}
       />
     );
     if (!interactive) {

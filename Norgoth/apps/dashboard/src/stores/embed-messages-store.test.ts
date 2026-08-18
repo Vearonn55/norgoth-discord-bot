@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useEmbedMessagesStore } from "@/stores/embed-messages-store";
 
-type FetchArgs = { url: string; method: string; body: unknown };
+type FetchArgs = { url: string; method: string; body: unknown; headers: unknown };
 
 function mockFetch(status = 200, payload: unknown = {}) {
   const calls: FetchArgs[] = [];
@@ -10,6 +10,7 @@ function mockFetch(status = 200, payload: unknown = {}) {
       url: String(input),
       method: init?.method ?? "GET",
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
+      headers: init?.headers,
     });
     return {
       ok: status >= 200 && status < 300,
@@ -43,7 +44,12 @@ const draft = {
 };
 
 beforeEach(() => {
-  useEmbedMessagesStore.setState({ messages: [], loading: false, error: null });
+  useEmbedMessagesStore.setState({
+    messages: [],
+    loading: false,
+    error: null,
+    errorCode: null,
+  });
 });
 
 afterEach(() => {
@@ -75,6 +81,30 @@ describe("embed messages store (content-only drafts)", () => {
     expect(calls[0].method).toBe("POST");
     expect(calls[0].url).toContain("/guilds/g-1/embed-messages/m-1/send");
     expect(calls[0].body).toEqual({ channel_id: "chan-1" });
+    expect(calls[0].headers).toMatchObject({
+      "Idempotency-Key": expect.any(String),
+    });
+  });
+
+  it("deploy() reads the {error} envelope instead of a generic 502", async () => {
+    mockFetch(403, {
+      error: {
+        code: "permission_missing",
+        message: "The bot cannot post to that channel.",
+      },
+    });
+    useEmbedMessagesStore.setState({ messages: [draft as never] });
+    const result = await useEmbedMessagesStore
+      .getState()
+      .deploy("g-1", "m-1", "chan-1");
+
+    expect(result).toBeNull();
+    expect(useEmbedMessagesStore.getState().errorCode).toBe(
+      "permission_missing"
+    );
+    expect(useEmbedMessagesStore.getState().error).toContain(
+      "cannot post"
+    );
   });
 
   it("resync() hits the deployment-driven /resync route", async () => {

@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { apiUrl, readError } from "@/lib/api";
+import { readApiError } from "@/lib/api-error";
 import type { DiscordEmbedPayload } from "@/lib/discord/message-payload";
 
 export type EmbedDeliveryStatus =
@@ -15,6 +16,7 @@ export type EmbedDeliveryStatus =
 
 /** Per-deployment reconciliation state derived by the backend. */
 export type EmbedDeliveryState =
+  | "pending"
   | "synced"
   | "out_of_date"
   | "missing"
@@ -25,6 +27,7 @@ export type EmbedMessageDelivery = {
   id: string;
   channel_id: string;
   discord_message_id: string | null;
+  discord_message_ids?: string[] | null;
   delivery_type: string;
   status: EmbedDeliveryStatus;
   state: EmbedDeliveryState;
@@ -39,6 +42,7 @@ export type EmbedMessageDelivery = {
 
 export type EmbedSyncStatus =
   | "draft_only"
+  | "pending"
   | "synced"
   | "out_of_date"
   | "missing"
@@ -76,6 +80,7 @@ type EmbedMessagesState = {
   messages: EmbedMessage[];
   loading: boolean;
   error: string | null;
+  errorCode: string | null;
   load: (guildId: string) => Promise<void>;
   get: (guildId: string, id: string) => Promise<EmbedMessage | null>;
   create: (
@@ -117,13 +122,44 @@ function base(guildId: string): string {
   return `/guilds/${guildId}/embed-messages`;
 }
 
+function deployIdempotencyStorageKey(draftId: string, channelId: string): string {
+  return `norgoth:embed-deploy:${draftId}:${channelId}`;
+}
+
+function readDeployIdempotencyKey(draftId: string, channelId: string): string {
+  const storageKey = deployIdempotencyStorageKey(draftId, channelId);
+  try {
+    if (typeof sessionStorage !== "undefined") {
+      const existing = sessionStorage.getItem(storageKey);
+      if (existing) return existing;
+      const next = crypto.randomUUID();
+      sessionStorage.setItem(storageKey, next);
+      return next;
+    }
+  } catch {
+    /* private mode / non-browser */
+  }
+  return crypto.randomUUID();
+}
+
+function clearDeployIdempotencyKey(draftId: string, channelId: string): void {
+  try {
+    if (typeof sessionStorage !== "undefined") {
+      sessionStorage.removeItem(deployIdempotencyStorageKey(draftId, channelId));
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 export const useEmbedMessagesStore = create<EmbedMessagesState>((set) => ({
   messages: [],
   loading: false,
   error: null,
+  errorCode: null,
 
   load: async (guildId) => {
-    set({ loading: true, error: null });
+    set({ loading: true, error: null, errorCode: null });
     try {
       const response = await fetch(apiUrl(base(guildId)), {
         cache: "no-store",
@@ -152,7 +188,7 @@ export const useEmbedMessagesStore = create<EmbedMessagesState>((set) => ({
   },
 
   create: async (guildId, input) => {
-    set({ error: null });
+    set({ error: null, errorCode: null });
     try {
       const response = await fetch(apiUrl(base(guildId)), {
         method: "POST",
@@ -173,7 +209,7 @@ export const useEmbedMessagesStore = create<EmbedMessagesState>((set) => ({
   },
 
   update: async (guildId, id, input) => {
-    set({ error: null });
+    set({ error: null, errorCode: null });
     try {
       const response = await fetch(apiUrl(`${base(guildId)}/${id}`), {
         method: "PUT",
@@ -196,7 +232,7 @@ export const useEmbedMessagesStore = create<EmbedMessagesState>((set) => ({
   },
 
   remove: async (guildId, id, options = {}) => {
-    set({ error: null });
+    set({ error: null, errorCode: null });
     const response = await fetch(apiUrl(`${base(guildId)}/${id}`), {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
@@ -216,16 +252,22 @@ export const useEmbedMessagesStore = create<EmbedMessagesState>((set) => ({
   },
 
   deploy: async (guildId, id, channelId) => {
-    set({ error: null });
+    set({ error: null, errorCode: null });
+    const idempotencyKey = readDeployIdempotencyKey(id, channelId);
     const response = await fetch(apiUrl(`${base(guildId)}/${id}/send`), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+      },
       body: JSON.stringify({ channel_id: channelId }),
     });
     if (!response.ok) {
-      set({ error: await readError(response) });
+      const apiError = await readApiError(response);
+      set({ error: apiError.message, errorCode: apiError.code });
       return null;
     }
+    clearDeployIdempotencyKey(id, channelId);
     const updated = (await response.json()) as EmbedMessage;
     set((state) => ({
       messages: state.messages.map((m) => (m.id === id ? updated : m)),
@@ -234,30 +276,39 @@ export const useEmbedMessagesStore = create<EmbedMessagesState>((set) => ({
   },
 
   send: async (guildId, id, channelId) => {
+    set({ error: null, errorCode: null });
+    const idempotencyKey = readDeployIdempotencyKey(id, channelId);
     const response = await fetch(apiUrl(`${base(guildId)}/${id}/send`), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+      },
       body: JSON.stringify({ channel_id: channelId }),
     });
     if (!response.ok) {
-      set({ error: await readError(response) });
+      const apiError = await readApiError(response);
+      set({ error: apiError.message, errorCode: apiError.code });
       return null;
     }
+    clearDeployIdempotencyKey(id, channelId);
     const updated = (await response.json()) as EmbedMessage;
     set((state) => ({
       messages: state.messages.map((m) => (m.id === id ? updated : m)),
       error: null,
+      errorCode: null,
     }));
     return updated;
   },
 
   resync: async (guildId, id) => {
-    set({ error: null });
+    set({ error: null, errorCode: null });
     const response = await fetch(apiUrl(`${base(guildId)}/${id}/resync`), {
       method: "POST",
     });
     if (!response.ok) {
-      set({ error: await readError(response) });
+      const apiError = await readApiError(response);
+      set({ error: apiError.message, errorCode: apiError.code });
       return null;
     }
     const updated = (await response.json()) as EmbedMessage;
@@ -268,13 +319,14 @@ export const useEmbedMessagesStore = create<EmbedMessagesState>((set) => ({
   },
 
   resyncDelivery: async (guildId, id, deliveryId) => {
-    set({ error: null });
+    set({ error: null, errorCode: null });
     const response = await fetch(
       apiUrl(`${base(guildId)}/${id}/deliveries/${deliveryId}/resync`),
       { method: "POST" }
     );
     if (!response.ok) {
-      set({ error: await readError(response) });
+      const apiError = await readApiError(response);
+      set({ error: apiError.message, errorCode: apiError.code });
       return null;
     }
     const updated = (await response.json()) as EmbedMessage;
@@ -285,7 +337,7 @@ export const useEmbedMessagesStore = create<EmbedMessagesState>((set) => ({
   },
 
   reconcile: async (guildId, id) => {
-    set({ error: null });
+    set({ error: null, errorCode: null });
     const response = await fetch(apiUrl(`${base(guildId)}/${id}/reconcile`), {
       method: "POST",
     });

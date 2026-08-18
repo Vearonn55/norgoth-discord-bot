@@ -12,16 +12,28 @@ describe("compileForPreview", () => {
     expect(result.payloads[0].embeds).toHaveLength(1);
   });
 
-  it("packs a long description into stacked embeds in one message", () => {
+  it("packs a long description into stacked embeds without exceeding 6000 per message", () => {
     const long = "Paragraph.\n\n".repeat(500).trim();
     const result = compileForPreview("", { description: long });
     expect(result.errors).toHaveLength(0);
-    expect(result.payloads).toHaveLength(1);
-    expect((result.payloads[0].embeds ?? []).length).toBeGreaterThan(1);
-    for (const embed of result.payloads[0].embeds ?? []) {
+    const embeds = result.payloads.flatMap((payload) => payload.embeds ?? []);
+    expect(embeds.length).toBeGreaterThan(1);
+    for (const embed of embeds) {
       expect((embed.description ?? "").length).toBeLessThanOrEqual(
         DISCORD_DELIVERY_LIMITS.embedDescription,
       );
+    }
+    for (const payload of result.payloads) {
+      const total = (payload.embeds ?? []).reduce(
+        (sum, embed) =>
+          sum +
+          (embed.title?.length ?? 0) +
+          (embed.description?.length ?? 0) +
+          (embed.footer?.length ?? 0) +
+          (embed.author?.name?.length ?? 0),
+        0,
+      );
+      expect(total).toBeLessThanOrEqual(DISCORD_DELIVERY_LIMITS.total);
     }
   });
 
@@ -38,6 +50,47 @@ describe("compileForPreview", () => {
       (first?.description?.length ?? 0) +
       (first?.footer?.length ?? 0);
     expect(total).toBeLessThanOrEqual(DISCORD_DELIVERY_LIMITS.total);
-    expect((result.payloads[0].embeds ?? []).length).toBeGreaterThan(1);
+    const embeds = result.payloads.flatMap((payload) => payload.embeds ?? []);
+    expect(embeds.length).toBeGreaterThan(1);
+  });
+
+  it("splits three large stacked embeds across messages", () => {
+    const long = "Paragraph.\n\n".repeat(800).trim();
+    const result = compileForPreview("", { description: long });
+    expect(result.errors).toHaveLength(0);
+    const embeds = result.payloads.flatMap((payload) => payload.embeds ?? []);
+    expect(embeds.length).toBeGreaterThanOrEqual(3);
+    expect(result.payloads.length).toBeGreaterThanOrEqual(2);
+    for (const payload of result.payloads) {
+      const total = (payload.embeds ?? []).reduce(
+        (sum, embed) => sum + (embed.description?.length ?? 0),
+        0,
+      );
+      expect(total).toBeLessThanOrEqual(DISCORD_DELIVERY_LIMITS.total);
+    }
+  });
+
+  it("keeps three small stacked embeds in one message", () => {
+    const result = compileForPreview("", {
+      description: `${"a".repeat(1500)}\n\n${"b".repeat(1500)}\n\n${"c".repeat(1500)}`,
+    });
+    expect(result.errors).toHaveLength(0);
+    const total = result.payloads.reduce(
+      (sum, payload) =>
+        sum +
+        (payload.embeds ?? []).reduce(
+          (inner, embed) => inner + (embed.description?.length ?? 0),
+          0,
+        ),
+      0,
+    );
+    expect(total).toBeLessThanOrEqual(DISCORD_DELIVERY_LIMITS.total * result.payloads.length);
+    for (const payload of result.payloads) {
+      const chars = (payload.embeds ?? []).reduce(
+        (sum, embed) => sum + (embed.description?.length ?? 0),
+        0,
+      );
+      expect(chars).toBeLessThanOrEqual(DISCORD_DELIVERY_LIMITS.total);
+    }
   });
 });

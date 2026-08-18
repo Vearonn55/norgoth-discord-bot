@@ -13,6 +13,18 @@ import httpx
 
 DISCORD_API_BASE_URL = "https://discord.com/api/v10"
 
+
+def _discord_error_code(response: httpx.Response) -> int | str | None:
+    """Return Discord's JSON ``code`` without retaining the response body."""
+
+    try:
+        body = response.json()
+    except Exception:  # noqa: BLE001 - body may not be JSON
+        return None
+    if isinstance(body, dict) and "code" in body:
+        return body["code"]
+    return None
+
 # Discord channel type constants (subset we provision).
 CHANNEL_TYPE_TEXT = 0
 CHANNEL_TYPE_CATEGORY = 4
@@ -79,9 +91,15 @@ def feed_channel_permission_overwrites(
 class DiscordBotAPIError(Exception):
     """Raised when a bot-authenticated Discord API call fails."""
 
-    def __init__(self, message: str, status_code: int | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        status_code: int | None = None,
+        discord_code: int | str | None = None,
+    ) -> None:
         super().__init__(message)
         self.status_code = status_code
+        self.discord_code = discord_code
 
 
 class DiscordBotClient:
@@ -138,8 +156,9 @@ class DiscordBotClient:
 
         if response.status_code not in (200, 201):
             raise DiscordBotAPIError(
-                f"Failed to send message: HTTP {response.status_code} {response.text}",
+                f"Failed to send message: HTTP {response.status_code}",
                 status_code=response.status_code,
+                discord_code=_discord_error_code(response),
             )
 
         return response.json()
@@ -311,26 +330,32 @@ class DiscordBotClient:
         merged = {**self._headers, **(headers or {})}
 
         response: httpx.Response | None = None
+        server_retries = 0
         for attempt in range(max_retries + 1):
             response = await self._http_client.request(
                 method, url, headers=merged, json=json
             )
-            if response.status_code != 429 or attempt >= max_retries:
-                return response
+            status = response.status_code
+            if status == 429 and attempt < max_retries:
+                retry_after = 1.0
+                try:
+                    body = response.json()
+                    retry_after = float(body.get("retry_after", retry_after))
+                except Exception:  # noqa: BLE001 - fall back to the header
+                    header_value = response.headers.get("Retry-After")
+                    if header_value:
+                        try:
+                            retry_after = float(header_value)
+                        except ValueError:
+                            retry_after = 1.0
 
-            retry_after = 1.0
-            try:
-                body = response.json()
-                retry_after = float(body.get("retry_after", retry_after))
-            except Exception:  # noqa: BLE001 - fall back to the header
-                header_value = response.headers.get("Retry-After")
-                if header_value:
-                    try:
-                        retry_after = float(header_value)
-                    except ValueError:
-                        retry_after = 1.0
-
-            await asyncio.sleep(min(max(retry_after, 0.0), 5.0))
+                await asyncio.sleep(min(max(retry_after, 0.0), 5.0))
+                continue
+            if 500 <= status < 600 and server_retries < 1:
+                server_retries += 1
+                await asyncio.sleep(min(2 ** server_retries, 4.0))
+                continue
+            return response
 
         assert response is not None  # loop always assigns at least once
         return response

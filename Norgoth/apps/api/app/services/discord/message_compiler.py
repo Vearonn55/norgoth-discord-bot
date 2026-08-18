@@ -140,9 +140,10 @@ def compile_discord_messages(
 ) -> CompileResult:
     """Turn stored markdown + embed into one or more Discord REST payloads.
 
-    Long descriptions are split across stacked embeds (up to 10 per message)
-    so community-rules posts can exceed a single 4096/6000 embed without
-    truncating or failing compile.
+    Long descriptions are split across stacked embeds. Discord's 6000-character
+    total applies across **all** embeds in one message, so groups are packed by
+    that budget (and 10 embeds/message) rather than stuffing every card into
+    a single Create Message call.
     """
 
     result = CompileResult()
@@ -193,10 +194,17 @@ def compile_discord_messages(
     if not desc_parts and not content_parts and not has_chrome:
         built = build_embed_dict(embed_in)
         if built:
-            result.payloads.append({"embeds": [built]})
+            result.payloads.append(
+                {"embeds": [built], "allowed_mentions": {"parse": []}}
+            )
             return result
         if fallback_name:
-            result.payloads.append({"content": fallback_name[:DISCORD_MAX_CONTENT]})
+            result.payloads.append(
+                {
+                    "content": fallback_name[:DISCORD_MAX_CONTENT],
+                    "allowed_mentions": {"parse": []},
+                }
+            )
             return result
         result.errors.append(
             CompileError(
@@ -246,12 +254,9 @@ def compile_discord_messages(
     while len(content_parts) > 1 and not content_parts[-1]:
         content_parts.pop()
 
-    embed_groups: list[list[dict[str, Any]]] = []
-    if embed_dicts:
-        for start in range(0, len(embed_dicts), DISCORD_MAX_EMBEDS_PER_MESSAGE):
-            embed_groups.append(embed_dicts[start : start + DISCORD_MAX_EMBEDS_PER_MESSAGE])
-    else:
-        embed_groups = [[]]
+    embed_groups: list[list[dict[str, Any]]] = (
+        _pack_embed_groups(embed_dicts) if embed_dicts else [[]]
+    )
 
     segment_count = max(len(content_parts), len(embed_groups), 1)
     while len(content_parts) < segment_count:
@@ -279,7 +284,8 @@ def compile_discord_messages(
         group = embed_groups[index]
         if group:
             payload["embeds"] = group
-        if payload:
+        payload["allowed_mentions"] = {"parse": []}
+        if payload.get("content") or payload.get("embeds"):
             result.payloads.append(payload)
 
     if not result.payloads:
@@ -291,6 +297,27 @@ def compile_discord_messages(
         )
 
     return result
+
+
+def _pack_embed_groups(embed_dicts: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+    """Split embeds so each Discord message stays within count and char caps."""
+
+    groups: list[list[dict[str, Any]]] = []
+    current: list[dict[str, Any]] = []
+    current_chars = 0
+    for embed in embed_dicts:
+        chars = _built_total_chars(embed)
+        overflow_count = len(current) >= DISCORD_MAX_EMBEDS_PER_MESSAGE
+        overflow_chars = bool(current) and current_chars + chars > DISCORD_MAX_EMBED_TOTAL
+        if overflow_count or overflow_chars:
+            groups.append(current)
+            current = []
+            current_chars = 0
+        current.append(embed)
+        current_chars += chars
+    if current:
+        groups.append(current)
+    return groups
 
 
 def _built_total_chars(built: dict[str, Any]) -> int:

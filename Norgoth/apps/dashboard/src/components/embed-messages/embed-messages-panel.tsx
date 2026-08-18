@@ -30,7 +30,28 @@ import {
 } from "@/stores/embed-messages-store";
 import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 
-const PAGE_SIZE = 10;
+const DEPLOY_ERROR_KEYS = [
+  "permission_missing",
+  "unknown_channel",
+  "invalid_payload",
+  "rate_limited",
+  "timeout",
+  "bot_missing",
+  "deploy_in_progress",
+  "content_too_long_for_delivery",
+  "embed_total_exceeded",
+] as const;
+
+function deployErrorCopy(
+  d: Record<string, unknown>,
+  code: string | null,
+  fallback: string
+): string {
+  if (!code) return fallback;
+  if (!(DEPLOY_ERROR_KEYS as readonly string[]).includes(code)) return fallback;
+  const localized = d[code];
+  return typeof localized === "string" && localized ? localized : fallback;
+}
 
 type Props = {
   lang: string;
@@ -96,6 +117,8 @@ function statusBadgeFor({
           total: deployments,
         }),
       };
+    case "pending":
+      return { variant: "warning", label: labels.statusDraftOnly };
     case "draft_only":
     default:
       return { variant: "neutral", label: labels.statusDraftOnly };
@@ -143,7 +166,14 @@ export function EmbedMessagesPanel({ lang }: Props) {
         setDeployFor(null);
         setDeployChannelId("");
       } else {
-        setFeedback(useEmbedMessagesStore.getState().error ?? d.deployFailed);
+        const state = useEmbedMessagesStore.getState();
+        setFeedback(
+          deployErrorCopy(
+            d as unknown as Record<string, unknown>,
+            state.errorCode,
+            state.error ?? d.deployFailed
+          )
+        );
         setFeedbackError(true);
       }
     } finally {
