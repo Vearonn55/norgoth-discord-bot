@@ -9,7 +9,7 @@ from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Path
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -54,9 +54,18 @@ class EmbedMessageBody(BaseModel):
     description: str = Field(default="", max_length=500)
     content: str = Field(default="", max_length=MAX_STORED_MARKDOWN_CHARS)
     embed_json: Optional[dict[str, Any]] = None
-    # Deprecated: drafts are content-only. Accepted for one release for backward
-    # compatibility with older clients, but ignored (never persisted). Removed
-    # from the schema once the column is dropped (migration 0013).
+
+    @field_validator("embed_json")
+    @classmethod
+    def _cap_embed_markdown(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not isinstance(value, dict):
+            return value
+        description = value.get("description")
+        if isinstance(description, str) and len(description) > MAX_STORED_MARKDOWN_CHARS:
+            raise ValueError(
+                f"Embed description must be {MAX_STORED_MARKDOWN_CHARS} characters or fewer."
+            )
+        return value
 
 
 class SendRequest(BaseModel):

@@ -112,14 +112,8 @@ export function validateEmbed(embed: DiscordEmbedPayload): string[] {
   if (embed.title && embed.title.length > DISCORD_LIMITS.embedTitle) {
     errors.push(`Title exceeds ${DISCORD_LIMITS.embedTitle} characters`);
   }
-  if (
-    embed.description &&
-    embed.description.length > DISCORD_LIMITS.embedDescription
-  ) {
-    errors.push(
-      `Description exceeds ${DISCORD_LIMITS.embedDescription} characters`
-    );
-  }
+  // Description / total over Discord's per-embed caps are compiled into
+  // stacked continuation embeds at send time — do not block authoring.
   if (embed.footer && embed.footer.length > DISCORD_LIMITS.embedFooter) {
     errors.push(`Footer exceeds ${DISCORD_LIMITS.embedFooter} characters`);
   }
@@ -140,9 +134,6 @@ export function validateEmbed(embed: DiscordEmbedPayload): string[] {
       errors.push(`Field ${index + 1} value exceeds ${DISCORD_LIMITS.fieldValue} characters`);
     }
   });
-  if (embedTotalCharacters(embed) > DISCORD_LIMITS.total) {
-    errors.push(`Embed exceeds the ${DISCORD_LIMITS.total}-character total limit`);
-  }
   return errors;
 }
 

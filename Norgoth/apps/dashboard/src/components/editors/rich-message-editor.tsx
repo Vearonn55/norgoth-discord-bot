@@ -73,7 +73,10 @@ export function RichMessageEditor({
             content_style:
               "body { background: #212529; color: #dee2e6; " +
               "font-family: var(--cui-body-font-family), system-ui, sans-serif; " +
-              "font-size: 14px; }",
+              "font-size: 14px; }" +
+              "h1 { font-size: 1.45em; font-weight: 700; margin: 0.6em 0 0.35em; }" +
+              "h2 { font-size: 1.25em; font-weight: 700; margin: 0.55em 0 0.3em; }" +
+              "h3 { font-size: 1.1em; font-weight: 700; margin: 0.5em 0 0.25em; }",
             branding: false,
             promotion: false,
           }}

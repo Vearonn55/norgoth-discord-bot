@@ -29,6 +29,23 @@ describe("MessagePreview modes", () => {
     expect(html).toContain("norgoth-discord-embed");
   });
 
+  it("renders ATX headings as heading tags instead of raw hashes", () => {
+    const html = renderToStaticMarkup(
+      <MessagePreview
+        mode="embed"
+        embed={{
+          description:
+            "# 🪐 S A T U R N — Community Rules\n\nWelcome to ***S A T U R N***.\n\n### 01 — Respect Everyone",
+        }}
+      />
+    );
+    expect(html).toContain("<h1>");
+    expect(html).toContain("<h3>");
+    expect(html).toContain("Respect Everyone");
+    expect(html).not.toContain("# 🪐");
+    expect(html).not.toContain("### 01");
+  });
+
   it("embed mode with showContentWithEmbed shows non-empty content only", () => {
     const withContent = renderToStaticMarkup(
       <MessagePreview

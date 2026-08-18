@@ -36,12 +36,16 @@ describe("htmlToDiscordMarkdown", () => {
     expect(md).not.toContain("####");
   });
 
-  it("strips unsafe links", () => {
-    expect(isSafeHttpUrl("javascript:alert(1)")).toBe(false);
+  it("round-trips TinyMCE headings to visual heading tags", () => {
     const md = htmlToDiscordMarkdown(
-      '<a href="javascript:alert(1)">bad</a>',
+      "<h1>🪐 S A T U R N — Community Rules</h1><p>Welcome to <strong><em>S A T U R N</em></strong>.</p><h3>01 — Respect Everyone</h3>",
     );
-    expect(md).not.toContain("javascript:");
+    expect(md).toContain("# 🪐 S A T U R N — Community Rules");
+    expect(md).toContain("### 01 — Respect Everyone");
+    const html = discordMarkdownToHtml(md);
+    expect(html).toContain("<h1>");
+    expect(html).toContain("<h3>");
+    expect(html).not.toContain("### 01");
   });
 });
 

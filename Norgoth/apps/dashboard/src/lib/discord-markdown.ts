@@ -331,6 +331,7 @@ function inlineMarkdownToHtml(text: string): string {
   return text
     .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2">$1</a>')
     .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*\*([^*]+)\*\*\*/g, "<strong><em>$1</em></strong>")
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/__([^_]+)__/g, "<u>$1</u>")
     .replace(/~~([^~]+)~~/g, "<s>$1</s>")
@@ -410,12 +411,12 @@ export function discordMarkdownToHtml(markdown: string): string {
 
     flushList();
 
-    const headingMatch = line.match(/^(#{1,3})\s+(.*)$/);
-    if (headingMatch) {
+    const headingMatch = line.match(/^\s*(#{1,3})(?:\s+|$)(.*?)(?:\s+#*)?$/);
+    if (headingMatch && headingMatch[2].trim()) {
       flushQuote();
       const level = headingMatch[1].length;
       htmlParts.push(
-        `<h${level}>${inlineMarkdownToHtml(headingMatch[2])}</h${level}>`,
+        `<h${level}>${inlineMarkdownToHtml(headingMatch[2].trim())}</h${level}>`,
       );
       continue;
     }

@@ -1,6 +1,7 @@
 "use client";
 
 import { discordMarkdownToHtml } from "@/lib/discord-markdown";
+import { compileForPreview } from "@/lib/discord/message-compiler";
 import type { DiscordEmbedPayload } from "@/lib/discord/message-payload";
 import { parseEmbedColor } from "@/lib/discord/message-payload";
 
@@ -49,55 +50,120 @@ export function MessagePreview({
   onPickMedia,
   showImagePlaceholders = false,
 }: MessagePreviewProps) {
-  const color = parseEmbedColor(embed?.color) ?? 0x5865f2;
-  const colorHex = `#${color.toString(16).padStart(6, "0")}`;
   const interactive = typeof onPickMedia === "function";
   const showPlaceholders = showImagePlaceholders || interactive;
   const trimmed = content?.trim() ?? "";
-
   const renderEmbed =
     mode === "embed" ? Boolean(embed) : mode === "auto" && showEmbed && Boolean(embed);
-
-  // Embed-only mode never paints the empty “No message content” placeholder.
-  const showContentSlot =
-    mode === "text"
-      ? true
-      : mode === "embed"
-        ? showContentWithEmbed && Boolean(trimmed)
-        : true; // auto: legacy always-on content slot
-
-  const authorName = embed?.author?.name?.trim() ?? "";
-  const authorIcon = embed?.author?.icon_url;
-  const footerText = embed?.footer?.trim() ?? "";
-  const footerIcon = embed?.footer_icon_url;
-  const showAuthorRow = Boolean(authorName) || (showPlaceholders && hasUrl(authorIcon));
-  const showAuthorPlaceholder = showPlaceholders && Boolean(authorName) && !hasUrl(authorIcon);
-  const showFooterRow = Boolean(footerText) || (showPlaceholders && hasUrl(footerIcon));
-  const showFooterPlaceholder = showPlaceholders && Boolean(footerText) && !hasUrl(footerIcon);
+  const compiled = compileForPreview(trimmed, renderEmbed ? embed ?? null : null);
+  const previewPayloads =
+    compiled.errors.length === 0 && compiled.payloads.length > 0
+      ? compiled.payloads
+      : [
+          {
+            content: trimmed || undefined,
+            embeds: embed ? [embed] : undefined,
+          },
+        ];
+  const embedCount = previewPayloads.reduce(
+    (sum, payload) => sum + (payload.embeds?.length ?? 0),
+    0,
+  );
+  const showSplitHint = previewPayloads.length > 1 || embedCount > 1;
 
   return (
     <div className="norgoth-discord-preview border rounded p-3">
       <div className="small text-uppercase fw-semibold text-body-secondary mb-2">
         Live preview
       </div>
-      {showContentSlot ? (
-        trimmed ? (
-          <div
-            className={`prose-preview ${renderEmbed ? "mb-3" : ""}`}
-            dangerouslySetInnerHTML={{
-              __html: discordMarkdownToHtml(trimmed),
-            }}
-          />
-        ) : mode === "auto" || mode === "text" ? (
-          <p
-            className={`small text-body-secondary ${renderEmbed ? "mb-3" : "mb-0"}`}
-          >
-            No message content
-          </p>
-        ) : null
+      {showSplitHint && renderEmbed ? (
+        <p className="small text-body-secondary mb-2">
+          {previewPayloads.length > 1
+            ? `Discord will receive ${previewPayloads.length} messages (${embedCount} stacked embeds).`
+            : `Discord will receive 1 message with ${embedCount} stacked embeds.`}
+        </p>
       ) : null}
+      {previewPayloads.map((payload, payloadIndex) => {
+        const payloadContent = payload.content?.trim() ?? "";
+        const payloadEmbeds = renderEmbed ? payload.embeds ?? [] : [];
+        const showThisContent =
+          mode === "text"
+            ? payloadIndex === 0 || Boolean(payloadContent)
+            : mode === "embed"
+              ? showContentWithEmbed && Boolean(payloadContent)
+              : payloadIndex === 0 || Boolean(payloadContent);
 
-      {renderEmbed && embed ? (
+        return (
+          <div
+            key={payloadIndex}
+            className={payloadIndex > 0 ? "mt-3 pt-3 border-top border-secondary" : ""}
+          >
+            {showThisContent ? (
+              payloadContent ? (
+                <div
+                  className={`prose-preview norgoth-discord-markdown ${payloadEmbeds.length ? "mb-3" : ""}`}
+                  dangerouslySetInnerHTML={{
+                    __html: discordMarkdownToHtml(payloadContent),
+                  }}
+                />
+              ) : mode === "auto" || mode === "text" ? (
+                <p
+                  className={`small text-body-secondary ${payloadEmbeds.length ? "mb-3" : "mb-0"}`}
+                >
+                  No message content
+                </p>
+              ) : null
+            ) : null}
+
+            {payloadEmbeds.map((card, embedIndex) => (
+              <div
+                key={`${payloadIndex}-${embedIndex}`}
+                className={embedIndex > 0 ? "mt-2" : ""}
+              >
+                <EmbedCard
+                  embed={card}
+                  interactive={interactive}
+                  showPlaceholders={
+                    showPlaceholders && payloadIndex === 0 && embedIndex === 0
+                  }
+                  onPickMedia={onPickMedia}
+                />
+              </div>
+            ))}
+          </div>
+        );
+      })}
+
+      {mode === "embed" && !embed ? (
+        <p className="small text-body-secondary mb-0">No embed to preview.</p>
+      ) : null}
+    </div>
+  );
+}
+
+function EmbedCard({
+  embed,
+  interactive,
+  showPlaceholders,
+  onPickMedia,
+}: {
+  embed: DiscordEmbedPayload;
+  interactive: boolean;
+  showPlaceholders: boolean;
+  onPickMedia?: (slot: MediaSlot) => void;
+}) {
+  const color = parseEmbedColor(embed.color) ?? 0x5865f2;
+  const colorHex = `#${color.toString(16).padStart(6, "0")}`;
+  const authorName = embed.author?.name?.trim() ?? "";
+  const authorIcon = embed.author?.icon_url;
+  const footerText = embed.footer?.trim() ?? "";
+  const footerIcon = embed.footer_icon_url;
+  const showAuthorRow = Boolean(authorName) || (showPlaceholders && hasUrl(authorIcon));
+  const showAuthorPlaceholder = showPlaceholders && Boolean(authorName) && !hasUrl(authorIcon);
+  const showFooterRow = Boolean(footerText) || (showPlaceholders && hasUrl(footerIcon));
+  const showFooterPlaceholder = showPlaceholders && Boolean(footerText) && !hasUrl(footerIcon);
+
+  return (
         <div
           className="norgoth-discord-embed rounded"
           style={{ borderLeft: `4px solid ${colorHex}` }}
@@ -132,7 +198,7 @@ export function MessagePreview({
                 ) : null}
                 {embed.description ? (
                   <div
-                    className="small text-body-secondary text-break prose-preview"
+                    className="norgoth-discord-markdown norgoth-discord-embed-body text-break prose-preview"
                     dangerouslySetInnerHTML={{
                       __html: discordMarkdownToHtml(embed.description),
                     }}
@@ -155,9 +221,12 @@ export function MessagePreview({
                     <div className="small fw-semibold text-white text-break">
                       {field.name || "Field"}
                     </div>
-                    <div className="small text-body-secondary text-break">
-                      {field.value || "—"}
-                    </div>
+                    <div
+                      className="small text-body-secondary text-break norgoth-discord-markdown prose-preview"
+                      dangerouslySetInnerHTML={{
+                        __html: discordMarkdownToHtml(field.value || "—"),
+                      }}
+                    />
                   </div>
                 ))}
               </div>
@@ -194,12 +263,6 @@ export function MessagePreview({
             ) : null}
           </div>
         </div>
-      ) : null}
-
-      {mode === "embed" && !embed ? (
-        <p className="small text-body-secondary mb-0">No embed to preview.</p>
-      ) : null}
-    </div>
   );
 }
 

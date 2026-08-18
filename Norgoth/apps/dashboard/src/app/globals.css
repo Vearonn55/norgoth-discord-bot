@@ -138,22 +138,46 @@ body {
 
 .prose-preview h1,
 .prose-preview h2,
-.prose-preview h3 {
-  margin: 0.5rem 0 0.25rem 0;
-  font-weight: 600;
+.prose-preview h3,
+.norgoth-discord-markdown h1,
+.norgoth-discord-markdown h2,
+.norgoth-discord-markdown h3 {
+  margin: 0.65rem 0 0.35rem 0;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.25;
+}
+
+.prose-preview h1,
+.norgoth-discord-markdown h1 {
+  font-size: 1.35rem;
+}
+
+.prose-preview h2,
+.norgoth-discord-markdown h2 {
+  font-size: 1.15rem;
+}
+
+.prose-preview h3,
+.norgoth-discord-markdown h3 {
+  font-size: 1.02rem;
+}
+
+.norgoth-discord-embed-body {
+  color: #dcddde;
+  font-size: 0.9375rem;
+  line-height: 1.375rem;
+}
+
+.norgoth-discord-embed-body h1,
+.norgoth-discord-embed-body h2,
+.norgoth-discord-embed-body h3 {
   color: #fff;
 }
 
-.prose-preview h1 {
-  font-size: 1.25rem;
-}
-
-.prose-preview h2 {
-  font-size: 1.1rem;
-}
-
-.prose-preview h3 {
-  font-size: 1rem;
+.norgoth-discord-embed-body strong {
+  color: #fff;
+  font-weight: 700;
 }
 
 .prose-preview ul,

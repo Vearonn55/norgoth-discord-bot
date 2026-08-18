@@ -20,6 +20,21 @@
     "expectContains": ["<h2>Section</h2>"]
   },
   {
+    "name": "heading_h1_emoji",
+    "markdown": "# 🪐 S A T U R N — Community Rules",
+    "expectContains": ["<h1>", "S A T U R N", "</h1>"]
+  },
+  {
+    "name": "heading_h3_section",
+    "markdown": "### 01 — Respect Everyone",
+    "expectContains": ["<h3>", "01 — Respect Everyone", "</h3>"]
+  },
+  {
+    "name": "bold_italic_triple",
+    "markdown": "Welcome to ***S A T U R N***.",
+    "expectContains": ["<strong>", "<em>", "S A T U R N"]
+  },
+  {
     "name": "blockquote",
     "markdown": "> Quoted line",
     "expectContains": ["<blockquote>", "Quoted line"]

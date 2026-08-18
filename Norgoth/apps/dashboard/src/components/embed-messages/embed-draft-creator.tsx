@@ -16,7 +16,8 @@ import type { DiscordEmbedPayload } from "@/lib/discord/message-payload";
 import {
   scrubEmptyEmbedUrls,
 } from "@/lib/discord/message-payload";
-import { useLocaleDict } from "@/lib/locale-dict";
+import { compileForPreview } from "@/lib/discord/message-compiler";
+import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 
 const EMPTY_EMBED: DiscordEmbedPayload = {
   title: "",
@@ -130,6 +131,16 @@ export function EmbedDraftCreator({
     });
   }, [name, description, content, embed]);
 
+  const compiled = compileForPreview(content, embed);
+  const compiledEmbedCount = compiled.payloads.reduce(
+    (sum, payload) => sum + (payload.embeds?.length ?? 0),
+    0,
+  );
+  const compiledMessageCount = compiled.payloads.length;
+  const compileError = compiled.errors[0] ?? null;
+  const showsSplit =
+    !compileError && (compiledMessageCount > 1 || compiledEmbedCount > 1);
+
   async function handleSave(): Promise<void> {
     if (!guildId) return;
     if (!name.trim()) {
@@ -216,10 +227,27 @@ export function EmbedDraftCreator({
             onChange={(markdown) =>
               setEmbed((current) => ({ ...current, description: markdown }))
             }
-            height={200}
+            height={280}
             placeholder={d.embedDescriptionPlaceholder}
           />
         </div>
+
+        {compileError ? (
+          <CAlert color="warning" className="mb-0">
+            {compileError.code === "content_too_long_for_delivery"
+              ? d.compileTooLong
+              : compileError.message}
+          </CAlert>
+        ) : showsSplit ? (
+          <CAlert color="info" className="mb-0">
+            {compiledMessageCount > 1
+              ? formatDict(d.compileWillSplitMessages, {
+                  embeds: compiledEmbedCount,
+                  messages: compiledMessageCount,
+                })
+              : formatDict(d.compileWillSplit, { embeds: compiledEmbedCount })}
+          </CAlert>
+        ) : null}
 
         {hideActions ? null : (
           <div className="d-flex gap-2">
