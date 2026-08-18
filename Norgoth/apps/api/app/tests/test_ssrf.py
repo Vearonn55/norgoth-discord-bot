@@ -38,6 +38,18 @@ def test_reject_literal_private_ip() -> None:
         validate_url_syntax("http://10.0.0.5/feed.xml")
     with pytest.raises(SsrfError, match="blocked"):
         validate_url_syntax("http://169.254.169.254/latest/meta-data")
+    with pytest.raises(SsrfError, match="blocked"):
+        validate_url_syntax("http://[::ffff:127.0.0.1]/feed.xml")
+
+
+def test_public_ipv6_literal_is_allowed() -> None:
+    scheme, host, port, path = validate_url_syntax(
+        "https://[2606:4700:10::6814:179a]/feed.xml"
+    )
+    assert scheme == "https"
+    assert host == "2606:4700:10::6814:179a"
+    assert path.startswith("/feed.xml")
+    assert port is None
 
 
 def test_reject_dns_to_private(monkeypatch: pytest.MonkeyPatch) -> None:

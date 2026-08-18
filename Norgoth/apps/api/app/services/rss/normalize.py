@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from urllib.parse import urlparse, urlunparse
 
-from app.security.ssrf import SsrfError, validate_url_for_fetch
+from app.security.ssrf import SsrfError, normalize_http_url
 
 
 def _strip_trailing_slash(url: str) -> str:
@@ -18,9 +18,13 @@ def _strip_trailing_slash(url: str) -> str:
 
 
 def canonical_feed_url(url: str) -> str:
-    """Return a stable, SSRF-validated feed URL for storage and hashing."""
+    """Return a stable feed URL for storage and hashing.
+
+    Syntax and private-literal checks run here. DNS / destination SSRF is
+    enforced at fetch time so hashing does not depend on live resolution.
+    """
 
     raw = (url or "").strip()
     if not raw:
         raise SsrfError("URL is required.", code="invalid_url")
-    return _strip_trailing_slash(validate_url_for_fetch(raw))
+    return _strip_trailing_slash(normalize_http_url(raw))

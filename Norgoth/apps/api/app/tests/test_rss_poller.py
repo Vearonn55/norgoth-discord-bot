@@ -98,7 +98,7 @@ async def test_bootstrap_when_no_prior_items(monkeypatch: pytest.MonkeyPatch) ->
     )
     monkeypatch.setattr(
         "app.services.rss.poller.parse_feed",
-        lambda body: parsed,
+        lambda body, content_type=None: parsed,
     )
     bootstrap = AsyncMock(return_value=1)
     monkeypatch.setattr("app.services.rss.poller.bootstrap_items", bootstrap)
@@ -157,7 +157,10 @@ async def test_overflow_marks_seen_without_post(
         "app.services.rss.poller.safe_fetch",
         AsyncMock(return_value=result),
     )
-    monkeypatch.setattr("app.services.rss.poller.parse_feed", lambda body: parsed)
+    monkeypatch.setattr(
+        "app.services.rss.poller.parse_feed",
+        lambda body, content_type=None: parsed,
+    )
     monkeypatch.setattr(
         "app.services.rss.poller.prune_old_items", AsyncMock()
     )

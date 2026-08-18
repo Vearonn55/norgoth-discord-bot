@@ -39,12 +39,14 @@ class SafeFetchResult:
 
 
 def _is_blocked_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        return _is_blocked_ip(ip.ipv4_mapped)
     if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast:
         return True
     if ip.is_reserved or ip.is_unspecified:
         return True
-    # IPv6 ULA fc00::/7
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv6_mapped is None:
+    # IPv6 ULA fc00::/7 (covers runtimes where is_private does not include ULA)
+    if isinstance(ip, ipaddress.IPv6Address):
         if int(ip) & (0xFE << 120) == (0xFC << 120):
             return True
     # Cloud metadata / common link-local
@@ -167,6 +169,13 @@ def _normalized_url(scheme: str, host: str, port: int | None, path_query: str) -
         pass
     path, _, query = path_query.partition("?")
     return urlunparse((scheme, netloc, path or "/", "", query, ""))
+
+
+def normalize_http_url(url: str) -> str:
+    """Validate scheme/host/port and return a normalized URL without DNS."""
+
+    scheme, host, port, path_query = validate_url_syntax(url)
+    return _normalized_url(scheme, host, port, path_query)
 
 
 def validate_url_for_fetch(url: str) -> str:
