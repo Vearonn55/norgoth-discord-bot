@@ -15,12 +15,12 @@ def test_health_endpoint_returns_application_status() -> None:
         response = client.get("/api/v1/health")
 
     assert response.status_code == 200
-    assert response.json() == {
-        "status": "ok",
-        "service": "Norgoth Verification API",
-        "version": "0.1.0",
-        "environment": settings.environment,
-    }
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["service"] == "Norgoth Verification API"
+    assert body["version"] == "0.1.0"
+    assert body["environment"] == settings.environment
+    assert "discord_identity_mismatch" in body
 
 
 def test_health_endpoint_returns_request_and_security_headers() -> None:
