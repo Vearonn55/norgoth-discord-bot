@@ -16,60 +16,217 @@ export function isSafeHttpUrl(href: string): boolean {
   }
 }
 
-function serializeChildren(node: Node): string {
+const ELEMENT_NODE = 1;
+const TEXT_NODE = 3;
+
+type MarkupNode = MarkupElement | MarkupText;
+
+type MarkupText = {
+  nodeType: typeof TEXT_NODE;
+  textContent: string;
+  childNodes: MarkupNode[];
+  parentElement: MarkupElement | null;
+};
+
+type MarkupElement = {
+  nodeType: typeof ELEMENT_NODE;
+  tagName: string;
+  childNodes: MarkupNode[];
+  parentElement: MarkupElement | null;
+  getAttribute: (name: string) => string | null;
+};
+
+const VOID_TAGS = new Set([
+  "AREA",
+  "BASE",
+  "BR",
+  "COL",
+  "EMBED",
+  "HR",
+  "IMG",
+  "INPUT",
+  "LINK",
+  "META",
+  "PARAM",
+  "SOURCE",
+  "TRACK",
+  "WBR",
+]);
+
+function decodeEntities(text: string): string {
+  return text
+    .replace(/&nbsp;/gi, "\u00a0")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) =>
+      String.fromCharCode(parseInt(hex, 16)),
+    )
+    .replace(/&#(\d+);/g, (_, dec: string) =>
+      String.fromCharCode(Number(dec)),
+    );
+}
+
+function parseAttributes(raw: string): Record<string, string> {
+  const attrs: Record<string, string> = {};
+  const pattern =
+    /([^\s=/>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(raw))) {
+    const name = match[1].toLowerCase();
+    if (name === "/" || name === "") continue;
+    attrs[name] = decodeEntities(match[2] ?? match[3] ?? match[4] ?? "");
+  }
+  return attrs;
+}
+
+function createElement(
+  tagName: string,
+  attrs: Record<string, string> = {},
+  parent: MarkupElement | null = null,
+): MarkupElement {
+  return {
+    nodeType: ELEMENT_NODE,
+    tagName,
+    childNodes: [],
+    parentElement: parent,
+    getAttribute: (name: string) =>
+      Object.prototype.hasOwnProperty.call(attrs, name.toLowerCase())
+        ? attrs[name.toLowerCase()]
+        : null,
+  };
+}
+
+function createText(text: string, parent: MarkupElement | null): MarkupText {
+  return {
+    nodeType: TEXT_NODE,
+    textContent: text,
+    childNodes: [],
+    parentElement: parent,
+  };
+}
+
+function parseHtmlBody(html: string): MarkupElement {
+  const root = createElement("BODY");
+  const stack: MarkupElement[] = [root];
+  let index = 0;
+
+  const current = () => stack[stack.length - 1];
+
+  while (index < html.length) {
+    if (html.startsWith("<!--", index)) {
+      const end = html.indexOf("-->", index + 4);
+      index = end === -1 ? html.length : end + 3;
+      continue;
+    }
+
+    if (html[index] !== "<") {
+      const nextTag = html.indexOf("<", index);
+      const raw =
+        nextTag === -1 ? html.slice(index) : html.slice(index, nextTag);
+      current().childNodes.push(createText(decodeEntities(raw), current()));
+      index = nextTag === -1 ? html.length : nextTag;
+      continue;
+    }
+
+    const tagEnd = html.indexOf(">", index + 1);
+    if (tagEnd === -1) {
+      current().childNodes.push(createText(html.slice(index), current()));
+      break;
+    }
+
+    const rawTag = html.slice(index + 1, tagEnd).trim();
+    index = tagEnd + 1;
+
+    if (rawTag.startsWith("!")) {
+      continue;
+    }
+
+    if (rawTag.startsWith("/")) {
+      const closing = rawTag.slice(1).trim().toUpperCase();
+      for (let depth = stack.length - 1; depth > 0; depth -= 1) {
+        if (stack[depth].tagName === closing) {
+          stack.length = depth;
+          break;
+        }
+      }
+      continue;
+    }
+
+    const selfClosing = rawTag.endsWith("/");
+    const nameMatch = rawTag.match(/^([^\s/>]+)/);
+    if (!nameMatch) continue;
+    const tagName = nameMatch[1].toUpperCase();
+    const attrSource = rawTag.slice(nameMatch[1].length);
+    const element = createElement(
+      tagName,
+      parseAttributes(attrSource),
+      current(),
+    );
+    current().childNodes.push(element);
+
+    if (!selfClosing && !VOID_TAGS.has(tagName)) {
+      stack.push(element);
+    }
+  }
+
+  return root;
+}
+
+function serializeChildren(node: MarkupNode): string {
   let output = "";
-  node.childNodes.forEach((child) => {
+  for (const child of node.childNodes) {
     output += serializeNode(child);
-  });
+  }
   return output;
 }
 
-function serializeList(element: Element, ordered: boolean, depth = 0): string {
+function serializeList(
+  element: MarkupElement,
+  ordered: boolean,
+  depth = 0,
+): string {
   let output = "";
   let index = 1;
   const indent = "  ".repeat(depth);
 
-  element.childNodes.forEach((child) => {
-    if (child.nodeType !== Node.ELEMENT_NODE) return;
-    const li = child as Element;
-    if (li.tagName !== "LI") return;
+  for (const child of element.childNodes) {
+    if (child.nodeType !== ELEMENT_NODE) continue;
+    if (child.tagName !== "LI") continue;
 
     let inline = "";
     let nested = "";
-    li.childNodes.forEach((liChild) => {
-      if (liChild.nodeType === Node.ELEMENT_NODE) {
-        const nestedEl = liChild as Element;
-        if (nestedEl.tagName === "UL") {
-          nested += serializeList(nestedEl, false, depth + 1);
-        } else if (nestedEl.tagName === "OL") {
-          nested += serializeList(nestedEl, true, depth + 1);
+    for (const liChild of child.childNodes) {
+      if (liChild.nodeType === ELEMENT_NODE) {
+        if (liChild.tagName === "UL") {
+          nested += serializeList(liChild, false, depth + 1);
+        } else if (liChild.tagName === "OL") {
+          nested += serializeList(liChild, true, depth + 1);
         } else {
           inline += serializeNode(liChild);
         }
       } else {
         inline += serializeNode(liChild);
       }
-    });
+    }
 
     const marker = ordered ? `${index}. ` : "- ";
     output += `${indent}${marker}${inline.trim()}\n`;
     if (nested) output += nested;
     index += 1;
-  });
+  }
 
   return output;
 }
 
-function serializeNode(node: Node): string {
-  if (node.nodeType === Node.TEXT_NODE) {
-    return (node.textContent ?? "").replace(/\u00a0/g, " ");
+function serializeNode(node: MarkupNode): string {
+  if (node.nodeType === TEXT_NODE) {
+    return node.textContent.replace(/\u00a0/g, " ");
   }
 
-  if (node.nodeType !== Node.ELEMENT_NODE) {
-    return "";
-  }
-
-  const element = node as Element;
+  const element = node;
   const tag = element.tagName;
   const inner = () => serializeChildren(element);
 
@@ -150,18 +307,6 @@ function serializeNode(node: Node): string {
     default:
       return inner();
   }
-}
-
-function parseHtmlBody(html: string): ParentNode {
-  if (typeof DOMParser !== "undefined") {
-    return new DOMParser().parseFromString(html, "text/html").body;
-  }
-
-  // Vitest runs in Node; happy-dom provides DOMParser for htmlToDiscordMarkdown tests.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { Window } = require("happy-dom") as typeof import("happy-dom");
-  const window = new Window();
-  return new window.DOMParser().parseFromString(html, "text/html").body;
 }
 
 export function htmlToDiscordMarkdown(html: string): string {
