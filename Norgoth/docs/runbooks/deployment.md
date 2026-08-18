@@ -25,9 +25,11 @@
 5. Install Nginx configs from `deploy/nginx/` and run `scripts/vds/install-certbot.sh`.
 6. Create GitHub Environments `test` and `production` with secrets:
    - `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_PORT`
+   - `DEPLOY_HOST` should be an **IPv4** address (or a hostname with an A
+     record). GitHub-hosted runners often stall on an unreachable IPv6/AAAA.
    - `DEPLOY_PORT` must match the VDS SSH listen port (default **35342** from
      `setup-firewall.sh`). Required for **both** environments — without it,
-     deploy-test and rehydrate-test-db default to port 22 and time out.
+     appleboy defaults to port 22 and times out (`dial tcp …:22: i/o timeout`).
 7. Optional: create `/opt/norbot/env/ghcr.pull.token` (mode 600) with a GHCR
    **pull-only** credential (`packages:read`) for **manual** `docker pull` /
    `rollback-app.sh` on the host. CI deploy logs in with a job-scoped
@@ -57,6 +59,23 @@ Developer Portal bot for the live Application ID. Look for `Bot ready` in logs.
 
 Keep `/opt/norbot/scripts/` in sync with `Norgoth/scripts/docker/` (including
 `smoke-check.sh`) when changing deploy scripts — Actions call the VDS copies.
+
+## SSH timeout from GitHub Actions
+
+`dial tcp …: i/o timeout` on `Prepare VDS staging directory` means the runner
+never completed a TCP handshake to `DEPLOY_HOST:DEPLOY_PORT`. Image push to
+GHCR can still succeed. Workflows now pin IPv4 and retry SSH before appleboy.
+
+If it still fails after retries, on the VDS:
+
+1. Confirm sshd is listening on `DEPLOY_PORT` (`ss -lntp | grep sshd`).
+2. `ufw status` / provider firewall allows inbound TCP on that port.
+3. `fail2ban-client status sshd` (or the jail for the custom port) is not
+   banning GitHub-hosted runner IPs (Azure).
+4. The `production` / `test` GitHub Environment actually has `DEPLOY_HOST` and
+   `DEPLOY_PORT` set (environment secrets override repo secrets when present).
+
+Then re-run **Deploy production**. Images for the failed SHA are already on GHCR.
 
 ## Normal production deploy
 

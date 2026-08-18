@@ -19,13 +19,23 @@ jobs:
     runs-on: ubuntu-latest
     environment: test
     steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Resolve VDS SSH target
+        id: vds
+        uses: ./.github/actions/vds-ssh-target
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
       - name: Run rehydrate on VDS
         uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
+          host: ${{ steps.vds.outputs.ip }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT }}
+          timeout: 60s
           command_timeout: 30m
           script: |
             set -euo pipefail

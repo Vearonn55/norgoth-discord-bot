@@ -28,7 +28,8 @@ Create Environments:
 
 Secrets on both environments (or repo secrets if preferred):
 
-- `DEPLOY_HOST` — VDS public IP/hostname
+- `DEPLOY_HOST` — VDS public IPv4 (hostname only if it has an A record)
+- `DEPLOY_PORT` — SSH listen port (historically **35342**, not 22)
 - `DEPLOY_USER` — `norbot`
 - `DEPLOY_SSH_KEY` — private key for Actions → VDS (not the repo Deploy Key)
 

@@ -43,21 +43,31 @@ jobs:
           docker push "ghcr.io/${OWNER}/norbot-api:${TAG}"
           docker push "ghcr.io/${OWNER}/norbot-bot:${TAG}"
           docker push "ghcr.io/${OWNER}/norbot-web:${TAG}"
+      - name: Resolve VDS SSH target
+        id: vds
+        uses: ./.github/actions/vds-ssh-target
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
       - name: Prepare VDS staging directory
         uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
+          host: ${{ steps.vds.outputs.ip }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT }}
+          timeout: 60s
           script: mkdir -p "/var/tmp/norbot-git-${{ github.run_id }}"
       - name: Sync compose and scripts to VDS
         uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
+          host: ${{ steps.vds.outputs.ip }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT }}
+          timeout: 60s
           source: "Norgoth/deploy,Norgoth/scripts/docker"
           target: "/var/tmp/norbot-git-${{ github.run_id }}"
           rm: false
@@ -68,10 +78,11 @@ jobs:
           GHCR_PULL_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GHCR_PULL_USER: ${{ github.actor }}
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
+          host: ${{ steps.vds.outputs.ip }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT }}
+          timeout: 60s
           envs: GHCR_PULL_TOKEN,GHCR_PULL_USER
           script: |
             set -euo pipefail
