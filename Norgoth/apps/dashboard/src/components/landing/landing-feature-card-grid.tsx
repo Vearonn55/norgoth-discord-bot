@@ -1,37 +1,25 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { AnimatePresence } from "motion/react";
+import { useState } from "react";
 import type { LandingCopy } from "@/components/landing/landing-copy";
-import {
-  LANDING_FEATURE_DETAIL_ID,
-  LandingFeatureCard,
-} from "@/components/landing/landing-feature-card";
+import { LandingFeatureCard } from "@/components/landing/landing-feature-card";
 import { LANDING_FEATURE_IDS } from "@/components/landing/landing-feature-catalog";
 import type { LandingFeatureId } from "@/components/landing/landing-feature-catalog";
-import { LandingMotionRoot, m, useReducedMotion } from "@/components/landing/landing-motion";
+import { LandingFeatureDetailModal } from "@/components/landing/landing-feature-detail-modal";
 import { LandingSection } from "@/components/landing/landing-section";
-import { Button } from "@/components/ui/button";
 
-export function LandingFeatureCardGrid({ copy }: { copy: LandingCopy }) {
+export function LandingFeatureCardGrid({
+  copy,
+  sidebar,
+}: {
+  copy: LandingCopy;
+  sidebar: Record<string, string>;
+}) {
   const [openId, setOpenId] = useState<LandingFeatureId | null>(null);
-  const reduce = useReducedMotion();
-  const openFeature = openId ? copy.features[openId] : null;
 
   function onToggle(id: LandingFeatureId) {
     setOpenId((current) => (current === id ? null : id));
   }
-
-  useEffect(() => {
-    if (!openId) return;
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setOpenId(null);
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [openId]);
 
   return (
     <LandingSection className="border-top border-secondary-subtle">
@@ -49,40 +37,12 @@ export function LandingFeatureCardGrid({ copy }: { copy: LandingCopy }) {
             />
           ))}
         </div>
-        <LandingMotionRoot>
-          <AnimatePresence initial={false}>
-            {openFeature && openId ? (
-              <m.div
-                id={LANDING_FEATURE_DETAIL_ID}
-                key={openId}
-                className="norgoth-landing-card-detail"
-                initial={reduce ? false : { height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                exit={reduce ? { opacity: 1 } : { height: 0, opacity: 0 }}
-                transition={{ duration: reduce ? 0 : 0.28 }}
-                style={{ overflow: "hidden" }}
-              >
-                <div className="d-flex justify-content-between align-items-start gap-3">
-                  <h3 className="h5 mb-2">{openFeature.title}</h3>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setOpenId(null)}
-                  >
-                    {copy.cardsDetailClose}
-                  </Button>
-                </div>
-                <p className="small mb-3">{openFeature.body}</p>
-                <ul className="mb-0 ps-3 small text-body-secondary">
-                  <li>{openFeature.cap1}</li>
-                  <li>{openFeature.cap2}</li>
-                  <li>{openFeature.cap3}</li>
-                </ul>
-              </m.div>
-            ) : null}
-          </AnimatePresence>
-        </LandingMotionRoot>
+        <LandingFeatureDetailModal
+          openId={openId}
+          copy={copy}
+          sidebar={sidebar}
+          onClose={() => setOpenId(null)}
+        />
       </div>
     </LandingSection>
   );

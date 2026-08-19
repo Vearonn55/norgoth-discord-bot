@@ -50,7 +50,7 @@ export function LandingPage({
         />
         <LandingValue copy={copy} />
         <LandingFeatureShowcase copy={copy} sidebar={sidebar} />
-        <LandingFeatureCardGrid copy={copy} />
+        <LandingFeatureCardGrid copy={copy} sidebar={sidebar} />
         <LandingWhy copy={copy} />
         <LandingHowItWorks copy={copy} inviteHref={inviteHref} />
         <LandingTrust copy={copy} />

@@ -1673,12 +1673,21 @@ body {
   min-height: 3.9em;
 }
 
-.norgoth-landing-card-detail {
-  margin-top: 1rem;
-  padding: 1rem 1.1rem;
-  border-radius: 0.85rem;
-  border: 1px solid var(--norgoth-card-border-secondary);
+.norgoth-landing-feature-modal.modal .modal-dialog {
+  max-width: min(40rem, calc(100vw - 1.5rem));
+  margin-inline: 0.75rem;
+}
+
+.norgoth-landing-feature-modal .modal-content {
+  max-height: min(90vh, 40rem);
+  overflow: hidden;
   background: var(--norgoth-surface);
+  border: 1px solid var(--norgoth-card-border-secondary);
+}
+
+.norgoth-landing-feature-modal .modal-body {
+  overflow-y: auto;
+  overflow-wrap: anywhere;
 }
 
 .norgoth-landing-card:hover,
@@ -1862,6 +1871,13 @@ body {
   .norgoth-landing-card:hover,
   .norgoth-landing-card:focus-visible {
     transform: none;
+  }
+
+  .norgoth-landing-feature-modal.modal,
+  .norgoth-landing-feature-modal .modal-dialog,
+  .norgoth-landing-feature-modal .modal-backdrop {
+    animation: none;
+    transition: none;
   }
 
   .norgoth-mini-card:hover,

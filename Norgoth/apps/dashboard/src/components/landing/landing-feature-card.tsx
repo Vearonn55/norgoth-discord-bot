@@ -4,9 +4,8 @@ import { CIcon } from "@coreui/icons-react";
 import type { LandingCopy } from "@/components/landing/landing-copy";
 import type { LandingFeatureId } from "@/components/landing/landing-feature-catalog";
 import { landingFeatureDef } from "@/components/landing/landing-feature-catalog";
+import { LANDING_FEATURE_DETAIL_MODAL_ID } from "@/components/landing/landing-feature-detail-modal";
 import { CATEGORY_TOKENS } from "@/lib/design/category";
-
-export const LANDING_FEATURE_DETAIL_ID = "landing-feature-detail";
 
 export function LandingFeatureCard({
   id,
@@ -31,11 +30,12 @@ export function LandingFeatureCard({
         minHeight: 40,
         borderLeft: `3px solid ${tokens.color}`,
       }}
+      aria-haspopup="dialog"
       aria-expanded={open}
-      aria-controls={LANDING_FEATURE_DETAIL_ID}
+      aria-controls={LANDING_FEATURE_DETAIL_MODAL_ID}
       onClick={() => onToggle(id)}
     >
-      <span className="norgoth-landing-card-icon">
+      <span className="norgoth-landing-card-icon" aria-hidden="true">
         <CIcon icon={def.icon} />
       </span>
       <span className="norgoth-landing-card-title">{feature.title}</span>
