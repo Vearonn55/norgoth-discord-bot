@@ -1524,12 +1524,60 @@ body {
 }
 
 /* ==========================================================================
-   Landing page — CSS-only motion
+   Landing page — decoration + reduced-motion
    ========================================================================== */
+.norgoth-public {
+  scroll-padding-top: 5.5rem;
+}
+
+.norgoth-skip-link {
+  position: absolute;
+  left: 0.75rem;
+  top: 0.75rem;
+  z-index: 40;
+  padding: 0.5rem 0.85rem;
+  border-radius: 0.4rem;
+  background: var(--cui-primary);
+  color: #081018;
+  transform: translateY(-200%);
+}
+
+.norgoth-skip-link:focus {
+  transform: none;
+}
+
+.norgoth-landing-bg {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse 70% 50% at 15% -10%, rgba(110, 168, 254, 0.16), transparent 55%),
+    radial-gradient(ellipse 50% 40% at 90% 10%, rgba(94, 200, 255, 0.08), transparent 50%);
+}
+
+.norgoth-landing-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.22;
+  background-image:
+    linear-gradient(rgba(241, 244, 250, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(241, 244, 250, 0.04) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.55), transparent 42%);
+}
+
+.norgoth-landing-shell {
+  position: relative;
+  z-index: 1;
+}
+
 .norgoth-landing-nav {
   position: sticky;
   top: 0;
   z-index: 20;
+  padding-top: env(safe-area-inset-top);
   background: rgba(11, 14, 20, 0.92);
   backdrop-filter: blur(10px);
 }
@@ -1541,6 +1589,122 @@ body {
 
 .norgoth-landing-hero {
   min-height: 28rem;
+}
+
+.norgoth-landing-ctas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+@media (max-width: 767.98px) {
+  .norgoth-landing-ctas {
+    flex-direction: column;
+  }
+
+  .norgoth-landing-ctas .btn {
+    width: 100%;
+  }
+}
+
+.norgoth-landing-feature-row {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+@media (min-width: 992px) {
+  .norgoth-landing-feature-row {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .norgoth-landing-feature-row.is-even {
+    flex-direction: row-reverse;
+  }
+}
+
+.norgoth-landing-feature-copy,
+.norgoth-landing-feature-visual {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.norgoth-landing-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.85rem;
+  align-items: stretch;
+}
+
+.norgoth-landing-card {
+  border-radius: 1.35rem;
+  border: 1px solid var(--norgoth-card-border-secondary);
+  background: var(--norgoth-surface);
+  min-height: 100%;
+  text-align: left;
+}
+
+.norgoth-landing-card:hover,
+.norgoth-landing-card:focus-visible {
+  transform: translateY(-2px);
+  outline: none;
+  box-shadow: 0 0 0 0.15rem rgba(110, 168, 254, 0.2);
+}
+
+.norgoth-landing-mock {
+  display: grid;
+  grid-template-columns: 5rem 1fr;
+  gap: 0.75rem;
+  min-height: 16rem;
+  padding: 0.85rem;
+  border-radius: 0.85rem;
+  border: 1px solid var(--norgoth-card-border-secondary);
+  background: var(--norgoth-surface);
+}
+
+.norgoth-landing-mock-sidebar {
+  border-radius: 0.5rem;
+  background: rgba(241, 244, 250, 0.06);
+  padding: 0.65rem;
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(241, 244, 250, 0.45);
+}
+
+.norgoth-landing-mock-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.norgoth-landing-mock-bar {
+  height: 1.1rem;
+  width: 46%;
+  border-radius: 0.35rem;
+  background: rgba(110, 168, 254, 0.28);
+}
+
+.norgoth-landing-mock-tile {
+  border-radius: 0.5rem;
+  border-left: 3px solid var(--norgoth-section-accent, rgba(110, 168, 254, 0.45));
+  background: rgba(241, 244, 250, 0.05);
+  padding: 0.55rem 0.7rem;
+  font-size: 0.8rem;
+}
+
+.norgoth-landing-glow {
+  animation: norgoth-landing-glow 8s ease-in-out infinite alternate;
+}
+
+@keyframes norgoth-landing-glow {
+  from {
+    opacity: 0.7;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .norgoth-landing-hero-copy {
@@ -1629,10 +1793,16 @@ body {
 
   .norgoth-landing-hero-copy,
   .norgoth-landing-reveal,
-  .norgoth-landing-reveal.is-visible {
+  .norgoth-landing-reveal.is-visible,
+  .norgoth-landing-glow {
     opacity: 1;
     transform: none;
     animation: none;
+  }
+
+  .norgoth-landing-card:hover,
+  .norgoth-landing-card:focus-visible {
+    transform: none;
   }
 
   .norgoth-mini-card:hover,

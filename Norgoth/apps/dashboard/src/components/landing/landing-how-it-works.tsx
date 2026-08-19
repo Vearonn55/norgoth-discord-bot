@@ -1,10 +1,14 @@
-"use client";
-
-import { CContainer } from "@coreui/react";
+import { Button } from "@/components/ui/button";
 import { LandingSection } from "@/components/landing/landing-section";
 import type { LandingCopy } from "@/components/landing/landing-copy";
 
-export function LandingHowItWorks({ copy }: { copy: LandingCopy }) {
+export function LandingHowItWorks({
+  copy,
+  inviteHref,
+}: {
+  copy: LandingCopy;
+  inviteHref: string;
+}) {
   const steps = [
     { title: copy.howLoginTitle, body: copy.howLoginBody },
     { title: copy.howInstallTitle, body: copy.howInstallBody },
@@ -16,7 +20,7 @@ export function LandingHowItWorks({ copy }: { copy: LandingCopy }) {
       id="how-it-works"
       className="border-top border-secondary-subtle"
     >
-      <CContainer style={{ maxWidth: 1100 }}>
+      <div className="container" style={{ maxWidth: 1100 }}>
         <h2 className="h3 mb-2">{copy.howTitle}</h2>
         <p className="text-body-secondary mb-4" style={{ maxWidth: 720 }}>
           {copy.howLead}
@@ -24,15 +28,20 @@ export function LandingHowItWorks({ copy }: { copy: LandingCopy }) {
         <div className="row g-3">
           {steps.map((step, index) => (
             <div key={step.title} className="col-md-4">
-              <div className="norgoth-section-card norgoth-section-card-primary norgoth-card-interactive h-100 p-3">
+              <div className="norgoth-section-card norgoth-section-card-primary h-100 p-3">
                 <div className="norgoth-stepper-index mb-3">{index + 1}</div>
                 <h3 className="h5">{step.title}</h3>
                 <p className="mb-0 small text-body-secondary">{step.body}</p>
+                {index === 1 ? (
+                  <Button asChild variant="secondary" size="sm" className="mt-3">
+                    <a href={inviteHref}>{copy.addToDiscord}</a>
+                  </Button>
+                ) : null}
               </div>
             </div>
           ))}
         </div>
-      </CContainer>
+      </div>
     </LandingSection>
   );
 }

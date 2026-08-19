@@ -4,23 +4,35 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import en from "@/dictionaries/en.json";
 import tr from "@/dictionaries/tr.json";
-import { splitItems } from "@/components/landing/landing-copy";
+import {
+  LANDING_FEATURE_CATALOG,
+  LANDING_FEATURE_IDS,
+} from "@/components/landing/landing-feature-catalog";
 
 const LANDING_KEYS = [
   "metaTitle",
   "metaDescription",
+  "skipToContent",
   "navBrand",
   "navHow",
+  "navWhy",
   "navFeatures",
+  "navTrust",
   "addToDiscord",
   "login",
+  "openCommandCenter",
   "heroEyebrow",
   "heroLead",
+  "heroTrust",
   "addNorBot",
   "valueTitle",
+  "valueCommandTitle",
   "featuresTitle",
+  "cardsTitle",
+  "whyTitle",
   "howTitle",
   "trustTitle",
+  "trustDurableTitle",
   "ctaTitle",
   "footerProduct",
 ] as const;
@@ -40,6 +52,24 @@ const SERVER_KEYS = [
   "nextPage",
 ] as const;
 
+const OVERCLAIM = /Support Teams|100%|thousands|fastest/i;
+const TIKTOK = /TikTok/i;
+
+function flattenStrings(
+  value: unknown,
+  prefix = "",
+): Array<[string, string]> {
+  if (typeof value === "string") {
+    return [[prefix, value]];
+  }
+  if (value && typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>).flatMap(([key, nested]) =>
+      flattenStrings(nested, prefix ? `${prefix}.${key}` : key),
+    );
+  }
+  return [];
+}
+
 describe("dictionary keys", () => {
   it("includes landing and updated servers copy in en and tr", () => {
     for (const key of LANDING_KEYS) {
@@ -57,13 +87,30 @@ describe("dictionary keys", () => {
     expect(en.dashboard.description).toContain("NorBot");
   });
 
-  it("keeps six shipped feature categories", () => {
-    expect(splitItems(en.landing.featureCommunityItems)).toHaveLength(5);
-    expect(splitItems(en.landing.featureModerationItems)).toHaveLength(5);
-    expect(splitItems(en.landing.featureCommunicationItems)).toHaveLength(4);
-    expect(splitItems(en.landing.featureSupportItems)).toHaveLength(3);
-    expect(splitItems(en.landing.featureAutomationItems)).toHaveLength(3);
-    expect(splitItems(en.landing.featureOperationsItems)).toHaveLength(3);
+  it("has complete feature copy for every catalog id in en and tr", () => {
+    for (const id of LANDING_FEATURE_IDS) {
+      for (const locale of [en.landing, tr.landing]) {
+        const feature = locale.features[id];
+        expect(feature.title.length).toBeGreaterThan(0);
+        expect(feature.summary.length).toBeGreaterThan(0);
+        expect(feature.body.length).toBeGreaterThan(0);
+        expect(feature.cap1.length).toBeGreaterThan(0);
+        expect(feature.cap2.length).toBeGreaterThan(0);
+        expect(feature.cap3.length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("forbids overclaims and unfinished products in landing copy", () => {
+    for (const [pathKey, text] of [
+      ...flattenStrings(en.landing),
+      ...flattenStrings(tr.landing),
+    ]) {
+      expect(text, pathKey).not.toMatch(OVERCLAIM);
+      if (pathKey.includes("notifications") || pathKey === "metaDescription") {
+        expect(text, pathKey).not.toMatch(TIKTOK);
+      }
+    }
   });
 });
 
@@ -78,6 +125,10 @@ describe("visual QA tokens", () => {
     expect(css).toContain(".norgoth-public");
     expect(css).toContain("overflow-y: auto");
     expect(css).toContain(".norgoth-landing-reveal");
+    expect(css).toContain(".norgoth-skip-link");
+    expect(css).toContain("scroll-padding-top");
+    expect(css).toContain(".norgoth-landing-feature-row");
+    expect(css).toContain(".norgoth-landing-cards");
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
     expect(css).toContain(".norgoth-server-guild-action");
     expect(css).toContain("min-height: 40px");
@@ -93,5 +144,95 @@ describe("visual QA tokens", () => {
     expect(css).toContain("transform: none");
     expect(css).toContain(".norgoth-landing-hero");
     expect(css).toContain("min-height: 28rem");
+  });
+});
+
+describe("landing source contracts", () => {
+  const srcRoot = path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..",
+  );
+
+  it("keeps card a11y attributes and reduced-motion helper", () => {
+    const card = readFileSync(
+      path.join(srcRoot, "components/landing/landing-feature-card.tsx"),
+      "utf8",
+    );
+    const motion = readFileSync(
+      path.join(srcRoot, "components/landing/landing-motion.tsx"),
+      "utf8",
+    );
+    expect(card).toContain("aria-expanded");
+    expect(card).toContain("aria-controls");
+    expect(card).toContain("useReducedMotion");
+    expect(motion).toContain("useReducedMotion");
+    expect(motion).toContain("LazyMotion");
+    expect(motion).toContain("domAnimation");
+  });
+
+  it("isolates motion to landing and keeps login redirect unchanged", () => {
+    const landingDir = path.join(srcRoot, "components/landing");
+    const files = [
+      "landing-motion.tsx",
+      "landing-hero.tsx",
+      "landing-section.tsx",
+      "landing-feature-row.tsx",
+      "landing-feature-card.tsx",
+      "landing-feature-card-grid.tsx",
+    ];
+    for (const file of files) {
+      const source = readFileSync(path.join(landingDir, file), "utf8");
+      expect(source).not.toContain("recharts");
+      expect(source).not.toContain("tinymce");
+    }
+    const shell = readFileSync(
+      path.join(srcRoot, "components/layout/app-shell.tsx"),
+      "utf8",
+    );
+    expect(shell).not.toContain("motion/react");
+    expect(shell).not.toContain('from "motion"');
+    const login = readFileSync(
+      path.join(srcRoot, "app/[lang]/(public)/login/page.tsx"),
+      "utf8",
+    );
+    expect(login).toContain(
+      "`/norgoth-api/api/v1/oauth/discord/dashboard/authorize?lang=${encodeURIComponent(lang)}`",
+    );
+    const page = readFileSync(
+      path.join(srcRoot, "app/[lang]/(public)/page.tsx"),
+      "utf8",
+    );
+    expect(page).toContain("alternates");
+    expect(page).toContain("languages");
+  });
+
+  it("does not use unsafe HTML in the landing directory", () => {
+    const landingDir = path.join(srcRoot, "components/landing");
+    const names = [
+      "landing-page.tsx",
+      "landing-nav.tsx",
+      "landing-hero.tsx",
+      "landing-value.tsx",
+      "landing-features.tsx",
+      "landing-why.tsx",
+      "landing-how-it-works.tsx",
+      "landing-trust.tsx",
+      "landing-cta.tsx",
+      "landing-footer.tsx",
+      "landing-feature-card.tsx",
+      "landing-feature-card-grid.tsx",
+      "landing-oauth-alerts.tsx",
+    ];
+    for (const name of names) {
+      const source = readFileSync(path.join(landingDir, name), "utf8");
+      expect(source).not.toContain("dangerouslySetInnerHTML");
+    }
+  });
+
+  it("catalog ids match the production landing inventory", () => {
+    expect(LANDING_FEATURE_CATALOG.map((item) => item.id)).toEqual([
+      ...LANDING_FEATURE_IDS,
+    ]);
+    expect(LANDING_FEATURE_IDS).not.toContain("supportTeams");
   });
 });

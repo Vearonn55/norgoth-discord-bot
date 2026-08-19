@@ -23,7 +23,8 @@
     "react-dom": "19.2.4",
     "recharts": "^3.8.1",
     "tinymce": "^8.8.2",
-    "zustand": "^5.0.14"
+    "zustand": "^5.0.14",
+    "motion": "^12.23.12"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

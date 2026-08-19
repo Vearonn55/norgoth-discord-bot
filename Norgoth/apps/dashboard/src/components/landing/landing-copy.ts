@@ -1,11 +1,28 @@
+import type { LandingFeatureId } from "@/components/landing/landing-feature-catalog";
+
+export type LandingFeatureCopy = {
+  title: string;
+  summary: string;
+  body: string;
+  cap1: string;
+  cap2: string;
+  cap3: string;
+};
+
 export type LandingCopy = {
   metaTitle: string;
   metaDescription: string;
+  skipToContent: string;
   navBrand: string;
-  navHow: string;
   navFeatures: string;
+  navWhy: string;
+  navHow: string;
+  navTrust: string;
+  navMenu: string;
+  navClose: string;
   addToDiscord: string;
   login: string;
+  openCommandCenter: string;
   oauthNotConfiguredTitle: string;
   oauthNotConfiguredBody: string;
   oauthFailed: string;
@@ -14,29 +31,37 @@ export type LandingCopy = {
   heroTitle2: string;
   heroTitle3: string;
   heroLead: string;
+  heroTrust: string;
   addNorBot: string;
+  demoDisclaimer: string;
+  demoSidebar: string;
+  demoCard1: string;
+  demoCard2: string;
+  demoCard3: string;
   valueTitle: string;
   valueLead: string;
-  valueFewerBotsTitle: string;
-  valueFewerBotsBody: string;
-  valueFewerDashboardsTitle: string;
-  valueFewerDashboardsBody: string;
-  valueLessFragmentationTitle: string;
-  valueLessFragmentationBody: string;
+  valueCommandTitle: string;
+  valueCommandBody: string;
+  valueModulesTitle: string;
+  valueModulesBody: string;
+  valueGuildTitle: string;
+  valueGuildBody: string;
+  valueLocaleTitle: string;
+  valueLocaleBody: string;
   featuresTitle: string;
   featuresLead: string;
-  featureCommunity: string;
-  featureCommunityItems: string;
-  featureModeration: string;
-  featureModerationItems: string;
-  featureCommunication: string;
-  featureCommunicationItems: string;
-  featureSupport: string;
-  featureSupportItems: string;
-  featureAutomation: string;
-  featureAutomationItems: string;
-  featureOperations: string;
-  featureOperationsItems: string;
+  cardsTitle: string;
+  cardsLead: string;
+  cardsExpand: string;
+  cardsCollapse: string;
+  whyTitle: string;
+  whyLead: string;
+  whyModularTitle: string;
+  whyModularBody: string;
+  whyDiscordTitle: string;
+  whyDiscordBody: string;
+  whyDurableTitle: string;
+  whyDurableBody: string;
   howTitle: string;
   howLead: string;
   howLoginTitle: string;
@@ -52,14 +77,13 @@ export type LandingCopy = {
   trustGuildBody: string;
   trustPermsTitle: string;
   trustPermsBody: string;
+  trustDurableTitle: string;
+  trustDurableBody: string;
   ctaTitle: string;
   ctaLead: string;
   footerProduct: string;
   footerTagline: string;
   langEn: string;
   langTr: string;
+  features: Record<LandingFeatureId, LandingFeatureCopy>;
 };
-
-export function splitItems(value: string): string[] {
-  return value.split("|").map((item) => item.trim()).filter(Boolean);
-}

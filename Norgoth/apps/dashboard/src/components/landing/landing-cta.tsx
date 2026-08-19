@@ -1,20 +1,19 @@
-"use client";
-
-import { CContainer } from "@coreui/react";
-import { Button } from "@/components/ui/button";
+import { LandingCtas } from "@/components/landing/landing-ctas";
 import { LandingSection } from "@/components/landing/landing-section";
 import type { LandingCopy } from "@/components/landing/landing-copy";
 
 export function LandingCta({
   copy,
   loginHref,
+  inviteHref,
 }: {
   copy: LandingCopy;
   loginHref: string;
+  inviteHref: string;
 }) {
   return (
     <LandingSection className="border-top border-secondary-subtle">
-      <CContainer style={{ maxWidth: 1100 }} className="text-center">
+      <div className="container text-center" style={{ maxWidth: 1100 }}>
         <h2 className="h3 mb-3">{copy.ctaTitle}</h2>
         <p
           className="text-body-secondary mb-4 mx-auto"
@@ -22,10 +21,14 @@ export function LandingCta({
         >
           {copy.ctaLead}
         </p>
-        <Button asChild variant="primary" size="lg">
-          <a href={loginHref}>{copy.login}</a>
-        </Button>
-      </CContainer>
+        <div className="d-flex justify-content-center">
+          <LandingCtas
+            copy={copy}
+            loginHref={loginHref}
+            inviteHref={inviteHref}
+          />
+        </div>
+      </div>
     </LandingSection>
   );
 }

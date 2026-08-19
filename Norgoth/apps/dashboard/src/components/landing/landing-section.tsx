@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useInViewOnce } from "@/hooks/use-in-view-once";
+import { LandingMotionRoot, m, useReducedMotion } from "@/components/landing/landing-motion";
 
 export function LandingSection({
   id,
@@ -12,18 +12,23 @@ export function LandingSection({
   children: ReactNode;
   className?: string;
 }) {
-  const { ref, inView } = useInViewOnce<HTMLElement>();
-  const classes = [
-    "norgoth-landing-section norgoth-landing-reveal",
-    inView ? "is-visible" : "",
-    className ?? "",
-  ]
+  const reduce = useReducedMotion();
+  const classes = ["norgoth-landing-section", className ?? ""]
     .filter(Boolean)
     .join(" ");
 
   return (
-    <section id={id} ref={ref} className={classes}>
-      {children}
-    </section>
+    <LandingMotionRoot>
+      <m.section
+        id={id}
+        className={classes}
+        initial={reduce ? false : { opacity: 0, y: 12 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, amount: 0.15 }}
+        transition={{ duration: reduce ? 0 : 0.45, ease: "easeOut" }}
+      >
+        {children}
+      </m.section>
+    </LandingMotionRoot>
   );
 }
