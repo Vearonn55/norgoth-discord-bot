@@ -6,7 +6,6 @@ import { readApiError } from "@/lib/api-error";
 
 export type RichLinkPlatforms = {
   twitter: boolean;
-  bluesky: boolean;
   tiktok: boolean;
   reddit: boolean;
   instagram: boolean;
@@ -16,7 +15,6 @@ export type RichLinkPlatforms = {
 
 export type RichLinkRewriteHosts = {
   twitter: string;
-  bluesky: string;
   tiktok: string;
   reddit: string;
   instagram: string;
@@ -48,8 +46,7 @@ type RichLinkEmbedsState = {
 /** Fixed operator allowlist — mirrors API; not guild-editable. */
 export const FIXED_REWRITE_HOSTS: RichLinkRewriteHosts = {
   twitter: "fxtwitter.com",
-  bluesky: "bskx.app",
-  tiktok: "vxtiktok.com",
+  tiktok: "tnktok.com",
   instagram: "instagram7.com",
   reddit: "vxreddit.com",
   pixiv: "phixiv.net",
@@ -60,7 +57,6 @@ export const defaults: RichLinkEmbedsConfig = {
   enabled: false,
   platforms: {
     twitter: true,
-    bluesky: true,
     tiktok: true,
     reddit: true,
     instagram: false,

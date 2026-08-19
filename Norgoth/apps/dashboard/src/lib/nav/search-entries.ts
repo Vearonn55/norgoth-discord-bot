@@ -289,6 +289,8 @@ export function getSearchEntries(lang: string): SearchEntry[] {
         "rich link embeds",
         "bağlantı önizlemeleri",
         "fxtwitter",
+        "tnktok",
+        "tiktok",
         "embed fixer",
         "instagram",
         "pixiv",

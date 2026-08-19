@@ -826,7 +826,7 @@
     },
     "richLinkEmbeds": {
       "title": "Bağlantı Önizlemeleri",
-      "description": "Orijinal mesajı düzenlemeden X, Bluesky, TikTok, Instagram, Reddit, Pixiv ve YouTube Shorts için gömülebilir sosyal bağlantılarla yanıt verir.",
+      "description": "Orijinal mesajı düzenlemeden X, TikTok, Instagram, Reddit, Pixiv ve YouTube Shorts için gömülebilir sosyal bağlantılarla yanıt verir.",
       "usage": "Özelliği açın, platformları seçin, isteğe bağlı kanal sınırları koyun, sabit üçüncü taraf alan adı bildirimini onaylayın ve kaydedin. Yönet Mesajlar izni, yanıttan sonra özgün gömmeleri bastırmaya izin verir.",
       "alertActive": "Bağlantı Önizlemeleri aktif. Eşleşen bağlantılar sabit üçüncü taraf gömme alan adlarıyla bot yanıtında yeniden yazılır.",
       "alertInactive": "Bağlantı Önizlemeleri duraklatıldı. Dış alan adı bildirimini inceledikten sonra başlıktan etkinleştirin."
@@ -1841,8 +1841,7 @@
     "saving": "Kaydediliyor…",
     "saveSettings": "Ayarları kaydet",
     "platformDescTwitter": "Durum bağlantıları → {host}",
-    "platformDescBluesky": "Profil gönderileri → {host}",
-    "platformDescTiktok": "Video bağlantıları → {host}",
+    "platformDescTiktok": "Video, fotoğraf ve kısa bağlantılar → {host}",
     "platformDescInstagram": "Gönderi / reel / hikâye → {host}",
     "platformDescReddit": "Gönderi / kısa bağlantılar → {host}",
     "platformDescPixiv": "Eser bağlantıları → {host}",

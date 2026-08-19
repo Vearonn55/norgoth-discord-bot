@@ -21,7 +21,7 @@ NorBot has no root LICENSE compatible with AGPL incorporation.
 
 ## MVP platforms
 
-See addendum (2026-08-13) for the seven-platform allowlist. Original MVP shipped four platforms (Twitter/X, Bluesky, TikTok, Reddit); Instagram, Pixiv, and YouTube Shorts were added with defaults off.
+See addendum (2026-08-19) for the six-platform allowlist. Original MVP shipped four platforms (Twitter/X, Bluesky, TikTok, Reddit); Instagram, Pixiv, and YouTube Shorts were added with defaults off; Bluesky was later removed from this feature.
 
 ## Runtime behavior
 
@@ -41,7 +41,6 @@ See addendum (2026-08-13) for the seven-platform allowlist. Original MVP shipped
   "enabled": false,
   "platforms": {
     "twitter": true,
-    "bluesky": true,
     "tiktok": true,
     "reddit": true,
     "instagram": false,
@@ -55,9 +54,8 @@ See addendum (2026-08-13) for the seven-platform allowlist. Original MVP shipped
   "max_links_per_message": 3,
   "rewrite_hosts": {
     "twitter": "fxtwitter.com",
-    "bluesky": "bskx.app",
-    "tiktok": "vxtiktok.com",
-    "instagram": "ddinstagram.com",
+    "tiktok": "tnktok.com",
+    "instagram": "instagram7.com",
     "reddit": "vxreddit.com",
     "pixiv": "phixiv.net",
     "youtube_shorts": "youtu.be"
@@ -117,3 +115,29 @@ Unit tests per adapter: canonical URL, query strip, unsupported domain, multiple
 ### Legal note
 
 Same clean-room boundary as above. Fixer ToS/commercial-use claims require legal review before marketing language.
+
+---
+
+## Addendum — fxTikTok + Bluesky (2026-08-19)
+
+TikTok rewrites now use hosted **fxTikTok** at `tnktok.com` (standard mode). NorBot does not vendor fxTikTok source. `vxtiktok.com` is no longer generated.
+
+Bluesky is **removed from Link Embeds only**. `bsky.app` URLs are left untouched. Shared CoreUI icons are unchanged.
+
+### Platforms (6)
+
+| Platform | Match hosts (conceptual) | Rewrite host (fixed allowlist) | Default |
+|---|---|---|---|
+| Twitter/X | `twitter.com`, `x.com` (+ mobile) | `fxtwitter.com` | prior saved / true |
+| TikTok | `tiktok.com`, `m.tiktok.com`, `vm.tiktok.com`, `vt.tiktok.com`; `/video/`, `/photo/`, `/t/`; short hosts also `/{code}` | `tnktok.com` | prior saved / true |
+| Instagram | `instagram.com` `/p|/reel|/stories/` | `instagram7.com` | **false** (new) |
+| Reddit | `reddit.com`, `redd.it` (skip `/s/`) | `vxreddit.com` | prior saved / true |
+| Pixiv | `pixiv.net` artworks / illust_id | `phixiv.net` | **false** (new) |
+| YouTube Shorts | `youtube.com/shorts/{id}` only | `youtu.be/{id}` | **false** (new) |
+
+Emergency disable remains `platforms.tiktok` or the master `enabled` switch. There is no per-message health probe of `tnktok.com`.
+
+**Staging smoke (manual, not CI):** with Link Embeds and TikTok on, a `tiktok.com/@user/video/{id}` message should get a bot reply on `https://tnktok.com/...`. A `bsky.app` post URL should not be rewritten.
+
+Migration `0033_link_embeds_providers` remaps `rewrite_hosts.tiktok` from `vxtiktok.com` (or missing) to `tnktok.com`, deletes Bluesky JSON keys, and drops Redis snapshots `norgoth:guild:*:rich_link_embeds`. Downgrade disables TikTok and does **not** restore `vxtiktok.com`.
+

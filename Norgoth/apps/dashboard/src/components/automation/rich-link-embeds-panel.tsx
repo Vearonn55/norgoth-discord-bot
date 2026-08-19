@@ -24,9 +24,9 @@ import {
   type RichLinkEmbedsConfig,
   type RichLinkPlatforms,
 } from "@/stores/rich-link-embeds-store";
+import { previewRewrite } from "@/lib/rich-link-embeds-preview";
 import { Icon } from "@/components/ui/icon";
 import {
-  cilBell,
   cilImage,
   cilLink,
   cilMediaPlay,
@@ -38,7 +38,6 @@ import { formatDict, useLocaleDict } from "@/lib/locale-dict";
 
 const PLATFORM_ICONS: Record<keyof RichLinkPlatforms, string | string[]> = {
   twitter: cilShare,
-  bluesky: cilBell,
   tiktok: cilImage,
   instagram: cilUser,
   reddit: cilLink,
@@ -48,126 +47,12 @@ const PLATFORM_ICONS: Record<keyof RichLinkPlatforms, string | string[]> = {
 
 const PLATFORM_NAMES: Record<keyof RichLinkPlatforms, string> = {
   twitter: "Twitter / X",
-  bluesky: "Bluesky",
   tiktok: "TikTok",
   instagram: "Instagram",
   reddit: "Reddit",
   pixiv: "Pixiv",
   youtube_shorts: "YouTube Shorts",
 };
-
-function normalizeHost(host: string): string {
-  let h = host.toLowerCase();
-  if (h.startsWith("www.")) h = h.slice(4);
-  return h;
-}
-
-function previewRewrite(
-  url: string,
-  config: RichLinkEmbedsConfig,
-): string | null {
-  try {
-    const parsed = new URL(url.trim());
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      return null;
-    }
-    const host = normalizeHost(parsed.hostname);
-    const path = parsed.pathname || "";
-    const lower = path.toLowerCase();
-
-    type Rule = {
-      key: keyof RichLinkPlatforms;
-      hosts: string[];
-      match: () => boolean;
-      rewrite: () => string;
-    };
-
-    const rules: Rule[] = [
-      {
-        key: "twitter",
-        hosts: ["twitter.com", "x.com", "mobile.twitter.com", "mobile.x.com"],
-        match: () => lower.includes("/status/"),
-        rewrite: () => `https://${FIXED_REWRITE_HOSTS.twitter}${path}`,
-      },
-      {
-        key: "bluesky",
-        hosts: ["bsky.app"],
-        match: () => lower.includes("/profile/") && lower.includes("/post/"),
-        rewrite: () => `https://${FIXED_REWRITE_HOSTS.bluesky}${path}`,
-      },
-      {
-        key: "tiktok",
-        hosts: ["tiktok.com", "vm.tiktok.com"],
-        match: () => lower.includes("/video/") || lower.includes("/t/"),
-        rewrite: () => `https://${FIXED_REWRITE_HOSTS.tiktok}${path}`,
-      },
-      {
-        key: "instagram",
-        hosts: ["instagram.com"],
-        match: () =>
-          ["/p/", "/reel/", "/reels/", "/stories/"].some((t) =>
-            lower.includes(t),
-          ),
-        rewrite: () => `https://${FIXED_REWRITE_HOSTS.instagram}${path}`,
-      },
-      {
-        key: "reddit",
-        hosts: ["reddit.com", "old.reddit.com", "redd.it"],
-        match: () => {
-          if (lower.includes("/s/")) return false;
-          return (
-            lower.includes("/comments/") ||
-            /^\/[a-z0-9]+\/?$/i.test(path) ||
-            lower.includes("/r/") ||
-            lower.includes("/user/") ||
-            lower.includes("/u/")
-          );
-        },
-        rewrite: () => `https://${FIXED_REWRITE_HOSTS.reddit}${path}`,
-      },
-      {
-        key: "pixiv",
-        hosts: ["pixiv.net"],
-        match: () =>
-          lower.includes("/artworks/") ||
-          lower.includes("/artwork/") ||
-          (lower.includes("member_illust.php") &&
-            parsed.searchParams.has("illust_id")),
-        rewrite: () => {
-          if (lower.includes("member_illust.php")) {
-            const id = parsed.searchParams.get("illust_id");
-            return id
-              ? `https://${FIXED_REWRITE_HOSTS.pixiv}/artworks/${id}`
-              : "";
-          }
-          return `https://${FIXED_REWRITE_HOSTS.pixiv}${path}`;
-        },
-      },
-      {
-        key: "youtube_shorts",
-        hosts: ["youtube.com", "m.youtube.com"],
-        match: () => /^\/shorts\/[A-Za-z0-9_-]{6,}/.test(path),
-        rewrite: () => {
-          const m = path.match(/^\/shorts\/([A-Za-z0-9_-]{6,})/);
-          return m
-            ? `https://${FIXED_REWRITE_HOSTS.youtube_shorts}/${m[1]}`
-            : "";
-        },
-      },
-    ];
-
-    for (const rule of rules) {
-      if (!config.platforms[rule.key]) continue;
-      if (!rule.hosts.includes(host)) continue;
-      if (!rule.match()) continue;
-      const out = rule.rewrite();
-      return out || null;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
 
 export function RichLinkEmbedsPanel() {
   const dict = useLocaleDict();
@@ -190,7 +75,6 @@ export function RichLinkEmbedsPanel() {
       ).map((key) => {
         const descKey = {
           twitter: d.platformDescTwitter,
-          bluesky: d.platformDescBluesky,
           tiktok: d.platformDescTiktok,
           instagram: d.platformDescInstagram,
           reddit: d.platformDescReddit,
@@ -291,30 +175,26 @@ export function RichLinkEmbedsPanel() {
           category="messages"
           header={d.platforms}
         >
-          <div className="d-flex flex-wrap gap-3 p-1">
+          <div className="norgoth-link-embeds-grid p-1">
             {platformMeta.map((platform) => (
-              <div
+              <MiniFeatureCard
                 key={platform.key}
-                style={{ minWidth: 260, flex: "1 1 260px" }}
-              >
-                <MiniFeatureCard
-                  icon={platform.icon}
-                  name={platform.name}
-                  description={platform.description}
-                  category="messages"
-                  enabled={draft.platforms[platform.key]}
-                  disabledAccent={
-                    draft.enabled ? "var(--cui-danger)" : undefined
-                  }
-                  onToggle={(checked) => patchPlatform(platform.key, checked)}
-                  onClick={() =>
-                    patchPlatform(
-                      platform.key,
-                      !draft.platforms[platform.key],
-                    )
-                  }
-                />
-              </div>
+                icon={platform.icon}
+                name={platform.name}
+                description={platform.description}
+                category="messages"
+                enabled={draft.platforms[platform.key]}
+                disabledAccent={
+                  draft.enabled ? "var(--cui-danger)" : undefined
+                }
+                onToggle={(checked) => patchPlatform(platform.key, checked)}
+                onClick={() =>
+                  patchPlatform(
+                    platform.key,
+                    !draft.platforms[platform.key],
+                  )
+                }
+              />
             ))}
           </div>
         </SectionCard>

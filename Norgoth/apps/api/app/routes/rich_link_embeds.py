@@ -15,27 +15,19 @@ from pydantic import BaseModel, Field
 from app.api.v1.dependencies_auth import guild_manager_dependency
 from app.services.campaign_store import get_redis, now_iso
 from app.services.feature_config_store import read_raw, save_config
+from app.services.rich_link_embeds_normalize import (
+    DEFAULT_REWRITE_HOSTS,
+    normalize_rich_link_embeds_config,
+    stored_needs_link_embeds_normalize,
+)
 
 router = APIRouter(
     tags=["Link Embeds"],
     dependencies=[Depends(guild_manager_dependency())],
 )
 
-# Fixed operator allowlist — never accept arbitrary guild-supplied hosts.
-DEFAULT_REWRITE_HOSTS = {
-    "twitter": "fxtwitter.com",
-    "bluesky": "bskx.app",
-    "tiktok": "vxtiktok.com",
-    "instagram": "instagram7.com",
-    "reddit": "vxreddit.com",
-    "pixiv": "phixiv.net",
-    "youtube_shorts": "youtu.be",
-}
-
-
 class PlatformToggles(BaseModel):
     twitter: bool = True
-    bluesky: bool = True
     tiktok: bool = True
     reddit: bool = True
     # New platforms default off so existing guilds do not suddenly rewrite.
@@ -46,8 +38,7 @@ class PlatformToggles(BaseModel):
 
 class RewriteHosts(BaseModel):
     twitter: str = "fxtwitter.com"
-    bluesky: str = "bskx.app"
-    tiktok: str = "vxtiktok.com"
+    tiktok: str = "tnktok.com"
     instagram: str = "instagram7.com"
     reddit: str = "vxreddit.com"
     pixiv: str = "phixiv.net"
@@ -99,6 +90,16 @@ async def get_rich_link_embeds_config(guild_id: str) -> dict[str, Any]:
         await redis_client.aclose()
 
     stored = load_stored_config(raw)
+    if stored_needs_link_embeds_normalize(stored):
+        stored = normalize_rich_link_embeds_config(stored)
+        stored["rewrite_hosts"] = _force_allowlisted_hosts()
+        stored["updated_at"] = now_iso()
+        await save_config(
+            guild_id,
+            "rich_link_embeds",
+            stored,
+            enabled=bool(stored.get("enabled", False)),
+        )
     config = RichLinkEmbedsConfigBody.model_validate(
         {k: v for k, v in stored.items() if k in RichLinkEmbedsConfigBody.model_fields}
         or {}

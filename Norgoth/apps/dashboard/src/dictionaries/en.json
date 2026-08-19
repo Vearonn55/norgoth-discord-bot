@@ -826,7 +826,7 @@
     },
     "richLinkEmbeds": {
       "title": "Link Embeds",
-      "description": "Replies with embed-friendly social links for X, Bluesky, TikTok, Instagram, Reddit, Pixiv, and YouTube Shorts without editing the original message.",
+      "description": "Replies with embed-friendly social links for X, TikTok, Instagram, Reddit, Pixiv, and YouTube Shorts without editing the original message.",
       "usage": "Enable the feature, pick platforms, optionally limit channels, acknowledge fixed third-party fixer domains, then save. Manage Messages lets the bot suppress the original embeds after a reply.",
       "alertActive": "Link Embeds is active. Matching links are rewritten in a bot reply using fixed third-party embed hosts.",
       "alertInactive": "Link Embeds is paused. Enable it from the header after reviewing the external-domain disclosure."
@@ -1841,8 +1841,7 @@
     "saving": "Saving…",
     "saveSettings": "Save Settings",
     "platformDescTwitter": "Status links → {host}",
-    "platformDescBluesky": "Profile posts → {host}",
-    "platformDescTiktok": "Video links → {host}",
+    "platformDescTiktok": "Videos, photos, and short links → {host}",
     "platformDescInstagram": "Posts / reels / stories → {host}",
     "platformDescReddit": "Posts / short links → {host}",
     "platformDescPixiv": "Artwork links → {host}",

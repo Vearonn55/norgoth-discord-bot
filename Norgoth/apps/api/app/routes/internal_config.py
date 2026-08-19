@@ -10,6 +10,11 @@ from pydantic import BaseModel
 from app.security.internal_auth import require_internal_token
 from app.services.campaign_store import get_redis
 from app.services.feature_config_store import FEATURE_REGISTRY, read_through, save_config
+from app.services.rich_link_embeds_normalize import (
+    DEFAULT_REWRITE_HOSTS,
+    normalize_rich_link_embeds_config,
+    stored_needs_link_embeds_normalize,
+)
 from app.services.verification_join_config import load_verification_join_config
 
 SNOWFLAKE = r"^[0-9]{5,25}$"
@@ -52,6 +57,19 @@ async def hydrate_feature_config(
     redis_client = await get_redis()
     try:
         payload = await read_through(guild_id, feature_key, redis_client)
+        if (
+            feature_key == "rich_link_embeds"
+            and isinstance(payload, dict)
+            and stored_needs_link_embeds_normalize(payload)
+        ):
+            payload = normalize_rich_link_embeds_config(payload)
+            payload["rewrite_hosts"] = dict(DEFAULT_REWRITE_HOSTS)
+            await save_config(
+                guild_id,
+                feature_key,
+                payload,
+                enabled=bool(payload.get("enabled", False)),
+            )
     finally:
         await redis_client.aclose()
 
@@ -78,10 +96,15 @@ async def persist_feature_config(
     if feature_key not in FEATURE_REGISTRY:
         raise HTTPException(status_code=404, detail=f"Unknown feature: {feature_key}")
 
+    config = body.config
+    if feature_key == "rich_link_embeds" and isinstance(config, dict):
+        config = normalize_rich_link_embeds_config(config)
+        config["rewrite_hosts"] = dict(DEFAULT_REWRITE_HOSTS)
+
     await save_config(
         guild_id,
         feature_key,
-        body.config,
+        config,
         enabled=body.enabled,
     )
     return {

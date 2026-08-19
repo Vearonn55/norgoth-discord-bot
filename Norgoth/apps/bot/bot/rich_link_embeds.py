@@ -22,7 +22,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "enabled": False,
     "platforms": {
         "twitter": True,
-        "bluesky": True,
         "tiktok": True,
         "reddit": True,
         "instagram": False,

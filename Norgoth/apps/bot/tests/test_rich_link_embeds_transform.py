@@ -11,7 +11,6 @@ from bot.rich_link_embeds_transform import (
 
 ENABLED = {
     "twitter": True,
-    "bluesky": True,
     "tiktok": True,
     "reddit": True,
     "instagram": True,
@@ -31,13 +30,15 @@ def test_twitter_status_strips_query() -> None:
     assert out == "https://fxtwitter.com/user/status/123"
 
 
-def test_bluesky_post() -> None:
-    out = rewrite_url(
-        "https://bsky.app/profile/alice.bsky.social/post/abc123",
-        enabled_platforms=ENABLED,
-        rewrite_hosts=HOSTS,
+def test_bluesky_untouched() -> None:
+    assert (
+        rewrite_url(
+            "https://bsky.app/profile/alice.bsky.social/post/abc123",
+            enabled_platforms=ENABLED,
+            rewrite_hosts=HOSTS,
+        )
+        is None
     )
-    assert out == "https://bskx.app/profile/alice.bsky.social/post/abc123"
 
 
 def test_tiktok_video() -> None:
@@ -46,7 +47,93 @@ def test_tiktok_video() -> None:
         enabled_platforms=ENABLED,
         rewrite_hosts=HOSTS,
     )
-    assert out == "https://vxtiktok.com/@creator/video/9876543210"
+    assert out == "https://tnktok.com/@creator/video/9876543210"
+
+
+def test_tiktok_photo() -> None:
+    out = rewrite_url(
+        "https://www.tiktok.com/@creator/photo/111222333",
+        enabled_platforms=ENABLED,
+        rewrite_hosts=HOSTS,
+    )
+    assert out == "https://tnktok.com/@creator/photo/111222333"
+
+
+def test_tiktok_short_hosts() -> None:
+    assert (
+        rewrite_url(
+            "https://vm.tiktok.com/ZMabcdef/",
+            enabled_platforms=ENABLED,
+            rewrite_hosts=HOSTS,
+        )
+        == "https://tnktok.com/ZMabcdef/"
+    )
+    assert (
+        rewrite_url(
+            "https://vt.tiktok.com/ZMabcdef",
+            enabled_platforms=ENABLED,
+            rewrite_hosts=HOSTS,
+        )
+        == "https://tnktok.com/ZMabcdef"
+    )
+
+
+def test_tiktok_bare_code_on_www_skipped() -> None:
+    assert (
+        rewrite_url(
+            "https://www.tiktok.com/ZMabcdef",
+            enabled_platforms=ENABLED,
+            rewrite_hosts=HOSTS,
+        )
+        is None
+    )
+
+
+def test_tiktok_query_stripped() -> None:
+    out = rewrite_url(
+        "https://m.tiktok.com/@creator/video/9?is_from_webapp=1&sender_device=pc",
+        enabled_platforms=ENABLED,
+        rewrite_hosts=HOSTS,
+    )
+    assert out == "https://tnktok.com/@creator/video/9"
+
+
+def test_tiktok_unicode_path() -> None:
+    out = rewrite_url(
+        "https://tiktok.com/@日本語/video/123",
+        enabled_platforms=ENABLED,
+        rewrite_hosts=HOSTS,
+    )
+    assert out == "https://tnktok.com/@日本語/video/123"
+
+
+def test_tiktok_disabled() -> None:
+    platforms = {**ENABLED, "tiktok": False}
+    assert (
+        rewrite_url(
+            "https://www.tiktok.com/@creator/video/9876543210",
+            enabled_platforms=platforms,
+            rewrite_hosts=HOSTS,
+        )
+        is None
+    )
+
+
+def test_tiktok_lookalike_rejected() -> None:
+    assert (
+        rewrite_url(
+            "https://tiktok.com.evil.example/@creator/video/1",
+            enabled_platforms=ENABLED,
+            rewrite_hosts=HOSTS,
+        )
+        is None
+    )
+
+
+def test_allowlist_has_no_vxtiktok() -> None:
+    assert "vxtiktok" not in str(ALLOWED_REWRITE_HOSTS)
+    assert ALLOWED_REWRITE_HOSTS["tiktok"] == "tnktok.com"
+    assert "bluesky" not in ALLOWED_REWRITE_HOSTS
 
 
 def test_instagram_reel() -> None:
@@ -140,7 +227,6 @@ def test_youtube_watch_unchanged() -> None:
 def test_new_platforms_default_off_when_missing() -> None:
     platforms = {
         "twitter": True,
-        "bluesky": True,
         "tiktok": True,
         "reddit": True,
     }
@@ -205,6 +291,14 @@ def test_credentials_in_url_rejected() -> None:
         )
         is None
     )
+    assert (
+        rewrite_url(
+            "https://user:pass@tiktok.com/@creator/video/1",
+            enabled_platforms=ENABLED,
+            rewrite_hosts=HOSTS,
+        )
+        is None
+    )
 
 
 def test_instagram_disabled_skips() -> None:
@@ -263,4 +357,4 @@ def test_multiple_links_capped() -> None:
     )
     assert len(out) == 2
     assert out[0].startswith("https://fxtwitter.com/")
-    assert out[1].startswith("https://bskx.app/")
+    assert out[1].startswith("https://vxreddit.com/")

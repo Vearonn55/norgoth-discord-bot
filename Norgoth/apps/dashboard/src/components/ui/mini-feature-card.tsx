@@ -151,7 +151,7 @@ export function MiniFeatureCard({
 
   return (
     <div
-      className="norgoth-mini-card h-100 d-flex align-items-start gap-3 p-3"
+      className="norgoth-mini-card norgoth-mini-card-with-toggle h-100 d-flex gap-3 p-3"
       style={accentStyle}
     >
       <button

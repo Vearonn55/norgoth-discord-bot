@@ -6,9 +6,12 @@ public fixer-domain behavior, not copied from AGPL sources.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from urllib.parse import parse_qs, urlparse, urlunparse
+
+logger = logging.getLogger("norgoth.bot.rich_link_embeds")
 
 _CODE_FENCE_RE = re.compile(r"```[\s\S]*?```", re.MULTILINE)
 _INLINE_CODE_RE = re.compile(r"`[^`]+`")
@@ -21,13 +24,14 @@ _URL_RE = re.compile(
 # Operator allowlist — guild clients cannot choose other hosts.
 ALLOWED_REWRITE_HOSTS: dict[str, str] = {
     "twitter": "fxtwitter.com",
-    "bluesky": "bskx.app",
-    "tiktok": "vxtiktok.com",
+    "tiktok": "tnktok.com",
     "instagram": "instagram7.com",
     "reddit": "vxreddit.com",
     "pixiv": "phixiv.net",
     "youtube_shorts": "youtu.be",
 }
+
+_TIKTOK_SHORT_HOSTS = frozenset({"vm.tiktok.com", "vt.tiktok.com"})
 
 
 @dataclass(frozen=True)
@@ -45,14 +49,9 @@ PLATFORM_RULES: tuple[PlatformRule, ...] = (
         default_rewrite_host="fxtwitter.com",
     ),
     PlatformRule(
-        key="bluesky",
-        exact_hosts=("bsky.app",),
-        default_rewrite_host="bskx.app",
-    ),
-    PlatformRule(
         key="tiktok",
-        exact_hosts=("tiktok.com", "www.tiktok.com", "vm.tiktok.com"),
-        default_rewrite_host="vxtiktok.com",
+        exact_hosts=("tiktok.com", "m.tiktok.com", "vm.tiktok.com", "vt.tiktok.com"),
+        default_rewrite_host="tnktok.com",
     ),
     PlatformRule(
         key="instagram",
@@ -106,19 +105,19 @@ def _host_allowed(host: str, exact_hosts: tuple[str, ...]) -> bool:
     return normalized in allowed
 
 
-def _path_ok(rule_key: str, path: str, query: str) -> bool:
+def _path_ok(rule_key: str, path: str, query: str, host: str = "") -> bool:
     path = path or ""
     lower = path.lower()
 
     if rule_key == "twitter":
         return "/status/" in lower
 
-    if rule_key == "bluesky":
-        # /profile/{handle|did}/post/{tid}
-        return "/profile/" in lower and "/post/" in lower
-
     if rule_key == "tiktok":
-        return "/video/" in lower or "/t/" in lower
+        if "/video/" in lower or "/photo/" in lower or "/t/" in lower:
+            return True
+        if _normalize_host(host) in _TIKTOK_SHORT_HOSTS:
+            return bool(re.match(r"^/[^/@]+/?$", path))
+        return False
 
     if rule_key == "instagram":
         return (
@@ -190,16 +189,21 @@ def rewrite_url(
     try:
         parsed = urlparse(url)
     except ValueError:
+        logger.debug("link_embeds skip reason=parse_error")
         return None
     if parsed.scheme not in {"http", "https"}:
+        logger.debug("link_embeds skip reason=scheme")
         return None
     if parsed.username or parsed.password:
+        logger.debug("link_embeds skip reason=credentials")
         return None
     host = (parsed.hostname or "").lower()
     if not host:
+        logger.debug("link_embeds skip reason=empty_host")
         return None
     # Reject non-default ports to avoid weird lookalikes.
     if parsed.port not in (None, 80, 443):
+        logger.debug("link_embeds skip reason=port")
         return None
 
     hosts = {**ALLOWED_REWRITE_HOSTS, **(rewrite_hosts or {})}
@@ -209,7 +213,8 @@ def rewrite_url(
             continue
         if not _host_allowed(host, rule.exact_hosts):
             continue
-        if not _path_ok(rule.key, parsed.path or "", parsed.query or ""):
+        if not _path_ok(rule.key, parsed.path or "", parsed.query or "", host):
+            logger.debug("link_embeds skip reason=path_mismatch platform=%s", rule.key)
             continue
         # Force allowlisted host; ignore unapproved client overrides.
         new_host = ALLOWED_REWRITE_HOSTS.get(rule.key) or rule.default_rewrite_host
@@ -218,15 +223,18 @@ def rewrite_url(
         if candidate == ALLOWED_REWRITE_HOSTS.get(rule.key):
             new_host = candidate
         if not new_host:
+            logger.debug("link_embeds skip reason=no_rewrite_host platform=%s", rule.key)
             return None
         rewritten = _build_rewritten(
             rule_key=rule.key, parsed=parsed, new_host=new_host
         )
         if not rewritten or rewritten == url:
+            logger.debug("link_embeds skip reason=unchanged platform=%s", rule.key)
             return None
         if _normalize_host(urlparse(rewritten).hostname or "") == _normalize_host(
             host
         ):
+            logger.debug("link_embeds skip reason=same_host platform=%s", rule.key)
             return None
         return rewritten
     return None
