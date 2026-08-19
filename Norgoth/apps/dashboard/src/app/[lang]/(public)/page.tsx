@@ -64,7 +64,7 @@ export default async function PublicHomePage({
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <LandingPage copy={dict.landing} lang={lang} />
+      <LandingPage copy={dict.landing} sidebar={dict.sidebar} lang={lang} />
     </>
   );
 }

@@ -905,7 +905,7 @@
     "heroTitle2": "from one bot",
     "heroTitle3": "and one dashboard.",
     "heroLead": "NorBot is for Discord server owners and admins who want verification, moderation, tickets, campaigns, and community tools in a single bot — configured from one Command Center instead of a stack of unrelated dashboards.",
-    "heroTrust": "Lists only guilds where you are owner, Administrator, or have Manage Server.",
+    "heroTrust": "Lists only servers where you are owner, Administrator, or have Manage Server.",
     "addNorBot": "Add NorBot to Discord",
     "demoDisclaimer": "Illustrative Command Center layout. Not live server data.",
     "demoSidebar": "Automation",
@@ -913,48 +913,49 @@
     "demoCard2": "Auto-Moderation",
     "demoCard3": "Support Tickets",
     "valueTitle": "What you get",
-    "valueLead": "NorBot ships as one Gateway bot plus a guild-scoped Command Center. Enable only the modules you need.",
+    "valueLead": "One Discord bot and one Command Center for the server you select. Turn on only the features you need.",
     "valueCommandTitle": "One Command Center",
-    "valueCommandBody": "Configure verification, security, messaging, and community tools against the same selected Discord server.",
+    "valueCommandBody": "Configure verification, security, messaging, and community tools for the same selected Discord server.",
     "valueModulesTitle": "Modular switches",
-    "valueModulesBody": "Each product area has an enable switch. Disabled modules are ignored by the bot even if they still have saved settings.",
-    "valueGuildTitle": "Guild-scoped sessions",
+    "valueModulesBody": "Each product area has an enable switch. Disabled features stay off even if they still have saved settings.",
+    "valueGuildTitle": "One server at a time",
     "valueGuildBody": "A session manages one selected server. Switching servers returns you to Server Selector.",
     "valueLocaleTitle": "English and Turkish",
     "valueLocaleBody": "The public site and Command Center are fully localized in English and Turkish.",
     "featuresTitle": "Capabilities you can run today",
-    "featuresLead": "These modules are implemented in NorBot’s bot, API, and dashboard — not a wishlist.",
+    "featuresLead": "These features are already in NorBot’s bot and Command Center — not a wishlist.",
     "cardsTitle": "Explore every shipped module",
     "cardsLead": "Open a card for a short description. These are marketing summaries, not live configuration toggles.",
     "cardsExpand": "Show description",
     "cardsCollapse": "Hide description",
+    "cardsDetailClose": "Close",
     "whyTitle": "Why choose NorBot",
-    "whyLead": "Built so operators configure Discord workflows in one place, with permissions and storage that match how the bot actually runs.",
+    "whyLead": "Built so server owners and admins configure Discord workflows in one place, with permissions that match how Discord actually works.",
     "whyModularTitle": "Modular, not all-or-nothing",
-    "whyModularBody": "Turn features on per guild. A paused module does not keep rewriting links, posting feeds, or sending campaigns.",
-    "whyDiscordTitle": "Discord-native access",
-    "whyDiscordBody": "Operators sign in with Discord OAuth. Guild lists and actions require owner, Administrator, or Manage Server on that guild.",
-    "whyDurableTitle": "Durable guild configuration",
-    "whyDurableBody": "Feature settings persist in Postgres. The bot reads Redis snapshots that the API rewrites after each save.",
+    "whyModularBody": "Turn features on per server. A paused feature does not keep rewriting links, posting feeds, or sending campaigns.",
+    "whyDiscordTitle": "Sign in with Discord",
+    "whyDiscordBody": "Server owners and admins sign in with Discord. NorBot only lists servers where you are owner, Administrator, or have Manage Server.",
+    "whyDurableTitle": "Settings stay saved",
+    "whyDurableBody": "Feature settings stay saved for that server after you click Save. You do not re-enter them every time the bot restarts.",
     "howTitle": "How it works",
-    "howLead": "The same path every operator takes: sign in, install the bot, then configure the Command Center for that guild.",
+    "howLead": "The same path every admin takes: sign in, add the bot to a server, then configure that server in the Command Center.",
     "howLoginTitle": "Log in with Discord",
-    "howLoginBody": "Sign in with Discord OAuth. NorBot only lists servers where you are owner, Administrator, or have Manage Server.",
+    "howLoginBody": "Sign in with Discord. NorBot only lists servers where you are owner, Administrator, or have Manage Server.",
     "howInstallTitle": "Add NorBot to a server",
-    "howInstallBody": "Use Discord’s Guild Install flow (Add to Discord). Installation is separate from dashboard login.",
+    "howInstallBody": "Use Discord’s Add to Server flow (Add to Discord). Adding the bot is separate from signing in to the Command Center.",
     "howConfigureTitle": "Configure in the Command Center",
-    "howConfigureBody": "Open the Command Center and enable the features you actually run. Guild data stays scoped to the server you selected.",
+    "howConfigureBody": "Open the Command Center and enable the features you actually run. Data stays scoped to the server you selected.",
     "trustTitle": "Security and reliability",
-    "trustOauthTitle": "Discord OAuth login",
-    "trustOauthBody": "Operators sign in with Discord. NorBot does not invent a separate community login.",
-    "trustGuildTitle": "Guild-scoped Command Center",
+    "trustOauthTitle": "Sign in with Discord",
+    "trustOauthBody": "Admins sign in with Discord. NorBot does not invent a separate community login.",
+    "trustGuildTitle": "One selected Discord server",
     "trustGuildBody": "Each session manages one selected server. Switching servers returns you to Server Selector.",
-    "trustPermsTitle": "Operator permission checks",
-    "trustPermsBody": "Listing and guild actions require owner, Administrator, or Manage Server on that Discord guild.",
-    "trustDurableTitle": "Postgres, Redis snapshots, workers",
-    "trustDurableBody": "Config is stored in Postgres. Campaigns, RSS, and content alerts run on rate-limit-aware API workers — not unbounded scrapers on the Gateway process.",
+    "trustPermsTitle": "Permission checks",
+    "trustPermsBody": "Listing and server actions require owner, Administrator, or Manage Server on that Discord server.",
+    "trustDurableTitle": "Saved settings and background sends",
+    "trustDurableBody": "Settings are saved for the selected server. Campaigns, RSS, and creator alerts send in the background with rate limits — not as unbounded scrapers inside the Discord connection.",
     "ctaTitle": "Add NorBot to a server you manage",
-    "ctaLead": "Install the bot, then log in to open the Command Center for that guild only.",
+    "ctaLead": "Install the bot, then log in to open the Command Center for that server only.",
     "footerProduct": "NorBot Community Command Center",
     "footerTagline": "One bot. One dashboard. Your Discord community.",
     "langEn": "English",
@@ -962,30 +963,30 @@
     "features": {
       "verification": {
         "title": "Member Verification",
-        "summary": "OAuth join checks and an Unverified role until members complete verification.",
-        "body": "Publish a verification panel in Discord. New members can be held with an Unverified role until they finish the public verification flow. Settings live in the Command Center for that guild, not as a separate bot.",
-        "cap1": "Public verification pages under /verify",
+        "summary": "Let new members verify with their Discord account, with an optional Unverified role.",
+        "body": "Publish a verification panel in Discord. New members can stay Unverified until they finish the public verification page. You set channels and roles in the Command Center for that server.",
+        "cap1": "Public verification page",
         "cap2": "Optional Unverified role on join",
         "cap3": "Panel publish from the dashboard"
       },
       "manualReview": {
         "title": "Manual Verification",
         "summary": "Approve or deny high-risk holds instead of auto-passing every join.",
-        "body": "When policy or risk checks need a human, staff review the queue in the Command Center. Approvals and denials stay on the same verification stack as the public flow.",
+        "body": "When a join needs a human decision, staff review the list in the Command Center. Approvals and denials use the same verification settings as the public flow.",
         "cap1": "Human approve and deny",
-        "cap2": "High-risk hold queue",
-        "cap3": "Same guild verification config"
+        "cap2": "High-risk review list",
+        "cap3": "Same server verification settings"
       },
       "tickets": {
         "title": "Support Tickets",
         "summary": "Panel buttons open private ticket channels with transcripts on close.",
-        "body": "Members start tickets from a published panel. NorBot opens a private channel, staff handle the conversation, and a transcript can be stored when the ticket closes. Tickets are the support product that ships today.",
+        "body": "Members start tickets from a published panel. NorBot opens a private channel, staff handle the conversation, and a transcript can be stored when the ticket closes.",
         "cap1": "Published ticket panels",
         "cap2": "Private support channels",
         "cap3": "Close transcripts"
       },
       "leveling": {
-        "title": "Levels and Activity",
+        "title": "Levels & Activity",
         "summary": "Text and voice XP with optional role rewards.",
         "body": "Members earn text XP from messages and optional voice XP from time in voice. Set reward roles at level thresholds. Voice XP can be set to zero if you only want chat activity.",
         "cap1": "Text XP",
@@ -995,7 +996,7 @@
       "leaderboard": {
         "title": "Leaderboards",
         "summary": "Rank members by text XP, voice XP, or Top Trending upvotes.",
-        "body": "The leaderboard reads the same XP and feed scores the bot already stores. Switch between text XP, voice XP, and Top Upvote without a separate ranking bot.",
+        "body": "The leaderboard uses the same XP and feed scores the bot already stores. Switch between text XP, voice XP, and Top Upvote without a separate ranking bot.",
         "cap1": "Text XP ranking",
         "cap2": "Voice XP ranking",
         "cap3": "Top Upvote ranking"
@@ -1010,19 +1011,19 @@
       },
       "invites": {
         "title": "Invite Tracking",
-        "summary": "Attribute joins to invite links and show who invited whom.",
-        "body": "NorBot records invite use so you can see inviters and link welcome messages to {inviter} when you enable that token. Leaderboards help you spot which invites actually convert.",
+        "summary": "See which invite links bring new members, and who invited whom.",
+        "body": "NorBot records invite use so you can see inviters and optionally mention them in welcome messages. Leaderboards help you spot which invites actually convert.",
         "cap1": "Join attribution",
         "cap2": "Invite leaderboard",
-        "cap3": "Welcome {inviter} token"
+        "cap3": "Welcome inviter mention"
       },
       "welcome": {
-        "title": "Welcome and Leave",
-        "summary": "Channel join and leave messages for the selected guild.",
+        "title": "Welcome & Leave",
+        "summary": "Channel join and leave messages for the selected server.",
         "body": "Send a welcome when someone joins and a leave note when they go. Messages post in a channel you choose. Join DMs are not part of this product.",
         "cap1": "Join channel messages",
         "cap2": "Leave channel messages",
-        "cap3": "Optional invite tokens"
+        "cap3": "Optional invite mentions"
       },
       "autoresponder": {
         "title": "Auto-Responses",
@@ -1035,9 +1036,9 @@
       "autorole": {
         "title": "Auto Role",
         "summary": "Grant one role automatically when a member joins.",
-        "body": "Pick a single join role in the Command Center. NorBot applies it on join when Auto Role is enabled for that guild.",
+        "body": "Pick a single join role in the Command Center. NorBot applies it on join when Auto Role is enabled for that server.",
         "cap1": "One join role",
-        "cap2": "Per-guild enable switch",
+        "cap2": "Per-server enable switch",
         "cap3": "No extra bot"
       },
       "roleMenus": {
@@ -1051,15 +1052,15 @@
       "rss": {
         "title": "RSS Feeds",
         "summary": "RSS 2.0 and Atom items posted as Discord embeds.",
-        "body": "Add feed URLs, a destination channel, and an optional mention role. A dedicated worker polls on a minimum interval. Enabling a feed does not dump the historical backlog. Cap is 15 feeds per guild.",
+        "body": "Add feed URLs, a destination channel, and an optional mention role. NorBot checks feeds on a schedule. Enabling a feed does not dump the historical backlog. Cap is 15 feeds per server.",
         "cap1": "RSS 2.0 and Atom",
-        "cap2": "Worker polling",
-        "cap3": "15 feeds per guild"
+        "cap2": "Scheduled feed checks",
+        "cap3": "15 feeds per server"
       },
       "linkEmbeds": {
         "title": "Link Embeds",
         "summary": "Rewrites social URLs through fixed third-party embed hosts.",
-        "body": "When enabled, NorBot replies with rewritten links for X, Instagram, Reddit, Pixiv, YouTube Shorts, and TikTok video or photo URLs. Targets are operator-allowlisted fixer domains such as tnktok.com — NorBot does not operate those hosts.",
+        "body": "When enabled, NorBot replies with rewritten links for X, Instagram, Reddit, Pixiv, YouTube Shorts, and TikTok video or photo URLs. Targets are allowlisted fixer domains such as tnktok.com — NorBot does not operate those hosts.",
         "cap1": "Allowlisted fixer hosts",
         "cap2": "Optional embed suppress",
         "cap3": "Per-platform toggles"
@@ -1074,7 +1075,7 @@
       },
       "raid": {
         "title": "Raid Protection",
-        "summary": "Join-rate and young-account defenses you can enable per guild.",
+        "summary": "Join-rate and young-account defenses you can enable per server.",
         "body": "Watch for join bursts and young accounts. Actions can pause invites, force verification, or kick young accounts according to the settings you save.",
         "cap1": "Join-rate watch",
         "cap2": "Young-account rules",
@@ -1086,28 +1087,28 @@
         "body": "Mark channels as traps. If a member posts there, NorBot applies the punishment you configured. Use it as a quiet anti-bot layer beside Auto-Moderation.",
         "cap1": "Trap channel list",
         "cap2": "Configurable punishment",
-        "cap3": "Per-guild enable"
+        "cap3": "Per-server enable"
       },
       "campaigns": {
         "title": "Mass Messaging",
         "summary": "Channel broadcasts and member DMs with delivery tracking.",
-        "body": "Build an audience, compose a message, validate, then launch. A campaign worker sends channel posts and member DMs while the dashboard shows queue progress and history. Members can unsubscribe from DMs.",
+        "body": "Build an audience, compose a message, then launch. NorBot sends channel posts and member DMs while you watch delivery and history in the Command Center. Members can unsubscribe from DMs.",
         "cap1": "Channel campaigns",
         "cap2": "Member DM campaigns",
         "cap3": "Delivery history"
       },
       "embeds": {
         "title": "Embed Library",
-        "summary": "Compose Discord embeds and deploy them through the bot.",
-        "body": "Author templates in the Command Center, then publish via the bot’s REST deploy path. Deleting a deployment can sync cleanup. This is not a generic HTML site builder.",
+        "summary": "Compose Discord embeds and publish them through the bot.",
+        "body": "Author templates in the Command Center, then publish them with the bot. Removing a published embed can clean up the Discord message. This is not a generic HTML site builder.",
         "cap1": "Visual embed composer",
-        "cap2": "Bot deploy",
-        "cap3": "Deployment sync"
+        "cap2": "Publish with the bot",
+        "cap3": "Cleanup on remove"
       },
       "notifications": {
         "title": "Content Notifications",
         "summary": "Channel alerts for YouTube, Twitch, and Kick creators.",
-        "body": "Paste a public creator URL. NorBot’s worker announces new videos or live streams into a Discord channel you choose. YouTube, Twitch, and Kick are implemented. Guild admins do not paste platform API keys.",
+        "body": "Paste a public creator URL. NorBot posts when the creator goes live or uploads into a Discord channel you choose. YouTube, Twitch, and Kick are implemented. Server admins do not paste platform API keys.",
         "cap1": "YouTube alerts",
         "cap2": "Twitch live alerts",
         "cap3": "Kick channel links"
@@ -1118,7 +1119,7 @@
         "body": "Turn logging on, pick categories, and send those events to channels you control. This is NorBot’s event logger, not a dump of Discord’s entire native audit log.",
         "cap1": "Category toggles",
         "cap2": "Per-category channels",
-        "cap3": "Guild-scoped config"
+        "cap3": "Settings apply to this server"
       },
       "auditLogs": {
         "title": "Audit Logs",
@@ -1130,11 +1131,11 @@
       },
       "analytics": {
         "title": "Analytics",
-        "summary": "Guild engagement charts plus campaign delivery KPIs.",
+        "summary": "Server activity charts plus campaign delivery results.",
         "body": "The dashboard shows message, join, and voice activity the bot records, alongside campaign send results. It is an operations view, not a third-party BI warehouse.",
         "cap1": "Engagement charts",
         "cap2": "Campaign delivery",
-        "cap3": "Bot health snapshot"
+        "cap3": "Bot status overview"
       }
     }
   },

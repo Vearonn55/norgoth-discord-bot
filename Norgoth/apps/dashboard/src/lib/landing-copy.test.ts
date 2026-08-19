@@ -35,6 +35,7 @@ const LANDING_KEYS = [
   "trustDurableTitle",
   "ctaTitle",
   "footerProduct",
+  "cardsDetailClose",
 ] as const;
 
 const SERVER_KEYS = [
@@ -54,6 +55,12 @@ const SERVER_KEYS = [
 
 const OVERCLAIM = /Support Teams|100%|thousands|fastest/i;
 const TIKTOK = /TikTok/i;
+const INFRA =
+  /Redis|Postgres|Gateway|worker|queue progress|snapshot|payload|endpoint|idempotent|\bguilds?\b/i;
+const ALLOWED_INFRA_PATHS = new Set([
+  "oauthNotConfiguredTitle",
+  "oauthNotConfiguredBody",
+]);
 
 function flattenStrings(
   value: unknown,
@@ -110,6 +117,11 @@ describe("dictionary keys", () => {
       if (pathKey.includes("notifications") || pathKey === "metaDescription") {
         expect(text, pathKey).not.toMatch(TIKTOK);
       }
+      if (!ALLOWED_INFRA_PATHS.has(pathKey.split(".")[0] ?? "")) {
+        expect(text, pathKey).not.toMatch(INFRA);
+      }
+      expect(text, pathKey).not.toMatch(/\/verify/);
+      expect(text, pathKey).not.toMatch(/\/community\//);
     }
   });
 });
@@ -129,6 +141,12 @@ describe("visual QA tokens", () => {
     expect(css).toContain("scroll-padding-top");
     expect(css).toContain(".norgoth-landing-feature-row");
     expect(css).toContain(".norgoth-landing-cards");
+    expect(css).toContain("repeat(auto-fill, minmax(220px, 1fr))");
+    expect(css).toContain(".norgoth-landing-mock-badge");
+    expect(css).toContain(".norgoth-landing-mock-feature");
+    expect(css).toContain(".norgoth-landing-card-title");
+    expect(css).toContain(".norgoth-landing-card-summary");
+    expect(css).toContain("overflow: hidden");
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
     expect(css).toContain(".norgoth-server-guild-action");
     expect(css).toContain("min-height: 40px");
@@ -158,13 +176,30 @@ describe("landing source contracts", () => {
       path.join(srcRoot, "components/landing/landing-feature-card.tsx"),
       "utf8",
     );
+    const grid = readFileSync(
+      path.join(srcRoot, "components/landing/landing-feature-card-grid.tsx"),
+      "utf8",
+    );
     const motion = readFileSync(
       path.join(srcRoot, "components/landing/landing-motion.tsx"),
       "utf8",
     );
+    const row = readFileSync(
+      path.join(srcRoot, "components/landing/landing-feature-row.tsx"),
+      "utf8",
+    );
+    const visual = readFileSync(
+      path.join(srcRoot, "components/landing/landing-feature-visual.tsx"),
+      "utf8",
+    );
     expect(card).toContain("aria-expanded");
-    expect(card).toContain("aria-controls");
-    expect(card).toContain("useReducedMotion");
+    expect(card).toContain('aria-controls={LANDING_FEATURE_DETAIL_ID}');
+    expect(grid).toContain("norgoth-landing-cards");
+    expect(grid).toContain("norgoth-landing-card-detail");
+    expect(grid).toContain("useReducedMotion");
+    expect(grid).toContain("LANDING_FEATURE_DETAIL_ID");
+    expect(row).not.toContain("demoSidebar");
+    expect(visual).toContain("groupLabel");
     expect(motion).toContain("useReducedMotion");
     expect(motion).toContain("LazyMotion");
     expect(motion).toContain("domAnimation");
@@ -221,6 +256,7 @@ describe("landing source contracts", () => {
       "landing-footer.tsx",
       "landing-feature-card.tsx",
       "landing-feature-card-grid.tsx",
+      "landing-feature-visual.tsx",
       "landing-oauth-alerts.tsx",
     ];
     for (const name of names) {

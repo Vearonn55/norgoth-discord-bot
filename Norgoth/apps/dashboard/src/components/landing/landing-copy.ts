@@ -54,6 +54,7 @@ export type LandingCopy = {
   cardsLead: string;
   cardsExpand: string;
   cardsCollapse: string;
+  cardsDetailClose: string;
   whyTitle: string;
   whyLead: string;
   whyModularTitle: string;

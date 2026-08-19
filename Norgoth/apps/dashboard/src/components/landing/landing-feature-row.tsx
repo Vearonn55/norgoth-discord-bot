@@ -2,17 +2,23 @@
 
 import type { LandingCopy } from "@/components/landing/landing-copy";
 import type { LandingFeatureId } from "@/components/landing/landing-feature-catalog";
-import { landingFeatureDef } from "@/components/landing/landing-feature-catalog";
+import {
+  landingFeatureDef,
+  landingNavGroupLabel,
+} from "@/components/landing/landing-feature-catalog";
+import { LandingFeatureVisual } from "@/components/landing/landing-feature-visual";
 import { LandingMotionRoot, m, useReducedMotion } from "@/components/landing/landing-motion";
 import { CATEGORY_TOKENS } from "@/lib/design/category";
 
 export function LandingFeatureRow({
   id,
   copy,
+  sidebar,
   index,
 }: {
   id: LandingFeatureId;
   copy: LandingCopy;
+  sidebar: Record<string, string>;
   index: number;
 }) {
   const reduce = useReducedMotion();
@@ -20,6 +26,7 @@ export function LandingFeatureRow({
   const feature = copy.features[id];
   const even = index % 2 === 1;
   const tokens = CATEGORY_TOKENS[def.category];
+  const groupLabel = landingNavGroupLabel(id, sidebar);
   const offset = reduce ? 0 : even ? 28 : -28;
 
   return (
@@ -34,10 +41,10 @@ export function LandingFeatureRow({
       >
         <div className="norgoth-landing-feature-copy">
           <p
-            className="small text-uppercase fw-bold mb-2"
+            className="small fw-bold mb-2"
             style={{ letterSpacing: "0.08em", color: tokens.color }}
           >
-            {tokens.label}
+            {groupLabel}
           </p>
           <h3 className="h4">{feature.title}</h3>
           <p className="text-body-secondary">{feature.summary}</p>
@@ -48,16 +55,8 @@ export function LandingFeatureRow({
             <li>{feature.cap3}</li>
           </ul>
         </div>
-        <div className="norgoth-landing-feature-visual" aria-hidden="true">
-          <div className="norgoth-landing-mock">
-            <div className="norgoth-landing-mock-sidebar">{copy.demoSidebar}</div>
-            <div className="norgoth-landing-mock-main">
-              <div className="norgoth-landing-mock-bar" />
-              <div className="norgoth-landing-mock-tile">{feature.cap1}</div>
-              <div className="norgoth-landing-mock-tile">{feature.cap2}</div>
-              <div className="norgoth-landing-mock-tile">{feature.cap3}</div>
-            </div>
-          </div>
+        <div className="norgoth-landing-feature-visual">
+          <LandingFeatureVisual groupLabel={groupLabel} feature={feature} />
         </div>
       </m.article>
     </LandingMotionRoot>

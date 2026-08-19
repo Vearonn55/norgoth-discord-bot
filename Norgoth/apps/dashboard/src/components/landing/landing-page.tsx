@@ -17,9 +17,11 @@ import { dashboardLoginHref } from "@/lib/dashboard-login";
 
 export function LandingPage({
   copy,
+  sidebar,
   lang,
 }: {
   copy: LandingCopy;
+  sidebar: Record<string, string>;
   lang: string;
 }) {
   const loginHref = dashboardLoginHref(lang);
@@ -47,7 +49,7 @@ export function LandingPage({
           inviteHref={inviteHref}
         />
         <LandingValue copy={copy} />
-        <LandingFeatureShowcase copy={copy} />
+        <LandingFeatureShowcase copy={copy} sidebar={sidebar} />
         <LandingFeatureCardGrid copy={copy} />
         <LandingWhy copy={copy} />
         <LandingHowItWorks copy={copy} inviteHref={inviteHref} />
