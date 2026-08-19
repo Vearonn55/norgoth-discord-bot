@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { cilNotes } from "@coreui/icons";
 import { getSidebarGroups } from "@/components/navigation/sidebar";
 import { getSearchEntries } from "@/lib/nav/search-entries";
 import en from "@/dictionaries/en.json";
@@ -10,12 +11,23 @@ function itemByHref(lang: string, href: string) {
     .find((item) => item.href === href);
 }
 
+const RSS_HREF = "/messages/rss-feeds";
+
 const AUTOMATION_HREFS = [
-  "/automation/auto-role",
   "/automation/welcome-goodbye-invite",
   "/automation/auto-responses",
+  "/automation/auto-role",
   "/automation/role-menus",
+  RSS_HREF,
   "/automation/rich-link-embeds",
+];
+
+const MESSAGES_HREFS = [
+  "/campaigns",
+  "/campaigns/new",
+  "/campaigns/history",
+  "/messages/embed-messages",
+  "/messages/content-notifications",
 ];
 
 const SECURITY_HREFS = [
@@ -78,7 +90,7 @@ describe("sidebar category order", () => {
     }
   });
 
-  it("keeps Automation child routes and order unchanged", () => {
+  it("keeps Automation child routes and order including RSS Feeds", () => {
     for (const lang of ["en", "tr"] as const) {
       const automation = getSidebarGroups(lang).find(
         (group) =>
@@ -86,6 +98,33 @@ describe("sidebar category order", () => {
           (lang === "tr" ? tr.sidebar.groupAutomation : en.sidebar.groupAutomation),
       );
       expect(automation?.items.map((item) => item.href)).toEqual(AUTOMATION_HREFS);
+    }
+  });
+
+  it("places RSS Feeds once under Automation with the same route and icon", () => {
+    for (const lang of ["en", "tr"] as const) {
+      const groups = getSidebarGroups(lang);
+      const automationTitle =
+        lang === "tr" ? tr.sidebar.groupAutomation : en.sidebar.groupAutomation;
+      const messagesTitle =
+        lang === "tr" ? tr.sidebar.groupMessages : en.sidebar.groupMessages;
+      const matches = groups.flatMap((group) =>
+        group.items
+          .filter((item) => item.href === RSS_HREF)
+          .map((item) => ({ group: group.title, item })),
+      );
+      expect(matches).toHaveLength(1);
+      expect(matches[0]?.group).toBe(automationTitle);
+      expect(matches[0]?.item.icon).toEqual(cilNotes);
+      expect(itemByHref(lang, RSS_HREF)?.label).toBe(
+        lang === "tr" ? tr.sidebar.rssFeeds : en.sidebar.rssFeeds,
+      );
+
+      const messages = groups.find((group) => group.title === messagesTitle);
+      expect(messages?.items.map((item) => item.href)).toEqual(MESSAGES_HREFS);
+      expect(messages?.items.some((item) => item.href === RSS_HREF)).toBe(
+        false,
+      );
     }
   });
 });

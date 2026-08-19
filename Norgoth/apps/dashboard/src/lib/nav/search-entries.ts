@@ -215,7 +215,7 @@ export function getSearchEntries(lang: string): SearchEntry[] {
       label: "Add RSS feed",
       keywords: ["atom", "rss", "feed url", "syndication"],
       href: `/${lang}/messages/rss-feeds`,
-      group: sidebar.groupMessages,
+      group: sidebar.groupAutomation,
       parentId: rssFeeds?.id,
       parentLabel: rssFeeds?.label ?? sidebar.rssFeeds,
       kind: "subfeature",
@@ -306,6 +306,9 @@ export function getSearchEntries(lang: string): SearchEntry[] {
         "youtube",
         "livestream",
       );
+    }
+    if (page.href.endsWith("/messages/rss-feeds")) {
+      page.keywords.push("rss", "atom", "syndication", "rss akışları");
     }
   }
 

@@ -125,7 +125,6 @@ const SIDEBAR_DEFS: SidebarGroupDef[] = [
   {
     titleKey: "groupAutomation",
     items: [
-      { labelKey: "autoRole", href: "/automation/auto-role", icon: cilUserFollow },
       {
         labelKey: "welcomeGoodbyeInvite",
         href: "/automation/welcome-goodbye-invite",
@@ -136,10 +135,16 @@ const SIDEBAR_DEFS: SidebarGroupDef[] = [
         href: "/automation/auto-responses",
         icon: cilList,
       },
+      { labelKey: "autoRole", href: "/automation/auto-role", icon: cilUserFollow },
       {
         labelKey: "selfAssignableRoles",
         href: "/automation/role-menus",
         icon: cilTags,
+      },
+      {
+        labelKey: "rssFeeds",
+        href: "/messages/rss-feeds",
+        icon: cilNotes,
       },
       {
         labelKey: "richLinkEmbeds",
@@ -187,11 +192,6 @@ const SIDEBAR_DEFS: SidebarGroupDef[] = [
         labelKey: "contentNotifications",
         href: "/messages/content-notifications",
         icon: cilBell,
-      },
-      {
-        labelKey: "rssFeeds",
-        href: "/messages/rss-feeds",
-        icon: cilNotes,
       },
     ],
   },
