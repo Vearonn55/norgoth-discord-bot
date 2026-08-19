@@ -1,3 +1,8 @@
+# Staging overlay. Source of truth is git — deploy syncs this to
+# /opt/norbot/deploy/. Do not edit it on the VDS.
+# Do not add env_file here: Compose appends lists onto compose.yml, which
+# would merge production.env.example (redirect URI) with test.env (empty
+# client id/secret) and crash the API. apply-release.sh exports NORBOT_ENV_FILE.
 name: norbot-test
 
 services:
@@ -7,8 +12,6 @@ services:
 
   api:
     image: ${NORBOT_API_IMAGE:?}:${NORBOT_IMAGE_TAG:?}
-    env_file:
-      - /opt/norbot/env/test.env
     environment:
       NORGOTH_ENVIRONMENT: staging
       NORGOTH_AUTH_ENFORCED: "true"
@@ -20,8 +23,6 @@ services:
   campaign-worker:
     image: ${NORBOT_API_IMAGE:?}:${NORBOT_IMAGE_TAG:?}
     command: ["python", "-m", "app.workers.campaign_worker"]
-    env_file:
-      - /opt/norbot/env/test.env
     environment:
       NORGOTH_ENVIRONMENT: staging
       NORGOTH_CAMPAIGN_PG_ENABLED: "true"
@@ -30,27 +31,19 @@ services:
   content-worker:
     image: ${NORBOT_API_IMAGE:?}:${NORBOT_IMAGE_TAG:?}
     command: ["python", "-m", "app.workers.content_notification_worker"]
-    env_file:
-      - /opt/norbot/env/test.env
     environment:
       NORGOTH_ENVIRONMENT: staging
 
   rss-worker:
     image: ${NORBOT_API_IMAGE:?}:${NORBOT_IMAGE_TAG:?}
     command: ["python", "-m", "app.workers.rss_feed_worker"]
-    env_file:
-      - /opt/norbot/env/test.env
     environment:
       NORGOTH_ENVIRONMENT: staging
 
   bot:
     image: ${NORBOT_BOT_IMAGE:?}:${NORBOT_IMAGE_TAG:?}
-    env_file:
-      - /opt/norbot/env/test.env
 
   web:
     image: ${NORBOT_WEB_IMAGE:?}:${NORBOT_IMAGE_TAG:?}
-    env_file:
-      - /opt/norbot/env/test.env
     ports:
       - "127.0.0.1:3001:3000"

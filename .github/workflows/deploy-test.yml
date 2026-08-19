@@ -47,9 +47,10 @@ jobs:
             --build-arg NEXT_PUBLIC_DASHBOARD_URL=https://test.norbot.io \
             --build-arg NORGOTH_API_INTERNAL_URL=http://api:8000 \
             -t "ghcr.io/${OWNER}/norbot-web:${TAG}" Norgoth/apps/dashboard
-          docker push "ghcr.io/${OWNER}/norbot-api:${TAG}"
-          docker push "ghcr.io/${OWNER}/norbot-bot:${TAG}"
-          docker push "ghcr.io/${OWNER}/norbot-web:${TAG}"
+          bash .github/scripts/docker-push-retry.sh \
+            "ghcr.io/${OWNER}/norbot-api:${TAG}" \
+            "ghcr.io/${OWNER}/norbot-bot:${TAG}" \
+            "ghcr.io/${OWNER}/norbot-web:${TAG}"
 
       - name: Resolve VDS SSH target
         id: vds

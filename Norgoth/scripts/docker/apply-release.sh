@@ -39,6 +39,7 @@ sync_tree() {
   rsync -a --delete "${from_deploy}/" "${OPT_ROOT}/deploy/"
   rsync -a "${from_scripts}/" "${OPT_ROOT}/scripts/"
   chmod +x "${OPT_ROOT}/scripts/"*.sh
+  chmod +x "${OPT_ROOT}/scripts/"*.py 2>/dev/null || true
 }
 
 if [[ -n "${STAGING_DIR}" ]]; then
@@ -67,10 +68,11 @@ cd "${OPT_ROOT}"
 
 SCRIPTS="${OPT_ROOT}/scripts"
 # Prefer freshly synced copies; fall back to this file's directory (dev/checkout).
-if [[ ! -x "${SCRIPTS}/ghcr-login.sh" ]]; then
+if [[ ! -x "${SCRIPTS}/ghcr-login.sh" || ! -f "${SCRIPTS}/validate_env.py" ]]; then
   SCRIPTS="${SCRIPT_DIR}"
 fi
 
+"${SCRIPTS}/validate-env.sh" "${ENV_NAME}" "${ENV_FILE}"
 "${SCRIPTS}/ghcr-login.sh"
 if [[ "${ENV_NAME}" == "production" ]]; then
   "${SCRIPTS}/backup-db.sh" production
@@ -78,7 +80,7 @@ fi
 docker compose --env-file "${ENV_FILE}" "${COMPOSE_FILES[@]}" pull
 "${SCRIPTS}/migrate.sh" "${ENV_NAME}"
 compose_ok=0
-docker compose --env-file "${ENV_FILE}" "${COMPOSE_FILES[@]}" up -d || compose_ok=1
+docker compose --env-file "${ENV_FILE}" "${COMPOSE_FILES[@]}" up -d --wait --wait-timeout 180 || compose_ok=1
 docker logout ghcr.io >/dev/null 2>&1 || true
 if [[ "${compose_ok}" -ne 0 ]]; then
   "${SCRIPTS}/dump-compose-logs.sh" "${ENV_NAME}" || true

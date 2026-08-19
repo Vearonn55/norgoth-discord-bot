@@ -6,8 +6,9 @@
 # REDIS_PASSWORD is optional: when set, Redis AUTH is required. The VDS env
 # files predate that hardening step, so compose must not fail interpolation.
 # Deploy scripts export NORBOT_ENV_FILE so this base file does not also load
-# env/production.env.example (that template has a redirect URI with empty
-# client id/secret, which Compose merge would inject into `compose run`).
+# env/production.env.example (that template used to pre-fill a redirect URI
+# with empty client id/secret; Compose overlay env_file lists append, so the
+# example must not be merged with the real VDS env file).
 
 name: norbot
 

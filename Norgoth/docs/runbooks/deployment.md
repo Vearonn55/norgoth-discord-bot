@@ -21,7 +21,12 @@
    and verify a second login before closing it.
 3. Sync `Norgoth/deploy/` → `/opt/norbot/deploy/` and docker scripts → `/opt/norbot/scripts/`.
    Later deploys restore these from git (do not edit compose on the VDS).
-4. Create `/opt/norbot/env/production.env` and `test.env` from the examples.
+4. Create `/opt/norbot/env/production.env` and `test.env` from the examples
+   (mode 600). Staging/production **must** set `DISCORD_BOT_TOKEN` and the
+   Discord OAuth trio together (`NORGOTH_DISCORD_CLIENT_ID`,
+   `NORGOTH_DISCORD_CLIENT_SECRET`, `NORGOTH_DISCORD_REDIRECT_URI`). A
+   leftover redirect URI with empty client values crash-loops the API;
+   `apply-release.sh` now fails that in preflight instead of compose up.
 5. Install Nginx configs from `deploy/nginx/` and run `scripts/vds/install-certbot.sh`.
 6. Run `scripts/vds/install-ci-apply.sh` so GitHub Actions can deploy over
    HTTPS when inbound SSH is filtered. Store the printed secret as
@@ -63,7 +68,8 @@ Confirm `DISCORD_BOT_TOKEN` in `/opt/norbot/env/production.env` matches the
 Developer Portal bot for the live Application ID. Look for `Bot ready` in logs.
 
 Keep `/opt/norbot/scripts/` in sync with `Norgoth/scripts/docker/` (including
-`smoke-check.sh`) when changing deploy scripts — Actions call the VDS copies.
+`smoke-check.sh` and `validate-env.sh`) when changing deploy scripts — Actions
+call the VDS copies.
 
 ## SSH timeout from GitHub Actions
 

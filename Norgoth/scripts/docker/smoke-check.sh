@@ -23,6 +23,16 @@ case "${ENV_NAME}" in
     ;;
 esac
 
+url_host() {
+  python3 -c 'from urllib.parse import urlparse; import sys; print(urlparse(sys.argv[1]).hostname or "")' "$1"
+}
+
+host_resolves() {
+  local host="$1"
+  [[ -n "${host}" ]] || return 1
+  getent ahostsv4 "${host}" >/dev/null 2>&1 || getent hosts "${host}" >/dev/null 2>&1
+}
+
 check() {
   local name="$1"
   local url="$2"
@@ -47,6 +57,25 @@ check() {
 
   echo "FAIL: ${name} did not become ready after ${attempts} attempts."
   return 1
+}
+
+check_public_or_local() {
+  local public_name="$1"
+  local public_url="$2"
+  local local_name="$3"
+  local local_url="$4"
+  local host
+
+  host="$(url_host "${public_url}")"
+  if host_resolves "${host}"; then
+    if check "${public_name}" "${public_url}"; then
+      return 0
+    fi
+    echo "Public ${public_name} resolved but was not healthy; trying loopback."
+  else
+    echo "Skipping public ${public_name} (${public_url}): ${host} did not resolve on this machine."
+  fi
+  check "${local_name}" "${local_url}"
 }
 
 # HTTP 200 is not enough for these endpoints — require a JSON boolean flag.
@@ -84,14 +113,10 @@ check_json_true() {
   return 1
 }
 
-# Prefer public URLs; fall back to loopback during early bring-up.
-if ! check "web" "${WEB_URL}/api/health"; then
-  check "web-local" "${LOCAL_WEB}/api/health"
-fi
-
-if ! check "api" "${API_URL}/api/v1/health"; then
-  check "api-local" "${LOCAL_API}/api/v1/health"
-fi
+# Prefer public URLs when DNS works; otherwise loopback. Unresolved public
+# names are not a service failure (the VDS often has no public zone locally).
+check_public_or_local "web" "${WEB_URL}/api/health" "web-local" "${LOCAL_WEB}/api/health"
+check_public_or_local "api" "${API_URL}/api/v1/health" "api-local" "${LOCAL_API}/api/v1/health"
 
 # Bot must be gateway-connected (Redis heartbeat). Fail deploy otherwise.
 check_json_true "bot connected" "${LOCAL_API}/bot/health" "connected"
