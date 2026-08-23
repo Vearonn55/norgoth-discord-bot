@@ -19,6 +19,7 @@ import {
 import { discordRoleDotColor } from "@/lib/discord/role-color";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table";
 import { Icon } from "@/components/ui/icon";
 import { MetricWidget } from "@/components/ui/metric-widget";
