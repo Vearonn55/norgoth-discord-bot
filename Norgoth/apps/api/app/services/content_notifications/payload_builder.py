@@ -6,6 +6,7 @@ import logging
 from typing import Any
 from urllib.parse import urlencode, urlparse, urlunparse
 
+from app.integrations.content_platforms.thumbnail import is_trusted_preview_host
 from app.integrations.content_platforms.types import (
     NormalizedContentEvent,
     PlatformType,
@@ -84,6 +85,13 @@ def _resolve_image_url(
                 event.platform,
                 event.event_type,
             )
+        return None
+    if not is_trusted_preview_host(event.platform, cleaned):
+        logger.info(
+            "cn_image_omitted platform=%s event_type=%s reason=untrusted_host",
+            event.platform,
+            event.event_type,
+        )
         return None
     if event.platform == PlatformType.TWITCH:
         return cache_bust_twitch_thumbnail(cleaned, event.external_content_id)

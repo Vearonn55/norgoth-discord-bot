@@ -188,11 +188,32 @@ def test_new_default_embed_json_uses_thumbnail_tag() -> None:
     assert payload["embeds"][0]["image"]["url"] == "https://kick.com/thumbs/live.jpg"
 
 
-def test_usable_image_url_rejects_empty_and_non_http() -> None:
-    assert usable_image_url("") is None
-    assert usable_image_url("   ") is None
-    assert usable_image_url("javascript:void(0)") is None
-    assert usable_image_url("https://example.com/a.png") == "https://example.com/a.png"
+def test_untrusted_preview_host_omits_image() -> None:
+    payload = build_discord_payload(
+        content_template="{account}",
+        embed_template=STOCK_TEMPLATE,
+        event=_event(
+            platform=PlatformType.KICK,
+            thumbnail_url="https://evil.example.com/fake.jpg",
+        ),
+    )
+    embed = payload["embeds"][0]
+    assert "image" not in embed
+    assert embed["author"]["icon_url"] == "https://example.com/a.png"
+
+
+def test_avatar_and_preview_separation() -> None:
+    payload = build_discord_payload(
+        content_template="{account}",
+        embed_template=STOCK_TEMPLATE,
+        event=_event(
+            creator_avatar="https://cdn.example.com/avatar.png",
+            thumbnail_url="https://static-cdn.jtvnw.net/previews-ttv/live.jpg",
+        ),
+    )
+    embed = payload["embeds"][0]
+    assert embed["author"]["icon_url"] == "https://cdn.example.com/avatar.png"
+    assert embed["image"]["url"].startswith("https://static-cdn.jtvnw.net/")
 
 
 def test_twitch_cache_bust_only_on_static_cdn() -> None:

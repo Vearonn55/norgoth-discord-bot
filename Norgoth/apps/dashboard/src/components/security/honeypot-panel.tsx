@@ -16,7 +16,7 @@ import {
   RolePickerToolbar,
 } from "@/components/ui/refresh-channels-button";
 import { RoleSelect } from "@/components/ui/role-select";
-import { MemberSelect } from "@/components/ui/member-select";
+import { ExemptMembersPicker } from "@/components/ui/exempt-members-picker";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { NumberInput } from "@/components/ui/number-input";
@@ -236,7 +236,7 @@ export function HoneypotPanel() {
       <MutedSection enabled={draft.enabled} className="d-flex flex-column gap-4">
         {/* Feature mini-cards */}
         <div className="row row-cols-1 row-cols-md-2 g-3">
-          <div className="col">
+          <div className="col h-100">
             <MiniFeatureCard
               icon={cilSettings}
               name={d.configTitle}
@@ -249,10 +249,11 @@ export function HoneypotPanel() {
               })}
               category="security"
               status="configured"
+              equalizeFooter
               onClick={() => setActiveModal("config")}
             />
           </div>
-          <div className="col">
+          <div className="col h-100">
             <MiniFeatureCard
               icon={cilBan}
               name={d.punishmentTitle}
@@ -261,10 +262,11 @@ export function HoneypotPanel() {
               })}
               category="security"
               status="configured"
+              equalizeFooter
               onClick={() => setActiveModal("punishment")}
             />
           </div>
-          <div className="col">
+          <div className="col h-100">
             <MiniFeatureCard
               icon={cilShieldAlt}
               name={d.exemptionsTitle}
@@ -572,7 +574,7 @@ export function HoneypotPanel() {
           </div>
           <div>
             <CFormLabel>{d.exemptMembers}</CFormLabel>
-            <MemberSelect
+            <ExemptMembersPicker
               guildId={guildId}
               values={draft.exempt_member_ids}
               onChange={(ids) => patch({ exempt_member_ids: ids })}

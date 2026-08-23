@@ -51,6 +51,11 @@ type MiniFeatureCardProps = {
    * master switch is on so disabled services read as intentionally off.
    */
   disabledAccent?: string;
+  /**
+   * When true on cards without a toggle, reserves footer space so cards align
+   * with toggle cards in the same grid row.
+   */
+  equalizeFooter?: boolean;
 };
 
 /**
@@ -73,6 +78,7 @@ export function MiniFeatureCard({
   toggleDisabled = false,
   enabledAccent,
   disabledAccent,
+  equalizeFooter = false,
 }: MiniFeatureCardProps) {
   const dict = useLocaleDict();
   const statusLabels: Record<MiniFeatureStatus, string> = {
@@ -137,6 +143,33 @@ export function MiniFeatureCard({
   );
 
   if (!hasToggle) {
+    const footerSpacer =
+      equalizeFooter ? (
+        <span
+          className="norgoth-mini-card-toggle norgoth-mini-card-footer-spacer"
+          aria-hidden
+        >
+          <span className="small flex-shrink-0">&nbsp;</span>
+          <span className="norgoth-mini-card-footer-spacer-switch" />
+        </span>
+      ) : null;
+
+    if (equalizeFooter) {
+      return (
+        <button
+          type="button"
+          onClick={onClick}
+          className="norgoth-mini-card text-start w-100 h-100 d-flex flex-column gap-3 p-3"
+          style={accentStyle}
+        >
+          <span className="d-flex align-items-start gap-3 flex-grow-1 w-100">
+            {body}
+          </span>
+          {footerSpacer}
+        </button>
+      );
+    }
+
     return (
       <button
         type="button"

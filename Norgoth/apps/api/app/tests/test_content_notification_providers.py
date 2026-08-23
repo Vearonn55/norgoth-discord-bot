@@ -523,6 +523,8 @@ async def test_kick_fetch_latest_from_channel_stream(
     assert events[0].title == "Friday Night"
     assert events[0].external_content_id == "42:2026-08-13T10:00:00Z"
     assert events[0].is_live is True
+    assert events[0].thumbnail_url == "https://example.com/thumb.jpg"
+    assert events[0].creator_avatar is None
 
 
 @pytest.mark.anyio
@@ -642,6 +644,63 @@ async def test_kick_enrich_live_event_uses_fetch_latest_thumbnail() -> None:
     assert event.title == "Friday Night"
     assert event.game == "Just Chatting"
     adapter.fetch_latest.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_kick_enrich_live_event_survives_failed_fetch_latest() -> None:
+    from app.integrations.content_platforms.kick.adapter import KickAdapter
+
+    adapter = KickAdapter(http_client=AsyncMock())
+    adapter.fetch_latest = AsyncMock(side_effect=RuntimeError("provider down"))
+    raw = PlatformRawEvent(
+        platform=PlatformType.KICK,
+        event_type=ContentEventType.STREAM_STARTED,
+        external_content_id="42:started",
+        platform_creator_id="42",
+        raw={
+            "broadcaster": {
+                "user_id": 42,
+                "username": "demo",
+                "channel_slug": "demo",
+                "profile_picture": "https://example.com/a.png",
+            },
+            "is_live": True,
+            "title": "Going live",
+            "thumbnail": "https://images.kick.com/live.jpg",
+            "started_at": "2026-08-13T10:00:00Z",
+        },
+    )
+    event = await adapter.enrich_event(raw)
+    assert event.is_live is True
+    assert event.thumbnail_url == "https://images.kick.com/live.jpg"
+
+
+@pytest.mark.anyio
+async def test_kick_enrich_live_event_uses_webhook_thumbnail_without_fetch() -> None:
+    from app.integrations.content_platforms.kick.adapter import KickAdapter
+
+    adapter = KickAdapter(http_client=AsyncMock())
+    adapter.fetch_latest = AsyncMock(return_value=[])
+    raw = PlatformRawEvent(
+        platform=PlatformType.KICK,
+        event_type=ContentEventType.STREAM_STARTED,
+        external_content_id="42:started",
+        platform_creator_id="42",
+        raw={
+            "broadcaster": {
+                "user_id": 42,
+                "username": "demo",
+                "channel_slug": "demo",
+                "profile_picture": "https://example.com/a.png",
+            },
+            "is_live": True,
+            "title": "Going live",
+            "thumbnail": "https://images.kick.com/live.jpg",
+            "started_at": "2026-08-13T10:00:00Z",
+        },
+    )
+    event = await adapter.enrich_event(raw)
+    assert event.thumbnail_url == "https://images.kick.com/live.jpg"
 
 
 def test_manual_test_event_synthesizes_when_offline() -> None:

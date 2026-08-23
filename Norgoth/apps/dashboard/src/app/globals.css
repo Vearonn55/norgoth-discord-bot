@@ -1297,6 +1297,28 @@ body {
   align-self: flex-end;
 }
 
+.norgoth-mini-card-footer-spacer {
+  visibility: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+
+.norgoth-mini-card-footer-spacer-switch {
+  display: inline-block;
+  width: 2.75rem;
+  height: 1.5rem;
+  flex-shrink: 0;
+}
+
+.norgoth-member-picker-list .norgoth-member-row {
+  min-height: 44px;
+}
+
+.norgoth-member-picker-list .norgoth-member-row-selected {
+  border-color: rgba(110, 168, 254, 0.55);
+  background: rgba(110, 168, 254, 0.12);
+}
+
 .norgoth-link-embeds-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));

@@ -5,10 +5,15 @@ from __future__ import annotations
 import json
 from typing import Any, Literal, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
-from app.api.v1.dependencies_auth import guild_manager_dependency
+from app.api.v1.dependencies import DatabaseSession
+from app.api.v1.dependencies_auth import (
+    OperatorSessionDependency,
+    guild_manager_dependency,
+)
+from app.services.audit import record_audit
 from app.services.campaign_store import get_redis, now_iso
 from app.services.feature_config_store import (
     first_trap_channel_id,
@@ -42,6 +47,64 @@ def honeypot_key(guild_id: str) -> str:
 
 def honeypot_triggers_key(guild_id: str) -> str:
     return f"norgoth:guild:{guild_id}:honeypot:triggers"
+
+
+def guild_members_key(guild_id: str) -> str:
+    return f"norgoth:guild:{guild_id}:members"
+
+
+def parse_member_snapshot(raw: str | None) -> set[str] | None:
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    members = parsed.get("members")
+    if not isinstance(members, list):
+        return None
+    ids: set[str] = set()
+    for member in members:
+        if isinstance(member, dict):
+            member_id = member.get("id")
+            if isinstance(member_id, str) and member_id.isdigit():
+                ids.add(member_id)
+    return ids
+
+
+def validate_exempt_member_ids(
+    existing: list[str],
+    requested: list[str],
+    snapshot_ids: set[str] | None,
+) -> tuple[list[str], list[str]]:
+    """Keep stale stored IDs; reject newly added IDs missing from snapshot."""
+
+    if snapshot_ids is None:
+        return requested, []
+    existing_set = set(existing)
+    validated: list[str] = []
+    rejected: list[str] = []
+    for member_id in requested:
+        if member_id in snapshot_ids or member_id in existing_set:
+            validated.append(member_id)
+        else:
+            rejected.append(member_id)
+    return validated, rejected
+
+
+def exemption_audit_changes(
+    existing: dict[str, Any],
+    payload: dict[str, Any],
+) -> dict[str, Any] | None:
+    changes: dict[str, Any] = {}
+    for field in ("exempt_member_ids", "exempt_role_ids"):
+        before = list(existing.get(field) or [])
+        after = list(payload.get(field) or [])
+        if before != after:
+            changes[field] = {"before": before, "after": after}
+    return changes or None
 
 
 class HoneypotConfig(BaseModel):
@@ -133,6 +196,8 @@ async def get_honeypot_config(guild_id: str) -> dict[str, Any]:
 async def update_honeypot_config(
     guild_id: str,
     config: HoneypotConfig,
+    session: DatabaseSession,
+    operator: OperatorSessionDependency,
 ) -> dict[str, Any]:
     redis_client = await get_redis()
 
@@ -154,12 +219,45 @@ async def update_honeypot_config(
             for member_id in payload["exempt_member_ids"]
             if isinstance(member_id, str) and member_id.isdigit()
         ]
+        snapshot_ids = parse_member_snapshot(
+            await redis_client.get(guild_members_key(guild_id))
+        )
+        validated_members, rejected_members = validate_exempt_member_ids(
+            list(existing.get("exempt_member_ids") or []),
+            payload["exempt_member_ids"],
+            snapshot_ids,
+        )
+        if rejected_members:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "unknown_exempt_members",
+                    "message": (
+                        "One or more exempt member IDs are not in the guild "
+                        "member snapshot."
+                    ),
+                    "rejected_member_ids": rejected_members,
+                },
+            )
+        payload["exempt_member_ids"] = validated_members
         # Preserve bot-managed bookkeeping across dashboard saves.
         payload = merge_honeypot_warning_fields(existing, payload)
         payload.pop("create_channel_request", None)
         payload["force_warning_repost"] = resolve_force_warning_repost(
             existing, payload
         )
+
+        audit_changes = exemption_audit_changes(existing, payload)
+        if audit_changes is not None:
+            audit_changes["actor_discord_id"] = operator.user_id
+            await record_audit(
+                session,
+                entity_type="honeypot_exemptions",
+                action="update",
+                guild_id=guild_id,
+                changes=audit_changes,
+            )
+            await session.commit()
 
         payload["updated_at"] = now_iso()
         await save_config(guild_id, "honeypot", payload, enabled=bool(payload.get("enabled", False)))

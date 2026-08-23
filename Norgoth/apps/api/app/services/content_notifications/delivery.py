@@ -12,6 +12,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.integrations.content_platforms.registry import get_adapter
+from app.integrations.content_platforms.types import PlatformType, ResolvedCreator
 from app.integrations.discord.bot_rest import DiscordBotClient
 from app.models.content_notifications import (
     ContentCreatorSource,
@@ -31,12 +33,61 @@ from app.services.content_notifications.webhook_manager import (
     ensure_managed_webhook,
     execute_managed_webhook,
 )
-from app.integrations.content_platforms.types import PlatformType
 
 logger = logging.getLogger("norgoth.content.delivery")
 
 MAX_ATTEMPTS = 5
 BASE_BACKOFF_SECONDS = 10
+
+
+async def _refresh_live_preview(
+    event,
+    *,
+    http_client: httpx.AsyncClient,
+    source: ContentCreatorSource | None,
+) -> None:
+    """Best-effort in-memory preview refresh for live events missing thumbnails."""
+
+    if not event.is_live or event.thumbnail_url or source is None:
+        return
+    try:
+        platform = PlatformType(source.platform)
+    except ValueError:
+        return
+    try:
+        adapter = get_adapter(platform)
+    except Exception:
+        return
+    if not adapter.is_available():
+        return
+    try:
+        latest = await adapter.fetch_latest(
+            ResolvedCreator(
+                platform=platform,
+                platform_creator_id=source.platform_creator_id,
+                username=source.username or source.display_name,
+                display_name=source.display_name,
+                profile_url=source.profile_url or "",
+                avatar_url=source.avatar_url,
+            ),
+            limit=1,
+        )
+    except Exception:
+        logger.info(
+            "cn_delivery_preview_refresh_failed platform=%s creator_id=%s",
+            source.platform,
+            source.platform_creator_id,
+            exc_info=True,
+        )
+        return
+    if not latest or not latest[0].thumbnail_url:
+        logger.info(
+            "cn_image_omitted platform=%s event_type=%s reason=missing_thumbnail",
+            event.platform,
+            event.event_type,
+        )
+        return
+    event.thumbnail_url = latest[0].thumbnail_url
 
 
 def sender_webhook_identity(
@@ -97,6 +148,8 @@ async def process_job(
             event.creator_name = source.display_name
         if not event.creator_avatar:
             event.creator_avatar = source.avatar_url
+
+    await _refresh_live_preview(event, http_client=http_client, source=source)
 
     template = subscription.template
     content_template = (

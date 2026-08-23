@@ -15,6 +15,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
 from app.integrations.content_platforms.base import ContentPlatformAdapter
+from app.integrations.content_platforms.thumbnail import extract_stream_thumbnail
 from app.integrations.content_platforms.types import (
     ContentEventType,
     NormalizedContentEvent,
@@ -392,11 +393,11 @@ class KickAdapter(ContentPlatformAdapter):
             external_content_id=content_id,
             creator_platform_id=creator.platform_creator_id,
             creator_name=creator.display_name,
-            creator_avatar=creator.avatar_url or stream.get("thumbnail"),
+            creator_avatar=creator.avatar_url,
             title=channel.get("stream_title") or channel.get("title") or "Live on Kick",
             content_url=stream.get("url") or profile,
             playable_url=stream.get("url") or profile,
-            thumbnail_url=stream.get("thumbnail"),
+            thumbnail_url=extract_stream_thumbnail({"stream": stream, **stream}),
             is_live=True,
             game=category.get("name"),
             viewer_count=stream.get("viewer_count"),
@@ -494,7 +495,7 @@ class KickAdapter(ContentPlatformAdapter):
             title=title,
             content_url=profile,
             playable_url=profile,
-            thumbnail_url=stream.get("thumbnail"),
+            thumbnail_url=extract_stream_thumbnail(stream),
             is_live=True,
             game=category.get("name") or stream.get("category_name"),
             viewer_count=stream.get("viewer_count"),
@@ -515,6 +516,7 @@ class KickAdapter(ContentPlatformAdapter):
         content_id = (
             f"{creator_id}:{raw.get('started_at') or event.external_content_id}"
         )
+        webhook_thumbnail = extract_stream_thumbnail(raw)
         event_out = NormalizedContentEvent(
             platform=PlatformType.KICK,
             event_type=(
@@ -529,6 +531,7 @@ class KickAdapter(ContentPlatformAdapter):
             title=raw.get("title"),
             content_url=profile,
             playable_url=profile,
+            thumbnail_url=webhook_thumbnail,
             is_live=is_live,
             published_at=datetime.now(timezone.utc),
             raw_metadata=raw,
@@ -567,6 +570,11 @@ class KickAdapter(ContentPlatformAdapter):
                 if live.content_url:
                     event_out.content_url = live.content_url
                     event_out.playable_url = live.playable_url or live.content_url
+            elif not event_out.thumbnail_url:
+                logger.info(
+                    "cn_kick_thumbnail_missing creator_id=%s reason=enrich_empty",
+                    creator_id,
+                )
         return event_out
 
     async def get_public_key(self) -> str:
