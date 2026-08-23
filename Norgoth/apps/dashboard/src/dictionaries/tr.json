@@ -1432,6 +1432,8 @@
     "membersNoResults": "Aramanızla eşleşen üye yok.",
     "membersPageSummary": "{start}–{end} / {total} üye · {selected} seçili",
     "membersPaginationAria": "Muaf üye listesi sayfalama",
+    "previousPage": "Önceki",
+    "nextPage": "Sonraki",
     "triggerHistory": "Tetikleme Geçmişi",
     "emptyTriggers": "Henüz bal küpü tetiklemesi yok.",
     "colWhen": "Zaman",

@@ -7,10 +7,6 @@ import { ExemptMembersPicker } from "@/components/ui/exempt-members-picker";
 vi.mock("@/lib/locale-dict", () => ({
   useLocaleDict: () => ({
     common: { retry: "Retry" },
-    serverSelector: {
-      previousPage: "Previous",
-      nextPage: "Next",
-    },
     honeypotPage: {
       currentlyExemptTitle: "Currently Exempt ({count})",
       currentlyExemptEmpty: "No exempt members configured.",
@@ -32,6 +28,8 @@ vi.mock("@/lib/locale-dict", () => ({
       membersNoResults: "No members match your search.",
       membersPageSummary: "{start}–{end} of {total} members · {selected} selected",
       membersPaginationAria: "Exempt members list pagination",
+      previousPage: "Previous",
+      nextPage: "Next",
     },
   }),
   formatDict: (template: string, values: Record<string, string | number>) =>

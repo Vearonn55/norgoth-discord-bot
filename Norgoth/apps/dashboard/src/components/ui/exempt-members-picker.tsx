@@ -378,7 +378,7 @@ export function ExemptMembersPicker({
                 disabled={safePage <= 1 || loading}
                 onClick={() => setPage(safePage - 1)}
               >
-                {dict.serverSelector.previousPage}
+                {d.previousPage}
               </CButton>
               <CPagination
                 className="mb-0 norgoth-pagination"
@@ -395,7 +395,7 @@ export function ExemptMembersPicker({
                 disabled={safePage >= totalPages || loading}
                 onClick={() => setPage(safePage + 1)}
               >
-                {dict.serverSelector.nextPage}
+                {d.nextPage}
               </CButton>
             </div>
           </div>

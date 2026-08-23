@@ -1432,6 +1432,8 @@
     "membersNoResults": "No members match your search.",
     "membersPageSummary": "{start}–{end} of {total} members · {selected} selected",
     "membersPaginationAria": "Exempt members list pagination",
+    "previousPage": "Previous",
+    "nextPage": "Next",
     "triggerHistory": "Trigger History",
     "emptyTriggers": "No honeypot triggers yet.",
     "colWhen": "When",
