@@ -2,6 +2,7 @@
 
 import { CFormSelect } from "@coreui/react";
 import type { GuildRole } from "@/stores/guild-store";
+import { discordRoleTextColor } from "@/lib/discord/role-color";
 import { useLocaleDict } from "@/lib/locale-dict";
 
 type RoleSelectProps = {
@@ -55,7 +56,11 @@ export function RoleSelect({
           </option>
         ))}
         {roles.map((role) => (
-          <option key={role.id} value={role.id} style={{ color: role.color || undefined }}>
+          <option
+            key={role.id}
+            value={role.id}
+            style={{ color: discordRoleTextColor(role.color) }}
+          >
             {role.name}
           </option>
         ))}

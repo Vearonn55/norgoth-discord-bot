@@ -63,7 +63,7 @@ def serialize_guild_resources(guild: discord.Guild) -> dict[str, Any]:
             "name": role.name,
             "position": role.position,
             "managed": role.managed,
-            "color": f"#{role.color.value:06x}",
+            "color": (f"#{role.color.value:06x}" if role.color.value > 0 else None),
         }
         for role in guild.roles
         if not role.is_default()

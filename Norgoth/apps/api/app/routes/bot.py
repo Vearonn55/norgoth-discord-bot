@@ -20,6 +20,13 @@ from app.integrations.discord.bot_rest import (
     DiscordBotAPIError,
 )
 from app.services.campaign_store import get_redis
+from app.services.guild_member_snapshot import (
+    filter_members,
+    merge_include_members,
+    paginate_members,
+    parse_include_member_ids,
+    sort_members_deterministic,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +127,7 @@ def _serialize_live_resources(
                 "name": str(role.get("name") or role_id),
                 "position": position,
                 "managed": bool(role.get("managed")),
-                "color": f"#{color_int:06x}",
+                "color": (f"#{color_int:06x}" if color_int > 0 else None),
             }
         )
 
@@ -363,7 +370,15 @@ async def get_guild_discord_resources(
     "/guilds/{guild_id}/members",
     dependencies=[Depends(guild_manager_dependency())],
 )
-async def get_guild_members(guild_id: str) -> dict[str, Any]:
+async def get_guild_members(
+    guild_id: str,
+    offset: int | None = Query(default=None, ge=0),
+    limit: int | None = Query(default=None, ge=1, le=100),
+    q: str | None = Query(default=None, max_length=100),
+    exclude_bots: bool = Query(default=True),
+    include_member_ids: str | None = Query(default=None, max_length=2500),
+    exempt_only: bool = Query(default=False),
+) -> dict[str, Any]:
     """Member snapshot published by the bot (used for DM campaign targeting)."""
 
     redis_client = await get_redis()
@@ -382,4 +397,39 @@ async def get_guild_members(guild_id: str) -> dict[str, Any]:
             ),
         )
 
-    return snapshot
+    if offset is None and limit is None:
+        return snapshot
+
+    members_raw = snapshot.get("members")
+    if not isinstance(members_raw, list):
+        members_raw = []
+
+    members = [
+        member for member in members_raw if isinstance(member, dict)
+    ]
+    sorted_members = sort_members_deterministic(members)
+    include_ids = parse_include_member_ids(include_member_ids)
+    only_ids = set(include_ids) if exempt_only and include_ids else None
+    filtered = filter_members(
+        sorted_members,
+        q=q,
+        exclude_bots=exclude_bots,
+        only_member_ids=only_ids,
+    )
+    page_offset = offset or 0
+    page_limit = limit or 10
+    page_members, pagination = paginate_members(
+        filtered,
+        offset=page_offset,
+        limit=page_limit,
+    )
+    included_members = merge_include_members([], sorted_members, include_ids)
+
+    return {
+        "guild_id": snapshot.get("guild_id", guild_id),
+        "guild_name": snapshot.get("guild_name"),
+        "updated_at": snapshot.get("updated_at"),
+        "members": page_members,
+        "included_members": included_members,
+        "pagination": pagination,
+    }

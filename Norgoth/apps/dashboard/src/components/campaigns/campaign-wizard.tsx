@@ -9,6 +9,7 @@ import {
   CFormLabel,
   CRow,
 } from "@coreui/react";
+import { discordRoleDotColor } from "@/lib/discord/role-color";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -327,7 +328,7 @@ export function CampaignWizard({ lang, dict, editCampaign }: CampaignWizardProps
   const roles: WizardRole[] = (storeResources?.roles ?? []).map((role) => ({
     id: role.id,
     name: role.name,
-    color: role.color ?? "#99aab5",
+    color: discordRoleDotColor(role.color),
   }));
   const [members, setMembers] = useState<WizardMember[]>([]);
   const [resourcesError, setResourcesError] = useState<string | null>(null);

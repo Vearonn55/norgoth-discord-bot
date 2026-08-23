@@ -111,7 +111,7 @@ export function RoleMultiPicker({
                 variant={active ? undefined : "outline"}
                 className="justify-content-start norgoth-role-picker-item"
                 style={
-                  tint && !active
+                  !active
                     ? {
                         borderColor: tint.borderColor,
                         background: tint.background,

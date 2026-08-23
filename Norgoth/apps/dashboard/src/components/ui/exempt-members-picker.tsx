@@ -1,11 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { CFormCheck, CFormInput } from "@coreui/react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  CAlert,
+  CButton,
+  CFormCheck,
+  CFormInput,
+  CPagination,
+  CPaginationItem,
+  CSpinner,
+} from "@coreui/react";
 import { cilCheck } from "@coreui/icons";
 import { Icon } from "@/components/ui/icon";
+import { Button } from "@/components/ui/button";
 import { apiUrl } from "@/lib/api";
 import { formatDict, useLocaleDict } from "@/lib/locale-dict";
+
+const PAGE_SIZE = 10;
 
 type Member = {
   id: string;
@@ -13,6 +24,16 @@ type Member = {
   display_name?: string;
   avatar_url?: string;
   bot?: boolean;
+};
+
+type PaginationMeta = {
+  offset: number;
+  limit: number;
+  total: number;
+  total_pages: number;
+  page: number;
+  has_previous: boolean;
+  has_next: boolean;
 };
 
 type ExemptMembersPickerProps = {
@@ -41,91 +62,111 @@ export function ExemptMembersPicker({
   const dict = useLocaleDict();
   const d = dict.honeypotPage;
   const [members, setMembers] = useState<Member[]>([]);
+  const [memberCache, setMemberCache] = useState<Map<string, Member>>(
+    () => new Map()
+  );
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [exemptOnly, setExemptOnly] = useState(false);
   const [announcement, setAnnouncement] = useState("");
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState<PaginationMeta | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const selectedIds = useMemo(() => dedupeIds(values), [values]);
+  const selectedIdsKey = selectedIds.join(",");
 
   useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedQuery(query.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedQuery, exemptOnly, guildId]);
+
+  const loadMembers = useCallback(async () => {
     if (!guildId) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const response = await fetch(apiUrl(`/guilds/${guildId}/members`), {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({
+        offset: String((page - 1) * PAGE_SIZE),
+        limit: String(PAGE_SIZE),
+        exclude_bots: "true",
+      });
+      if (debouncedQuery) params.set("q", debouncedQuery);
+      if (selectedIds.length > 0) {
+        params.set("include_member_ids", selectedIds.join(","));
+      }
+      if (exemptOnly) params.set("exempt_only", "true");
+
+      const response = await fetch(
+        apiUrl(`/guilds/${guildId}/members?${params.toString()}`),
+        {
           cache: "no-store",
           credentials: "include",
-        });
-        if (!response.ok) return;
-        const data = (await response.json()) as { members?: Member[] };
-        if (!cancelled) setMembers(data.members ?? []);
-      } catch {
-        // ignore
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [guildId]);
-
-  const memberById = useMemo(() => {
-    const map = new Map<string, Member>();
-    for (const member of members) {
-      map.set(member.id, member);
-    }
-    return map;
-  }, [members]);
-
-  const humanMembers = useMemo(
-    () => members.filter((member) => !member.bot),
-    [members]
-  );
-
-  const selectableMembers = useMemo(() => {
-    const knownIds = new Set(humanMembers.map((member) => member.id));
-    const staleRows: Member[] = selectedIds
-      .filter((id) => !knownIds.has(id))
-      .map((id) => ({ id, name: id }));
-    return [...humanMembers, ...staleRows];
-  }, [humanMembers, selectedIds]);
-
-  const filteredMembers = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    let list = selectableMembers;
-    if (exemptOnly) {
-      list = list.filter((member) => selectedIds.includes(member.id));
-    }
-    if (q) {
-      list = list.filter(
-        (member) =>
-          member.name.toLowerCase().includes(q) ||
-          (member.display_name || "").toLowerCase().includes(q) ||
-          member.id.includes(q)
+        }
       );
-    }
 
-    const selectedSet = new Set(selectedIds);
-    const selectedRows = selectableMembers.filter((member) =>
-      selectedSet.has(member.id)
-    );
-    const remaining = list
-      .filter((member) => !selectedSet.has(member.id))
-      .slice(0, 100);
-    const merged = [...selectedRows, ...remaining];
-    const seen = new Set<string>();
-    return merged.filter((member) => {
-      if (seen.has(member.id)) return false;
-      seen.add(member.id);
-      return true;
-    });
-  }, [exemptOnly, query, selectableMembers, selectedIds]);
+      if (response.status === 404) {
+        setMembers([]);
+        setPagination(null);
+        setError(d.membersSnapshotMissing);
+        return;
+      }
+
+      if (!response.ok) {
+        setMembers([]);
+        setPagination(null);
+        setError(d.membersLoadFailed);
+        return;
+      }
+
+      const data = (await response.json()) as {
+        members?: Member[];
+        included_members?: Member[];
+        pagination?: PaginationMeta;
+      };
+      const pageMembers = data.members ?? [];
+      const includedMembers = data.included_members ?? [];
+      setMembers(pageMembers);
+      setPagination(data.pagination ?? null);
+      setMemberCache((prev) => {
+        const next = new Map(prev);
+        for (const member of [...pageMembers, ...includedMembers]) {
+          next.set(member.id, member);
+        }
+        return next;
+      });
+    } catch {
+      setMembers([]);
+      setPagination(null);
+      setError(d.membersLoadFailed);
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    guildId,
+    page,
+    debouncedQuery,
+    exemptOnly,
+    selectedIdsKey,
+    d.membersLoadFailed,
+    d.membersSnapshotMissing,
+  ]);
+
+  useEffect(() => {
+    void loadMembers();
+  }, [loadMembers]);
 
   function memberLabel(member: Member | undefined, fallbackId: string): string {
     return member?.display_name || member?.name || fallbackId;
   }
 
   function toggleMember(memberId: string) {
-    const member = memberById.get(memberId);
+    const member = memberCache.get(memberId);
     const label = memberLabel(member, memberId);
     if (selectedIds.includes(memberId)) {
       onChange(selectedIds.filter((id) => id !== memberId));
@@ -137,11 +178,23 @@ export function ExemptMembersPicker({
   }
 
   function removeMember(memberId: string) {
-    const member = memberById.get(memberId);
+    const member = memberCache.get(memberId);
     const label = memberLabel(member, memberId);
     onChange(selectedIds.filter((id) => id !== memberId));
     setAnnouncement(formatDict(d.exemptSelectionRemoved, { name: label }));
   }
+
+  const totalPages = pagination?.total_pages ?? 1;
+  const safePage = pagination?.page ?? page;
+  const totalCount = pagination?.total ?? 0;
+  const rangeStart =
+    totalCount === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1;
+  const rangeEnd =
+    totalCount === 0
+      ? 0
+      : Math.min(safePage * PAGE_SIZE, totalCount);
+  const emptyMessage =
+    debouncedQuery.length > 0 ? d.membersNoResults : d.membersEmpty;
 
   return (
     <div className="d-flex flex-column gap-3">
@@ -154,7 +207,7 @@ export function ExemptMembersPicker({
         ) : (
           <ul className="list-unstyled mb-0 d-flex flex-column gap-2">
             {selectedIds.map((memberId) => {
-              const member = memberById.get(memberId);
+              const member = memberCache.get(memberId);
               const resolved = Boolean(member && !member.bot);
               return (
                 <li
@@ -228,18 +281,36 @@ export function ExemptMembersPicker({
           checked={exemptOnly}
           onChange={(event) => setExemptOnly(event.target.checked)}
         />
+
+        {error ? (
+          <CAlert color="danger" className="mb-0 py-2 small">
+            <div className="d-flex align-items-center justify-content-between gap-2">
+              <span>{error}</span>
+              <Button variant="secondary" size="sm" onClick={() => void loadMembers()}>
+                {dict.common.retry}
+              </Button>
+            </div>
+          </CAlert>
+        ) : null}
+
         <div
           role="listbox"
           aria-multiselectable="true"
           aria-label={d.exemptMembers}
+          aria-busy={loading}
           className="border rounded p-2 d-flex flex-column gap-1 norgoth-member-picker-list"
         >
-          {filteredMembers.length === 0 ? (
+          {loading ? (
+            <div className="d-flex align-items-center justify-content-center gap-2 px-2 py-4">
+              <CSpinner size="sm" />
+              <span className="small text-body-secondary">{d.membersLoading}</span>
+            </div>
+          ) : members.length === 0 ? (
             <div className="small text-body-secondary px-2 py-3 text-center">
-              {d.exemptMembersEmpty}
+              {emptyMessage}
             </div>
           ) : (
-            filteredMembers.map((member) => {
+            members.map((member) => {
               const selected = selectedIds.includes(member.id);
               return (
                 <button
@@ -288,6 +359,57 @@ export function ExemptMembersPicker({
             })
           )}
         </div>
+
+        {pagination && totalCount > PAGE_SIZE ? (
+          <div className="d-flex align-items-center justify-content-between gap-2 norgoth-pagination-bar flex-wrap">
+            <span className="small text-body-secondary">
+              {formatDict(d.membersPageSummary, {
+                start: rangeStart,
+                end: rangeEnd,
+                total: totalCount,
+                selected: selectedIds.length,
+              })}
+            </span>
+            <div className="d-flex align-items-center gap-2">
+              <CButton
+                color="secondary"
+                variant="outline"
+                size="sm"
+                disabled={safePage <= 1 || loading}
+                onClick={() => setPage(safePage - 1)}
+              >
+                {dict.serverSelector.previousPage}
+              </CButton>
+              <CPagination
+                className="mb-0 norgoth-pagination"
+                aria-label={d.membersPaginationAria}
+              >
+                <CPaginationItem active>
+                  {safePage}/{totalPages}
+                </CPaginationItem>
+              </CPagination>
+              <CButton
+                color="secondary"
+                variant="outline"
+                size="sm"
+                disabled={safePage >= totalPages || loading}
+                onClick={() => setPage(safePage + 1)}
+              >
+                {dict.serverSelector.nextPage}
+              </CButton>
+            </div>
+          </div>
+        ) : pagination && totalCount > 0 ? (
+          <span className="small text-body-secondary">
+            {formatDict(d.membersPageSummary, {
+              start: rangeStart,
+              end: rangeEnd,
+              total: totalCount,
+              selected: selectedIds.length,
+            })}
+          </span>
+        ) : null}
+
         <div aria-live="polite" className="visually-hidden">
           {announcement}
         </div>

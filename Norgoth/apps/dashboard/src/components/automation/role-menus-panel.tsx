@@ -676,7 +676,7 @@ export function RoleMenusPanel() {
                               : "btn-outline-secondary",
                           ].join(" ")}
                           style={
-                            tint && !isSelected
+                            !isSelected
                               ? {
                                   borderColor: tint.borderColor,
                                   background: tint.background,

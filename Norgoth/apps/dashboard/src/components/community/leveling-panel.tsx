@@ -16,7 +16,7 @@ import {
   cilStar,
   cilTags,
 } from "@coreui/icons";
-import { Card } from "@/components/ui/card";
+import { discordRoleDotColor } from "@/lib/discord/role-color";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DataTable } from "@/components/ui/data-table";
@@ -632,7 +632,7 @@ export function LevelingPanel() {
                     cell: (row) => {
                       const name = roleNames.get(row.role_id) ?? row.role_id;
                       const color = roleColors.get(row.role_id);
-                      const hasColor = Boolean(color && color !== "#000000");
+                      const dotColor = discordRoleDotColor(color);
                       return (
                         <span className="d-inline-flex align-items-center gap-2">
                           <span
@@ -642,9 +642,7 @@ export function LevelingPanel() {
                               height: 10,
                               borderRadius: "50%",
                               display: "inline-block",
-                              backgroundColor: hasColor
-                                ? color
-                                : "var(--cui-border-color-translucent, #6b7280)",
+                              backgroundColor: dotColor,
                             }}
                           />
                           @{name}

@@ -40,6 +40,21 @@ def test_serialize_includes_text_and_announcement_not_voice() -> None:
     assert payload["channels"][0]["type"] == "text"
 
 
+def test_serialize_role_colors() -> None:
+    payload = _serialize_live_resources(
+        guild_id="1",
+        guild_payload={"name": "Guild", "emojis": []},
+        channels=[],
+        roles=[
+            {"id": "2", "name": "default", "color": 0, "position": 1, "managed": False},
+            {"id": "3", "name": "green", "color": 3066993, "position": 2, "managed": False},
+        ],
+    )
+    by_id = {role["id"]: role for role in payload["roles"]}
+    assert by_id["2"]["color"] is None
+    assert by_id["3"]["color"] == "#2ecc71"
+
+
 def test_annotate_resources_marks_fresh_vs_cache() -> None:
     body = annotate_resources({"channels": []}, source="fresh", refreshed=True)
     assert body["source"] == "fresh"

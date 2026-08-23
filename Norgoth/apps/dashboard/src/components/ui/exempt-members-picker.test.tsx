@@ -6,6 +6,11 @@ import { ExemptMembersPicker } from "@/components/ui/exempt-members-picker";
 
 vi.mock("@/lib/locale-dict", () => ({
   useLocaleDict: () => ({
+    common: { retry: "Retry" },
+    serverSelector: {
+      previousPage: "Previous",
+      nextPage: "Next",
+    },
     honeypotPage: {
       currentlyExemptTitle: "Currently Exempt ({count})",
       currentlyExemptEmpty: "No exempt members configured.",
@@ -20,6 +25,13 @@ vi.mock("@/lib/locale-dict", () => ({
       exemptMembersEmpty: "No members match your search.",
       exemptMembers: "Exempt Members",
       remove: "Remove",
+      membersLoading: "Loading members…",
+      membersLoadFailed: "Could not load guild members.",
+      membersSnapshotMissing: "No member snapshot available yet.",
+      membersEmpty: "No members in the server snapshot.",
+      membersNoResults: "No members match your search.",
+      membersPageSummary: "{start}–{end} of {total} members · {selected} selected",
+      membersPaginationAria: "Exempt members list pagination",
     },
   }),
   formatDict: (template: string, values: Record<string, string | number>) =>
@@ -40,12 +52,31 @@ describe("ExemptMembersPicker", () => {
     fetchMock.mockResolvedValue({
       ok: true,
       json: async () => ({
-        members: Array.from({ length: 150 }, (_item, index) => ({
-          id: String(1000 + index),
-          name: `member-${index}`,
-          display_name: `Member ${index}`,
-          bot: false,
-        })),
+        members: [
+          {
+            id: "1000",
+            name: "member-0",
+            display_name: "Member 0",
+            bot: false,
+          },
+        ],
+        included_members: [
+          {
+            id: "1149",
+            name: "member-149",
+            display_name: "Member 149",
+            bot: false,
+          },
+        ],
+        pagination: {
+          offset: 0,
+          limit: 10,
+          total: 150,
+          total_pages: 15,
+          page: 1,
+          has_previous: false,
+          has_next: true,
+        },
       }),
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -56,10 +87,11 @@ describe("ExemptMembersPicker", () => {
     vi.clearAllMocks();
   });
 
-  it("always includes selected IDs in list source even outside top 100 window", () => {
+  it("uses server-side pagination query params", () => {
     const src = readFileSync(pickerPath, "utf8");
-    expect(src).toContain("selectedRows");
-    expect(src).toContain(".slice(0, 100)");
+    expect(src).toContain("include_member_ids");
+    expect(src).toContain("norgoth-pagination-bar");
+    expect(src).not.toContain(".slice(0, 100)");
   });
 
   it("shows selected IDs in summary", () => {
@@ -92,5 +124,6 @@ describe("ExemptMembersPicker", () => {
     expect(src).toContain('role="listbox"');
     expect(src).toContain('aria-live="polite"');
     expect(src).toContain("norgoth-member-row-selected");
+    expect(src).toContain("membersLoading");
   });
 });
