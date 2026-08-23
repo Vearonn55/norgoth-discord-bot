@@ -68,6 +68,7 @@ export default async function VerifyStartPage({
       primaryAction={primaryAction}
       secondaryAction={secondaryAction}
       progressStep={state === "ready" ? 0 : 1}
+      showDiscordAccountHint={state === "ready"}
     />
   );
 }

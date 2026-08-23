@@ -13,6 +13,8 @@ type ShellCopy = {
   retry: string;
   returnDiscord: string;
   reference: string;
+  discordAccountHint?: string;
+  discordAccountSettingsLabel?: string;
 };
 
 type Action = {
@@ -42,6 +44,7 @@ export function VerificationPublicShell({
   referenceId,
   progressStep = 0,
   liveMessage,
+  showDiscordAccountHint = false,
 }: {
   copy: ShellCopy;
   state: VerificationVisualState;
@@ -54,6 +57,7 @@ export function VerificationPublicShell({
   referenceId?: string;
   progressStep?: 0 | 1 | 2;
   liveMessage?: string;
+  showDiscordAccountHint?: boolean;
 }) {
   return (
     <main className="norgoth-verify-wrap container py-4 py-md-5">
@@ -85,6 +89,21 @@ export function VerificationPublicShell({
 
           <h1 className="h3 mb-2">{title}</h1>
           <p className="text-body-secondary mb-0">{description}</p>
+          {showDiscordAccountHint && copy.discordAccountHint ? (
+            <div className="mt-3">
+              <p className="text-body-secondary small mb-2">{copy.discordAccountHint}</p>
+              {copy.discordAccountSettingsLabel ? (
+                <a
+                  href="https://discord.com/settings/account"
+                  className="small"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {copy.discordAccountSettingsLabel}
+                </a>
+              ) : null}
+            </div>
+          ) : null}
           {liveMessage ? (
             <p className="visually-hidden" aria-live="polite">
               {liveMessage}

@@ -23,12 +23,16 @@ from app.api.v1.dependencies import (
     DiscordOAuthClientDependency,
     DiscordOAuthStateServiceDependency,
     GuildServiceDependency,
+    HighRiskGuildServiceDependency,
     ProxycheckClientDependency,
     VerificationServiceDependency,
 )
 from app.core.config import get_settings
 from app.integrations.discord.bot_rest import DiscordBotAPIError, DiscordBotClient
-from app.integrations.discord.oauth import DiscordOAuthError
+from app.integrations.discord.oauth import (
+    DiscordOAuthError,
+    VERIFICATION_OAUTH_SCOPES,
+)
 from app.integrations.discord.snowflake import (
     InvalidDiscordSnowflakeError,
     get_discord_account_age_days,
@@ -58,6 +62,7 @@ from app.security.verification_rate_limit import (
 )
 from app.services.guild_meta import resolve_guild_public_meta
 from app.services.verification_service import VerificationRequest
+from app.services.verification_guild_membership import resolve_matched_high_risk_guilds
 from app.services.verification_setup import derive_verification_setup_state
 from app.services.views import ConfigurationView
 
@@ -344,6 +349,8 @@ async def authorize_discord(
     )
     authorization_url = oauth_client.build_authorization_url(
         state=state_value,
+        scopes=VERIFICATION_OAUTH_SCOPES,
+        prompt=None,
     )
 
     return RedirectResponse(
@@ -363,6 +370,7 @@ async def discord_callback(
     configuration_service: ConfigurationServiceDependency,
     proxycheck_client: ProxycheckClientDependency,
     verification_service: VerificationServiceDependency,
+    high_risk_guild_service: HighRiskGuildServiceDependency,
     bot_client: DiscordBotClientDependency,
     code: Annotated[str | None, Query(min_length=1, max_length=2048)] = None,
     state_value: Annotated[
@@ -499,37 +507,16 @@ async def discord_callback(
         )
 
     try:
-        user_guilds = await oauth_client.get_current_user_guilds(
-            access_token=token.access_token,
-        )
         account_age_days = get_discord_account_age_days(user.id)
     except InvalidDiscordSnowflakeError:
         _log_callback_event(
             request,
-            stage="guild_membership",
+            stage="account_age",
             code="oauth_invalid",
             guild_id=verified_state.discord_guild_id,
         )
         return _verify_result_redirect(
             request, lang=lang, outcome="error", reason="oauth_invalid"
-        )
-    except DiscordOAuthError as oauth_error:
-        logger.info(
-            "verification_callback code=oauth_guilds_failed operation=%s status=%s",
-            oauth_error.operation,
-            oauth_error.http_status,
-        )
-        _log_callback_event(
-            request,
-            stage="guild_membership",
-            code=_reason_from_oauth_error(oauth_error),
-            guild_id=verified_state.discord_guild_id,
-        )
-        return _verify_result_redirect(
-            request,
-            lang=lang,
-            outcome="error",
-            reason=_reason_from_oauth_error(oauth_error),
         )
 
     guild = await guild_service.get_by_discord_guild_id(verified_state.discord_guild_id)
@@ -593,52 +580,68 @@ async def discord_callback(
             display_context=context_token,
         )
 
-    user_guild_ids = frozenset(user_guild.id for user_guild in user_guilds)
-    if verified_state.discord_guild_id not in user_guild_ids:
-        logger.info(
-            "verification_callback code=user_not_in_guild user_id=%s guild_id=%s",
-            user.id,
-            verified_state.discord_guild_id,
-        )
+    if bot_client is None:
         _log_callback_event(
             request,
-            stage="guild_membership",
-            code="not_in_guild",
+            stage="bot_membership_check",
+            code="verification_unavailable",
             guild_id=verified_state.discord_guild_id,
         )
         return _verify_result_redirect(
             request,
             lang=lang,
             outcome="error",
-            reason="not_in_guild",
+            reason="verification_unavailable",
             display_context=context_token,
         )
 
-    if bot_client is not None:
-        try:
-            await bot_client.get_guild_member(
-                verified_state.discord_guild_id,
-                user.id,
+    try:
+        await bot_client.get_guild_member(
+            verified_state.discord_guild_id,
+            user.id,
+        )
+    except DiscordBotAPIError as membership_error:
+        if membership_error.status_code == 404:
+            _log_callback_event(
+                request,
+                stage="bot_membership_check",
+                code="not_in_guild",
+                guild_id=verified_state.discord_guild_id,
             )
-        except DiscordBotAPIError as membership_error:
-            if membership_error.status_code == 404:
-                _log_callback_event(
-                    request,
-                    stage="bot_membership_check",
-                    code="not_in_guild",
-                    guild_id=verified_state.discord_guild_id,
-                )
-                return _verify_result_redirect(
-                    request,
-                    lang=lang,
-                    outcome="error",
-                    reason="not_in_guild",
-                    display_context=context_token,
-                )
-            logger.info(
-                "verification_callback code=guild_metadata_unavailable status=%s",
-                membership_error.status_code,
+            return _verify_result_redirect(
+                request,
+                lang=lang,
+                outcome="error",
+                reason="not_in_guild",
+                display_context=context_token,
             )
+        logger.info(
+            "verification_callback code=guild_metadata_unavailable status=%s",
+            membership_error.status_code,
+        )
+        _log_callback_event(
+            request,
+            stage="bot_membership_check",
+            code="verification_unavailable",
+            guild_id=verified_state.discord_guild_id,
+        )
+        return _verify_result_redirect(
+            request,
+            lang=lang,
+            outcome="error",
+            reason="verification_unavailable",
+            display_context=context_token,
+        )
+
+    high_risk_guild_entries = await high_risk_guild_service.list_entries(guild.id)
+    high_risk_guild_ids = frozenset(
+        entry.high_risk_discord_guild_id for entry in high_risk_guild_entries
+    )
+    matched_high_risk_guild_ids = await resolve_matched_high_risk_guilds(
+        bot_client,
+        user_id=user.id,
+        high_risk_guild_ids=high_risk_guild_ids,
+    )
 
     vpn_or_proxy_detected = await _proxycheck_vpn_or_proxy_detected(
         request=request,
@@ -654,7 +657,7 @@ async def discord_callback(
             request=VerificationRequest(
                 guild_id=guild.id,
                 discord_user_id=user.id,
-                discord_user_guild_ids=user_guild_ids,
+                matched_high_risk_guild_ids=matched_high_risk_guild_ids,
                 discord_account_age_days=account_age_days,
                 ip_address=client_ip,
                 vpn_or_proxy_detected=vpn_or_proxy_detected,

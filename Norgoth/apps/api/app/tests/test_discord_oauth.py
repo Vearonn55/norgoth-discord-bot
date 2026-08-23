@@ -7,8 +7,10 @@ import httpx
 import pytest
 
 from app.integrations.discord.oauth import (
+    DASHBOARD_OAUTH_SCOPES,
     DiscordOAuthClient,
     DiscordOAuthError,
+    VERIFICATION_OAUTH_SCOPES,
 )
 
 CLIENT_ID = "123456789012345678"
@@ -48,7 +50,7 @@ def _build_response(
 
 
 def test_build_authorization_url_contains_required_parameters() -> None:
-    """Authorization URL should request identity and guild access."""
+    """Authorization URL should request identity and guild access by default."""
 
     http_client = AsyncMock(spec=httpx.AsyncClient)
     client = _build_client(http_client)
@@ -68,6 +70,40 @@ def test_build_authorization_url_contains_required_parameters() -> None:
     assert query["scope"] == ["identify guilds"]
     assert query["state"] == ["secure-random-state"]
     assert query["prompt"] == ["consent"]
+
+
+def test_build_authorization_url_supports_verification_scopes_without_prompt() -> None:
+    """Member verification should request identify only and skip forced consent."""
+
+    http_client = AsyncMock(spec=httpx.AsyncClient)
+    client = _build_client(http_client)
+
+    authorization_url = client.build_authorization_url(
+        state="secure-random-state",
+        scopes=VERIFICATION_OAUTH_SCOPES,
+        prompt=None,
+    )
+
+    query = parse_qs(urlparse(authorization_url).query)
+
+    assert query["scope"] == ["identify"]
+    assert "prompt" not in query
+
+
+def test_build_authorization_url_dashboard_scopes_explicit() -> None:
+    """Dashboard login should keep identify + guilds scopes."""
+
+    http_client = AsyncMock(spec=httpx.AsyncClient)
+    client = _build_client(http_client)
+
+    authorization_url = client.build_authorization_url(
+        state="secure-random-state",
+        scopes=DASHBOARD_OAUTH_SCOPES,
+    )
+
+    query = parse_qs(urlparse(authorization_url).query)
+
+    assert query["scope"] == ["identify guilds"]
 
 
 @pytest.mark.anyio

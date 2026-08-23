@@ -34,7 +34,7 @@ class VerificationRequest:
 
     guild_id: UUID
     discord_user_id: str
-    discord_user_guild_ids: frozenset[str]
+    matched_high_risk_guild_ids: tuple[str, ...]
     discord_account_age_days: int
     ip_address: str
     vpn_or_proxy_detected: bool
@@ -90,16 +90,8 @@ class VerificationService:
             user_list_entry is not None and user_list_entry.list_type is UserListType.BLACKLIST
         )
 
-        high_risk_guild_entries = await self._high_risk_guild_service.list_entries(
-            request.guild_id
-        )
-        high_risk_guild_ids = {
-            entry.high_risk_discord_guild_id for entry in high_risk_guild_entries
-        }
-        # Capture exactly which configured high-risk servers the user belongs to
-        # so reviewers see an explicit, auditable reason (sorted for stability).
         matched_high_risk_guild_ids = tuple(
-            sorted(request.discord_user_guild_ids & high_risk_guild_ids)
+            sorted(request.matched_high_risk_guild_ids)
         )
         high_risk_guild_detected = bool(matched_high_risk_guild_ids)
 

@@ -14,7 +14,9 @@ _DISCORD_AUTHORIZE_URL = "https://discord.com/oauth2/authorize"
 _DISCORD_TOKEN_URL = f"{_DISCORD_API_BASE_URL}/oauth2/token"
 _DISCORD_CURRENT_USER_URL = f"{_DISCORD_API_BASE_URL}/users/@me"
 _DISCORD_CURRENT_USER_GUILDS_URL = f"{_DISCORD_API_BASE_URL}/users/@me/guilds"
-_DISCORD_OAUTH_SCOPES = ("identify", "guilds")
+VERIFICATION_OAUTH_SCOPES = ("identify",)
+DASHBOARD_OAUTH_SCOPES = ("identify", "guilds")
+_DEFAULT_OAUTH_SCOPES = DASHBOARD_OAUTH_SCOPES
 
 logger = logging.getLogger(__name__)
 
@@ -103,19 +105,23 @@ class DiscordOAuthClient:
         *,
         state: str,
         redirect_uri: str | None = None,
+        scopes: tuple[str, ...] | None = None,
+        prompt: str | None = "consent",
     ) -> str:
-        """Return the Discord authorization URL for verification."""
+        """Return the Discord authorization URL for the requested OAuth scopes."""
 
-        query = urlencode(
-            {
-                "response_type": "code",
-                "client_id": self._client_id,
-                "redirect_uri": redirect_uri or self._redirect_uri,
-                "scope": " ".join(_DISCORD_OAUTH_SCOPES),
-                "state": state,
-                "prompt": "consent",
-            }
-        )
+        resolved_scopes = scopes or _DEFAULT_OAUTH_SCOPES
+        query_params: dict[str, str] = {
+            "response_type": "code",
+            "client_id": self._client_id,
+            "redirect_uri": redirect_uri or self._redirect_uri,
+            "scope": " ".join(resolved_scopes),
+            "state": state,
+        }
+        if prompt is not None:
+            query_params["prompt"] = prompt
+
+        query = urlencode(query_params)
 
         return f"{_DISCORD_AUTHORIZE_URL}?{query}"
 
@@ -499,10 +505,12 @@ class DiscordOAuthClient:
 
 
 __all__ = [
+    "DASHBOARD_OAUTH_SCOPES",
     "DiscordOAuthClient",
     "DiscordOAuthError",
     "DiscordOAuthGuild",
     "DiscordOAuthToken",
     "DiscordOAuthUser",
+    "VERIFICATION_OAUTH_SCOPES",
     "token_has_required_scopes",
 ]

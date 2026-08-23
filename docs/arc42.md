@@ -38,7 +38,7 @@ Paste this whole document as system or project context. Follow these rules when 
    Or use `docker logs norbot-prod-bot-1` without compose.
 3. **`GET /bot/health` HTTP 200 does not mean Discord-online.** Body can be `connected: false`. Repo `smoke-check.sh` now requires `connected: true` via JSON; **the VDS copy under `/opt/norbot/scripts/` may lag the git repo** until it is synced. Actions call the VDS copies, not the freshly pushed scripts, unless something copies them.
 4. **Docker image paths are shallow.** Bot code is `/app/bot/config.py` (not the monorepo depth). Never use unconditional `Path(__file__).parents[3]` / `parents[4]` for dotenv. Guard with `len(path.parents) > N` then `load_dotenv()`.
-5. **Guild Install ≠ login OAuth.** Bot invite is `https://discord.com/oauth2/authorize` with `scope=bot applications.commands` and `integration_type=0`. **No `redirect_uri` / `response_type`.** Developer Portal **Bot → Requires OAuth2 Code Grant must stay OFF**. Login OAuth (`identify` + `guilds`) is a separate flow with two redirect URIs.
+5. **Guild Install ≠ login OAuth.** Bot invite is `https://discord.com/oauth2/authorize` with `scope=bot applications.commands` and `integration_type=0`. **No `redirect_uri` / `response_type`.** Developer Portal **Bot → Requires OAuth2 Code Grant must stay OFF**. Operator dashboard login OAuth uses `identify` + `guilds` with two redirect URIs. Member verification OAuth uses **`identify` only** (membership and high-risk checks use the bot REST API).
 6. **`DISCORD_BOT_TOKEN` must belong to the same application as `DISCORD_APPLICATION_ID` / `NORGOTH_DISCORD_CLIENT_ID`.** Invite uses the application ID; presence uses the token.
 7. **Compose overlay is required in production:** `-f deploy/compose.yml -f deploy/compose.production.yml` plus `--env-file /opt/norbot/env/production.env`.
 8. **Workers share the API image.** `campaign-worker` and `content-worker` run `python -m app.workers.*` in `norbot-api`. If they crash-loop, Discord can still look “API healthy” because `api` and `web` are up.
@@ -172,7 +172,8 @@ flowchart TB
 |---|---|---|
 | Discord Gateway | WebSocket | Presence, joins, slash commands, message events |
 | Discord REST v10 | HTTPS | Roles, messages, channels, embeds, campaign DMs |
-| Discord OAuth2 (login) | HTTPS | Member verification + operator dashboard login (`identify`, `guilds`) |
+| Discord OAuth2 (login) | HTTPS | Operator dashboard login (`identify`, `guilds`) |
+| Discord OAuth2 (verification) | HTTPS | Member verification (`identify` only; bot REST for guild checks) |
 | Discord Guild Install | HTTPS authorize | Add bot to a guild (`bot` + `applications.commands`, `integration_type=0`) |
 | proxycheck.io | HTTPS | Optional VPN/proxy detection (fail-closed when policy on) |
 | Content platforms | HTTPS webhooks / APIs | YouTube WebSub, Twitch EventSub, Kick, X |

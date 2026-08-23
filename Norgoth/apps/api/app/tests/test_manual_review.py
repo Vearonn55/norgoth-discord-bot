@@ -88,9 +88,7 @@ async def test_high_risk_membership_captures_ids_and_routes_manual_review() -> N
     request = VerificationRequest(
         guild_id=guild_id,
         discord_user_id="123456789012345678",
-        discord_user_guild_ids=frozenset(
-            {"900000000000000002", "111111111111111111"}
-        ),
+        matched_high_risk_guild_ids=("900000000000000002",),
         discord_account_age_days=365,
         ip_address="203.0.113.7",
         vpn_or_proxy_detected=False,
@@ -141,7 +139,7 @@ async def test_whitelisted_user_bypasses_high_risk() -> None:
         request=VerificationRequest(
             guild_id=uuid4(),
             discord_user_id="123456789012345678",
-            discord_user_guild_ids=frozenset({"900000000000000002"}),
+            matched_high_risk_guild_ids=("900000000000000002",),
             discord_account_age_days=365,
             ip_address="203.0.113.7",
             vpn_or_proxy_detected=False,

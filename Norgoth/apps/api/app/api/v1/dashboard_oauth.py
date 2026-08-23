@@ -21,6 +21,7 @@ from app.api.v1.dependencies_auth import (
     get_session_service,
 )
 from app.integrations.discord.oauth import (
+    DASHBOARD_OAUTH_SCOPES,
     DiscordOAuthClient,
     DiscordOAuthError,
     token_has_required_scopes,
@@ -81,6 +82,7 @@ async def authorize_dashboard(
     url = oauth_client.build_authorization_url(
         state=state,
         redirect_uri=settings.discord_dashboard_redirect_uri,
+        scopes=DASHBOARD_OAUTH_SCOPES,
     )
     return RedirectResponse(url=url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
