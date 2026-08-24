@@ -32,6 +32,10 @@ export function normalizeDiscordRoleColor(
     return `#${color.toString(16).padStart(6, "0")}`;
   }
 
+  if (typeof color !== "string") {
+    return null;
+  }
+
   const raw = color.trim();
 
   if (raw.startsWith("#")) {
