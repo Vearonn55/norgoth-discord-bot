@@ -1527,15 +1527,21 @@ body {
   );
 }
 
+.norgoth-server-guild-card[data-install="installed"],
+.norgoth-server-guild-card[data-install="not_installed"] {
+  cursor: default;
+}
+
 .norgoth-server-guild-card[data-install="not_installed"] {
   background: linear-gradient(
     135deg,
     rgba(255, 107, 122, 0.08),
     transparent 55%
   );
-  cursor: default;
 }
 
+.norgoth-server-guild-card[data-install="installed"]:hover,
+.norgoth-server-guild-card[data-install="installed"]:focus-visible,
 .norgoth-server-guild-card[data-install="not_installed"]:hover,
 .norgoth-server-guild-card[data-install="not_installed"]:focus-visible {
   transform: none;
@@ -1589,16 +1595,8 @@ body {
   z-index: 1;
 }
 
-.norgoth-server-summary {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
-}
-
-@media (min-width: 768px) {
-  .norgoth-server-summary {
-    grid-template-columns: repeat(2, minmax(0, 14rem));
-  }
+.norgoth-server-selector-content {
+  width: 100%;
 }
 
 .norgoth-skeleton {

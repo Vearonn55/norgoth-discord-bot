@@ -30,7 +30,12 @@ export function AppShell({ lang, dict, children }: AppShellProps) {
 
   // Pre–Command-Center: no sidebar / topbar until a guild is selected.
   if (isServerSelector(pathname)) {
-    return <div className="norgoth-server-selector min-vh-100">{children}</div>;
+    return (
+      <div className="norgoth-server-selector min-vh-100 d-flex flex-column">
+        <div className="norgoth-server-selector-ambient" aria-hidden="true" />
+        {children}
+      </div>
+    );
   }
 
   if (isTranscriptPortal(pathname)) {

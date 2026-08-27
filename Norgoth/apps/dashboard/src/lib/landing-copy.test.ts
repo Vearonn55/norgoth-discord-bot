@@ -41,9 +41,7 @@ const LANDING_KEYS = [
 const SERVER_KEYS = [
   "installed",
   "notInstalled",
-  "summaryInstalled",
-  "summaryNotInstalled",
-  "installGuidance",
+  "manage",
   "installNorBot",
   "refresh",
   "roleOwner",

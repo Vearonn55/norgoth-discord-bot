@@ -24,7 +24,7 @@ export type ServerGuildItem = {
 export type ServerGuildCopy = {
   notInstalled: string;
   installed: string;
-  open: string;
+  manage: string;
   installNorBot: string;
   addNorgoth: string;
   roleOwner: string;
@@ -49,7 +49,7 @@ function statusLabel(state: SetupState, copy: ServerGuildCopy): string {
 
 function actionLabel(state: SetupState, copy: ServerGuildCopy): string {
   return setupStateAction(state) === "open"
-    ? copy.open
+    ? copy.manage
     : copy.installNorBot || copy.addNorgoth;
 }
 
@@ -58,6 +58,9 @@ function cardClassName(selected: boolean): string {
     selected ? " is-selected" : ""
   }`;
 }
+
+const actionClassName =
+  "btn btn-sm norgoth-server-guild-action d-inline-flex align-items-center justify-content-center";
 
 export function ServerGuildCard({
   server,
@@ -118,7 +121,8 @@ export function ServerGuildCard({
             href={botInviteHref(server.id)}
             target="_blank"
             rel="noopener noreferrer"
-            className="btn btn-sm btn-primary norgoth-server-guild-action d-inline-flex align-items-center justify-content-center"
+            className={`${actionClassName} btn-primary`}
+            aria-label={`${action} ${server.name}`}
             onClick={() => {
               onInstall?.(server);
             }}
@@ -131,21 +135,25 @@ export function ServerGuildCard({
   }
 
   return (
-    <button
-      type="button"
+    <div
       className={cardClassName(selected)}
       style={style}
       data-install={installAttr}
-      onClick={() => onOpen(server)}
-      aria-current={selected ? "true" : undefined}
       aria-label={ariaLabel}
+      aria-current={selected ? "true" : undefined}
+      role="group"
     >
       {header}
       <span className="d-flex justify-content-end w-100 mt-auto">
-        <span className="small norgoth-server-guild-action d-inline-flex align-items-center justify-content-center">
+        <button
+          type="button"
+          className={`${actionClassName} btn-success`}
+          aria-label={`${action} ${server.name}`}
+          onClick={() => onOpen(server)}
+        >
           {action}
-        </span>
+        </button>
       </span>
-    </button>
+    </div>
   );
 }

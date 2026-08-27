@@ -3,13 +3,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { ServerGuildCard } from "@/components/auth/server-guild-card";
 
 vi.mock("@/lib/bot-invite", () => ({
-  botInviteHref: (guildId: string) => `https://discord.com/oauth2/invite?guild_id=${guildId}`,
+  botInviteHref: (guildId: string) =>
+    `https://discord.com/oauth2/invite?guild_id=${guildId}`,
 }));
 
 const copy = {
   notInstalled: "Not Installed",
   installed: "Installed",
-  open: "Open Command Center",
+  manage: "Manage",
   installNorBot: "Install NorBot",
   addNorgoth: "Install NorBot",
   roleOwner: "Owner",
@@ -18,7 +19,7 @@ const copy = {
 };
 
 describe("ServerGuildCard", () => {
-  it("renders Installed status with green accent for bot members", () => {
+  it("renders Installed status with Manage success button", () => {
     const html = renderToStaticMarkup(
       <ServerGuildCard
         server={{
@@ -32,16 +33,20 @@ describe("ServerGuildCard", () => {
         selected={false}
         copy={copy}
         onOpen={() => undefined}
-      />
+      />,
     );
 
     expect(html).toContain("Installed");
     expect(html).not.toContain("Not Installed");
     expect(html).not.toContain("Not configured");
+    expect(html).not.toContain("Open Command Center");
     expect(html).toContain('data-install="installed"');
     expect(html).toContain("var(--cui-success)");
-    expect(html).toContain("Open Command Center");
+    expect(html).toContain("Manage");
+    expect(html).toContain("btn-success");
+    expect(html).toContain('role="group"');
     expect(html).toContain("<button");
+    expect(html).toContain('aria-label="Manage Ready Guild"');
   });
 
   it("renders Not Installed status with install link and no nested button", () => {
@@ -58,7 +63,7 @@ describe("ServerGuildCard", () => {
         selected={false}
         copy={copy}
         onOpen={() => undefined}
-      />
+      />,
     );
 
     expect(html).toContain("Not Installed");
@@ -66,9 +71,11 @@ describe("ServerGuildCard", () => {
     expect(html).toContain('data-install="not_installed"');
     expect(html).toContain("var(--cui-danger)");
     expect(html).toContain("guild_id=222");
+    expect(html).toContain("btn-primary");
     expect(html).toContain('role="group"');
     expect(html).not.toContain("<button");
     expect(html).toContain("justify-content-center");
+    expect(html).toContain('aria-label="Install NorBot Needs Install"');
   });
 
   it("treats legacy not_configured setup_state as installed when bot is present", () => {
@@ -85,10 +92,11 @@ describe("ServerGuildCard", () => {
         selected={false}
         copy={copy}
         onOpen={() => undefined}
-      />
+      />,
     );
 
     expect(html).toContain("Installed");
+    expect(html).toContain("Manage");
     expect(html).toContain('data-install="installed"');
     expect(html).not.toContain("Not configured");
   });

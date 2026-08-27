@@ -35,10 +35,7 @@ type ServersCopy = {
   available: string;
   installed: string;
   notInstalled: string;
-  summaryInstalled: string;
-  summaryNotInstalled: string;
-  installGuidance: string;
-  open: string;
+  manage: string;
   installNorBot: string;
   addNorgoth: string;
   refresh: string;
@@ -71,11 +68,7 @@ const FALLBACK_COPY: Record<"en" | "tr", ServersCopy> = {
     available: "Available to manage",
     installed: "Installed",
     notInstalled: "Not Installed",
-    summaryInstalled: "Installed",
-    summaryNotInstalled: "Not Installed",
-    installGuidance:
-      "Pick Install NorBot on any server where the bot is missing, then approve the Discord prompt.",
-    open: "Open Command Center",
+    manage: "Manage",
     installNorBot: "Install NorBot",
     addNorgoth: "Install NorBot",
     refresh: "Refresh",
@@ -110,11 +103,7 @@ const FALLBACK_COPY: Record<"en" | "tr", ServersCopy> = {
     available: "Yönetime hazır",
     installed: "Yüklü",
     notInstalled: "Yüklü Değil",
-    summaryInstalled: "Yüklü",
-    summaryNotInstalled: "Yüklü Değil",
-    installGuidance:
-      "NorBot’un olmadığı sunucularda NorBot’u yükle’yi seçin ve Discord onayını tamamlayın.",
-    open: "Komuta Merkezini aç",
+    manage: "Yönet",
     installNorBot: "NorBot’u yükle",
     addNorgoth: "NorBot’u yükle",
     refresh: "Yenile",
@@ -346,13 +335,6 @@ export function ServerSelector({ copy }: { copy?: Partial<ServersCopy> }) {
     return servers.slice(start, start + PAGE_SIZE);
   }, [servers, safePage]);
 
-  const installedCount = useMemo(
-    () => servers.filter((server) => server.bot_installed).length,
-    [servers],
-  );
-  const notInstalledCount = servers.length - installedCount;
-  const showSummary = !loading && !error && servers.length > 0;
-
   function goToPage(next: number) {
     setPage(next);
     requestAnimationFrame(() => {
@@ -394,15 +376,16 @@ export function ServerSelector({ copy }: { copy?: Partial<ServersCopy> }) {
     ? servers.find((s) => s.id === awaitingGuildId)
     : null;
   const timedOutName = awaitingGuildName ?? "server";
+  const pageLabel = t.pageOf
+    .replace("{page}", String(safePage))
+    .replace("{pages}", String(totalPages));
 
   return (
     <CContainer
       fluid
-      className="norgoth-server-selector py-4 d-flex flex-column"
+      className="norgoth-server-selector-content py-4 d-flex flex-column"
       style={{ maxWidth: 1180, minHeight: 0, flex: "1 1 auto" }}
     >
-      <div className="norgoth-server-selector-ambient" aria-hidden="true" />
-
       <PageHeader
         title={t.title}
         description={t.subtitle}
@@ -419,24 +402,6 @@ export function ServerSelector({ copy }: { copy?: Partial<ServersCopy> }) {
           </Button>
         }
       />
-
-      {showSummary ? (
-        <div className="mb-3 flex-shrink-0">
-          <div className="norgoth-server-summary mb-2">
-            <div className="norgoth-metric-widget" data-accent="success">
-              <div className="norgoth-metric-label">{t.summaryInstalled}</div>
-              <div className="norgoth-metric-value">{installedCount}</div>
-            </div>
-            <div className="norgoth-metric-widget" data-accent="danger">
-              <div className="norgoth-metric-label">{t.summaryNotInstalled}</div>
-              <div className="norgoth-metric-value">{notInstalledCount}</div>
-            </div>
-          </div>
-          {notInstalledCount > 0 ? (
-            <p className="small text-body-secondary mb-0">{t.installGuidance}</p>
-          ) : null}
-        </div>
-      ) : null}
 
       {awaitingServer ? (
         <p className="small text-body-secondary mb-3 flex-shrink-0" role="status">
@@ -523,12 +488,7 @@ export function ServerSelector({ copy }: { copy?: Partial<ServersCopy> }) {
           </div>
 
           {servers.length > PAGE_SIZE ? (
-            <div className="d-flex align-items-center justify-content-between gap-3 flex-wrap norgoth-pagination-bar mt-3 flex-shrink-0">
-              <span className="small text-body-secondary">
-                {t.pageOf
-                  .replace("{page}", String(safePage))
-                  .replace("{pages}", String(totalPages))}
-              </span>
+            <div className="d-flex align-items-center justify-content-center gap-3 flex-wrap norgoth-pagination-bar mt-3 flex-shrink-0">
               <div className="d-flex align-items-center gap-2">
                 <CButton
                   color="secondary"
@@ -542,9 +502,7 @@ export function ServerSelector({ copy }: { copy?: Partial<ServersCopy> }) {
                 </CButton>
                 <CPagination
                   className="mb-0 norgoth-pagination"
-                  aria-label={t.pageOf
-                    .replace("{page}", String(safePage))
-                    .replace("{pages}", String(totalPages))}
+                  aria-label={pageLabel}
                 >
                   <CPaginationItem active aria-current="page">
                     {safePage} / {totalPages}
