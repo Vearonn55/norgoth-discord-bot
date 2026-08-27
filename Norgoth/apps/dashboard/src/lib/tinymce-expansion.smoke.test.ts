@@ -51,6 +51,7 @@ describe("TinyMCE native resize", () => {
     const src = readFileSync(editorPath, "utf8");
     expect(src).toContain("statusbar: true");
     expect(src).toContain("resize: true");
+    expect(src).toContain("elementpath: false");
     expect(src).toContain("min_height: height");
     expect(src).not.toContain("min_width:");
     expect(src).toContain("norgoth-rich-editor");

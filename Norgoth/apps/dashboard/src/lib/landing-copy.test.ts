@@ -145,8 +145,9 @@ describe("visual QA tokens", () => {
     expect(css).toContain(".norgoth-landing-mock-feature");
     expect(css).toContain(".norgoth-landing-card-title");
     expect(css).toContain(".norgoth-landing-card-summary");
-    expect(css).toContain(".norgoth-landing-feature-modal");
+    expect(css).toContain(".norgoth-landing-card-overlay");
     expect(css).toContain("overflow: hidden");
+    expect(css).not.toContain(".norgoth-landing-feature-modal");
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
     expect(css).toContain(".norgoth-server-guild-action");
     expect(css).toContain("min-height: 40px");
@@ -185,10 +186,7 @@ describe("landing source contracts", () => {
       path.join(srcRoot, "components/landing/landing-feature-card-grid.tsx"),
       "utf8",
     );
-    const modal = readFileSync(
-      path.join(srcRoot, "components/landing/landing-feature-detail-modal.tsx"),
-      "utf8",
-    );
+    const css = readFileSync(path.join(srcRoot, "app/globals.css"), "utf8");
     const motion = readFileSync(
       path.join(srcRoot, "components/landing/landing-motion.tsx"),
       "utf8",
@@ -202,23 +200,25 @@ describe("landing source contracts", () => {
       "utf8",
     );
     expect(card).toContain("aria-expanded");
-    expect(card).toContain('aria-haspopup="dialog"');
-    expect(card).toContain("LANDING_FEATURE_DETAIL_MODAL_ID");
-    expect(card).not.toContain("LANDING_FEATURE_DETAIL_ID");
+    expect(card).toContain("aria-controls");
+    expect(card).toContain("norgoth-landing-card-overlay");
+    expect(card).toContain("onPointerEnter");
+    expect(card).toContain("onPointerLeave");
+    expect(card).toContain("cardsDetailClose");
+    expect(card).toContain("landingNavGroupLabel");
+    expect(card).toContain("cap1");
+    expect(card).not.toContain('aria-haspopup="dialog"');
+    expect(card).not.toContain("LANDING_FEATURE_DETAIL_MODAL_ID");
+    expect(card).not.toContain("CModal");
     expect(grid).toContain("norgoth-landing-cards");
-    expect(grid).toContain("LandingFeatureDetailModal");
-    expect(grid).not.toContain("norgoth-landing-card-detail");
+    expect(grid).toContain('event.key === "Escape"');
+    expect(grid).toContain("pointerdown");
+    expect(grid).not.toContain("LandingFeatureDetailModal");
     expect(grid).not.toContain("AnimatePresence");
     expect(grid).not.toContain("CModal");
-    expect(modal).toContain("CModal");
-    expect(modal).toContain("shouldInvokeModalClose");
-    expect(modal).toContain("openerRef");
-    expect(modal).toContain(".focus(");
-    expect(modal).toContain("landingNavGroupLabel");
-    expect(modal).toContain("cap1");
-    expect(modal).toContain("cardsDetailClose");
-    expect(modal).not.toContain("recharts");
-    expect(modal).not.toContain("tinymce");
+    expect(css).toContain(".norgoth-landing-card-overlay");
+    expect(css).toContain("overscroll-behavior: contain");
+    expect(css).not.toContain(".norgoth-landing-feature-modal");
     expect(row).not.toContain("demoSidebar");
     expect(visual).toContain("groupLabel");
     expect(motion).toContain("useReducedMotion");
@@ -235,7 +235,6 @@ describe("landing source contracts", () => {
       "landing-feature-row.tsx",
       "landing-feature-card.tsx",
       "landing-feature-card-grid.tsx",
-      "landing-feature-detail-modal.tsx",
     ];
     for (const file of files) {
       const source = readFileSync(path.join(landingDir, file), "utf8");
@@ -278,7 +277,6 @@ describe("landing source contracts", () => {
       "landing-footer.tsx",
       "landing-feature-card.tsx",
       "landing-feature-card-grid.tsx",
-      "landing-feature-detail-modal.tsx",
       "landing-feature-visual.tsx",
       "landing-oauth-alerts.tsx",
     ];

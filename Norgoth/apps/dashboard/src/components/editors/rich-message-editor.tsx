@@ -81,6 +81,7 @@ export function RichMessageEditor({
               "h3 { font-size: 1.1em; font-weight: 700; margin: 0.5em 0 0.25em; }",
             branding: false,
             promotion: false,
+            elementpath: false,
           }}
         />
       </div>

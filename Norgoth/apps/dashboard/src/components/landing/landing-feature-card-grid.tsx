@@ -1,11 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { LandingCopy } from "@/components/landing/landing-copy";
 import { LandingFeatureCard } from "@/components/landing/landing-feature-card";
 import { LANDING_FEATURE_IDS } from "@/components/landing/landing-feature-catalog";
 import type { LandingFeatureId } from "@/components/landing/landing-feature-catalog";
-import { LandingFeatureDetailModal } from "@/components/landing/landing-feature-detail-modal";
 import { LandingSection } from "@/components/landing/landing-section";
 
 export function LandingFeatureCardGrid({
@@ -17,9 +16,43 @@ export function LandingFeatureCardGrid({
 }) {
   const [openId, setOpenId] = useState<LandingFeatureId | null>(null);
 
+  function onOpen(id: LandingFeatureId) {
+    setOpenId(id);
+  }
+
+  function onClose(id: LandingFeatureId) {
+    setOpenId((current) => (current === id ? null : current));
+  }
+
   function onToggle(id: LandingFeatureId) {
     setOpenId((current) => (current === id ? null : id));
   }
+
+  useEffect(() => {
+    if (openId === null) return;
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpenId(null);
+      }
+    }
+
+    function onPointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const card = target.closest("[data-feature-id]");
+      if (!card || card.getAttribute("data-feature-id") !== openId) {
+        setOpenId(null);
+      }
+    }
+
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", onPointerDown);
+    };
+  }, [openId]);
 
   return (
     <LandingSection className="border-top border-secondary-subtle">
@@ -32,17 +65,14 @@ export function LandingFeatureCardGrid({
               key={id}
               id={id}
               copy={copy}
+              sidebar={sidebar}
               open={openId === id}
+              onOpen={onOpen}
+              onClose={onClose}
               onToggle={onToggle}
             />
           ))}
         </div>
-        <LandingFeatureDetailModal
-          openId={openId}
-          copy={copy}
-          sidebar={sidebar}
-          onClose={() => setOpenId(null)}
-        />
       </div>
     </LandingSection>
   );

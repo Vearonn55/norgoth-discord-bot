@@ -1735,16 +1735,37 @@ body {
 }
 
 .norgoth-landing-card {
-  display: grid;
-  grid-template-rows: auto auto 1fr;
-  align-content: start;
-  gap: 0.45rem;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   border-radius: 1.35rem;
   border: 1px solid var(--norgoth-card-border-secondary);
   background: var(--norgoth-surface);
   min-height: 100%;
   height: 100%;
   text-align: left;
+}
+
+.norgoth-landing-card[data-open="true"] {
+  z-index: 2;
+  transform: none;
+}
+
+.norgoth-landing-card-face {
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  align-content: start;
+  gap: 0.45rem;
+  flex: 1 1 auto;
+  min-height: 0;
+  color: inherit;
+  cursor: pointer;
+}
+
+.norgoth-landing-card-face:focus-visible {
+  outline: 2px solid #6ea8fe;
+  outline-offset: -2px;
 }
 
 .norgoth-landing-card-icon {
@@ -1770,27 +1791,64 @@ body {
   min-height: 3.9em;
 }
 
-.norgoth-landing-feature-modal.modal .modal-dialog {
-  max-width: min(40rem, calc(100vw - 1.5rem));
-  margin-inline: 0.75rem;
+.norgoth-landing-card-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in srgb, var(--norgoth-surface) 96%, #0b0e14);
+  opacity: 0;
+  transform: translateY(4px);
+  pointer-events: none;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
 }
 
-.norgoth-landing-feature-modal .modal-content {
-  max-height: min(90vh, 40rem);
-  overflow: hidden;
-  background: var(--norgoth-surface);
-  border: 1px solid var(--norgoth-card-border-secondary);
+.norgoth-landing-card[data-open="true"] .norgoth-landing-card-overlay {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
 }
 
-.norgoth-landing-feature-modal .modal-body {
+.norgoth-landing-card-overlay[hidden] {
+  display: none;
+}
+
+.norgoth-landing-card-overlay-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  min-height: 0;
+  height: 100%;
+  padding: 0.85rem;
+}
+
+.norgoth-landing-card-overlay-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  flex-shrink: 0;
+}
+
+.norgoth-landing-card-overlay-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior: contain;
   overflow-wrap: anywhere;
 }
 
-.norgoth-landing-card:hover,
-.norgoth-landing-card:focus-visible {
+.norgoth-landing-card-overlay-close:focus-visible {
+  outline: 2px solid #6ea8fe;
+  outline-offset: 2px;
+}
+
+.norgoth-landing-card:hover:not([data-open="true"]),
+.norgoth-landing-card:focus-within:not([data-open="true"]) {
   transform: translateY(-2px);
-  outline: none;
   box-shadow: 0 0 0 0.15rem rgba(110, 168, 254, 0.2);
 }
 
@@ -1966,14 +2024,12 @@ body {
   }
 
   .norgoth-landing-card:hover,
-  .norgoth-landing-card:focus-visible {
+  .norgoth-landing-card:focus-within,
+  .norgoth-landing-card[data-open="true"] {
     transform: none;
   }
 
-  .norgoth-landing-feature-modal.modal,
-  .norgoth-landing-feature-modal .modal-dialog,
-  .norgoth-landing-feature-modal .modal-backdrop {
-    animation: none;
+  .norgoth-landing-card-overlay {
     transition: none;
   }
 
