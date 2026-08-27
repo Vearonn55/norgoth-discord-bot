@@ -41,10 +41,8 @@ def test_guild_role_label_from_owner_and_bits() -> None:
 
 
 def test_setup_state_matrix() -> None:
-    assert derive_setup_state(bot_installed=False, configured=True) == "not_installed"
-    assert derive_setup_state(bot_installed=False, configured=False) == "not_installed"
-    assert derive_setup_state(bot_installed=True, configured=False) == "not_configured"
-    assert derive_setup_state(bot_installed=True, configured=True) == "configured"
+    assert derive_setup_state(bot_installed=False) == "not_installed"
+    assert derive_setup_state(bot_installed=True) == "installed"
 
 
 def test_owner_is_always_eligible() -> None:
@@ -164,15 +162,11 @@ def test_list_servers_returns_owned_guild_without_bot_install() -> None:
             "app.api.v1.operator_discord.get_redis",
             AsyncMock(return_value=redis),
         ):
-            with patch(
-                "app.api.v1.sessions.lookup_configured_guild_ids",
-                AsyncMock(return_value=set()),
-            ):
-                with TestClient(app) as client:
-                    response = client.get(
-                        "/api/v1/sessions/servers",
-                        headers={"X-Request-ID": "servers-owned-001"},
-                    )
+            with TestClient(app) as client:
+                response = client.get(
+                    "/api/v1/sessions/servers",
+                    headers={"X-Request-ID": "servers-owned-001"},
+                )
 
     assert response.status_code == 200
     body = response.json()
@@ -215,15 +209,11 @@ def test_list_servers_discord_401_returns_structured_error() -> None:
             "app.api.v1.operator_discord.get_redis",
             AsyncMock(return_value=redis),
         ):
-            with patch(
-                "app.api.v1.sessions.lookup_configured_guild_ids",
-                AsyncMock(return_value=set()),
-            ):
-                with TestClient(app) as client:
-                    response = client.get(
-                        "/api/v1/sessions/servers",
-                        headers={"X-Request-ID": "servers-401-001"},
-                    )
+            with TestClient(app) as client:
+                response = client.get(
+                    "/api/v1/sessions/servers",
+                    headers={"X-Request-ID": "servers-401-001"},
+                )
 
     assert response.status_code == 401
     body = response.json()
@@ -232,7 +222,7 @@ def test_list_servers_discord_401_returns_structured_error() -> None:
     assert "stale-access-token" not in response.text
 
 
-def test_list_servers_setup_state_and_animated_icon() -> None:
+def test_list_servers_install_state_and_animated_icon() -> None:
     sessions = SessionService()
     sessions.get_valid_access_token = AsyncMock(return_value="access-token")  # type: ignore[method-assign]
 
@@ -248,14 +238,14 @@ def test_list_servers_setup_state_and_animated_icon() -> None:
             ),
             DiscordOAuthGuild(
                 id="222",
-                name="Installed Unconfigured",
+                name="Installed Alpha",
                 owner=False,
                 permissions="8",
                 icon="a_animicon",
             ),
             DiscordOAuthGuild(
                 id="333",
-                name="Configured Server",
+                name="Installed Beta",
                 owner=False,
                 permissions="32",
             ),
@@ -273,8 +263,8 @@ def test_list_servers_setup_state_and_animated_icon() -> None:
         return_value=json.dumps(
             {
                 "guilds": [
-                    {"id": "222", "name": "Installed Unconfigured", "icon": "a_animicon"},
-                    {"id": "333", "name": "Configured Server"},
+                    {"id": "222", "name": "Installed Alpha", "icon": "a_animicon"},
+                    {"id": "333", "name": "Installed Beta"},
                 ]
             }
         )
@@ -291,23 +281,25 @@ def test_list_servers_setup_state_and_animated_icon() -> None:
             "app.api.v1.operator_discord.get_redis",
             AsyncMock(return_value=redis),
         ):
-            with patch(
-                "app.api.v1.sessions.lookup_configured_guild_ids",
-                AsyncMock(return_value={"333", "444"}),
-            ):
-                with TestClient(app) as client:
-                    response = client.get("/api/v1/sessions/servers")
+            with TestClient(app) as client:
+                response = client.get("/api/v1/sessions/servers")
 
     assert response.status_code == 200
-    by_id = {item["id"]: item for item in response.json()["servers"]}
+    body = response.json()["servers"]
+    by_id = {item["id"]: item for item in body}
     assert set(by_id) == {"111", "222", "333", "444"}
     assert all(isinstance(guild_id, str) for guild_id in by_id)
     assert by_id["111"]["setup_state"] == "not_installed"
+    assert by_id["111"]["bot_installed"] is False
     assert by_id["111"]["icon_url"].endswith("staticicon.png?size=128")
-    assert by_id["222"]["setup_state"] == "not_configured"
+    assert by_id["222"]["setup_state"] == "installed"
+    assert by_id["222"]["bot_installed"] is True
     assert by_id["222"]["role_label"] == "Administrator"
     assert by_id["222"]["icon_url"].endswith("a_animicon.gif?size=128")
-    assert by_id["333"]["setup_state"] == "configured"
+    assert by_id["333"]["setup_state"] == "installed"
+    assert by_id["333"]["bot_installed"] is True
     assert by_id["333"]["role_label"] == "Manage Server"
     assert by_id["444"]["setup_state"] == "not_installed"
     assert by_id["444"]["bot_installed"] is False
+    # Installed servers sort before not-installed; name tie-break within groups.
+    assert [item["id"] for item in body] == ["222", "333", "444", "111"]

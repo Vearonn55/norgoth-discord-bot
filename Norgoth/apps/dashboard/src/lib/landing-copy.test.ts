@@ -39,10 +39,11 @@ const LANDING_KEYS = [
 ] as const;
 
 const SERVER_KEYS = [
+  "installed",
   "notInstalled",
-  "notConfigured",
-  "configured",
-  "continueSetup",
+  "summaryInstalled",
+  "summaryNotInstalled",
+  "installGuidance",
   "installNorBot",
   "refresh",
   "roleOwner",
@@ -151,6 +152,11 @@ describe("visual QA tokens", () => {
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
     expect(css).toContain(".norgoth-server-guild-action");
     expect(css).toContain("min-height: 40px");
+    expect(css).toContain("justify-content: center");
+    expect(css).toContain('.norgoth-server-guild-card[data-install="installed"]');
+    expect(css).toContain(
+      '.norgoth-server-guild-card[data-install="not_installed"]',
+    );
   });
 
   it("covers the 375 / 768 / 1280 and keyboard checklist in CSS primitives", () => {

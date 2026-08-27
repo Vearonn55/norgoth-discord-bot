@@ -1519,9 +1519,86 @@ body {
     var(--cui-card-box-shadow);
 }
 
+.norgoth-server-guild-card[data-install="installed"] {
+  background: linear-gradient(
+    135deg,
+    rgba(61, 214, 140, 0.08),
+    transparent 55%
+  );
+}
+
+.norgoth-server-guild-card[data-install="not_installed"] {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 107, 122, 0.08),
+    transparent 55%
+  );
+  cursor: default;
+}
+
+.norgoth-server-guild-card[data-install="not_installed"]:hover,
+.norgoth-server-guild-card[data-install="not_installed"]:focus-visible {
+  transform: none;
+}
+
 .norgoth-server-guild-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 40px;
   min-width: 40px;
+}
+
+.norgoth-server-selector {
+  position: relative;
+}
+
+.norgoth-server-selector-ambient {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(
+      ellipse 70% 50% at 15% -10%,
+      rgba(110, 168, 254, 0.14),
+      transparent 55%
+    ),
+    radial-gradient(
+      ellipse 50% 40% at 90% 8%,
+      rgba(61, 214, 140, 0.06),
+      transparent 50%
+    );
+}
+
+.norgoth-server-selector-ambient::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.18;
+  background-image:
+    linear-gradient(rgba(241, 244, 250, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(241, 244, 250, 0.04) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.5), transparent 48%);
+}
+
+.norgoth-server-selector > *:not(.norgoth-server-selector-ambient) {
+  position: relative;
+  z-index: 1;
+}
+
+.norgoth-server-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+@media (min-width: 768px) {
+  .norgoth-server-summary {
+    grid-template-columns: repeat(2, minmax(0, 14rem));
+  }
 }
 
 .norgoth-skeleton {

@@ -28,10 +28,7 @@ from app.security.session import (
     SessionService,
 )
 from app.services.campaign_store import get_redis
-from app.services.guild_setup_state import (
-    derive_setup_state,
-    lookup_configured_guild_ids,
-)
+from app.services.guild_setup_state import derive_setup_state
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
@@ -151,7 +148,7 @@ async def list_manageable_servers(
                                 ),
                                 "bot_installed": True,
                                 "manageable": True,
-                                "setup_state": "not_configured",
+                                "setup_state": "installed",
                             }
                         )
             except json.JSONDecodeError:
@@ -167,8 +164,7 @@ async def list_manageable_servers(
         await redis_client.aclose()
 
     async def _bot_only_servers() -> dict[str, Any]:
-        configured = await lookup_configured_guild_ids(bot_guild_ids)
-        _apply_setup_state(bot_guilds, bot_guild_ids, configured)
+        _apply_setup_state(bot_guilds, bot_guild_ids)
         return {"servers": bot_guilds}
 
     if not settings.auth_enforced and session.user_id == "0":
@@ -187,15 +183,11 @@ async def list_manageable_servers(
         route="/sessions/servers",
     )
 
-    eligible_ids: set[str] = set()
     pending: list[tuple[Any, bool]] = []
     for guild in user_guilds:
         if not can_manage_guild(owner=guild.owner, permissions=guild.permissions):
             continue
-        eligible_ids.add(guild.id)
         pending.append((guild, guild.id in bot_guild_ids))
-
-    configured_ids = await lookup_configured_guild_ids(eligible_ids | bot_guild_ids)
 
     servers = []
     for guild, bot_installed in pending:
@@ -214,14 +206,11 @@ async def list_manageable_servers(
                 ),
                 "bot_installed": bot_installed,
                 "manageable": True,
-                "setup_state": derive_setup_state(
-                    bot_installed=bot_installed,
-                    configured=guild.id in configured_ids,
-                ),
+                "setup_state": derive_setup_state(bot_installed=bot_installed),
             }
         )
 
-    state_rank = {"configured": 0, "not_configured": 1, "not_installed": 2}
+    state_rank = {"installed": 0, "not_installed": 1}
     servers.sort(
         key=lambda item: (
             state_rank.get(item["setup_state"], 9),
@@ -234,10 +223,8 @@ async def list_manageable_servers(
 def _apply_setup_state(
     bot_guilds: list[dict[str, Any]],
     bot_guild_ids: set[str],
-    configured_ids: set[str],
 ) -> None:
     for item in bot_guilds:
         item["setup_state"] = derive_setup_state(
             bot_installed=item["id"] in bot_guild_ids,
-            configured=item["id"] in configured_ids,
         )

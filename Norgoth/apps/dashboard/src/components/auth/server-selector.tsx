@@ -14,9 +14,10 @@ import {
   isRetryErrorCode,
   readApiError,
 } from "@/lib/api-error";
-import { isSetupState } from "@/lib/server-setup-state";
+import { resolveSetupState } from "@/lib/server-setup-state";
 import { useGuildStore, type SelectedGuild } from "@/stores/guild-store";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/layout/page-header";
 import {
   ServerGuildCard,
   type ServerGuildItem,
@@ -32,11 +33,12 @@ type ServersCopy = {
   loading: string;
   empty: string;
   available: string;
+  installed: string;
   notInstalled: string;
-  notConfigured: string;
-  configured: string;
+  summaryInstalled: string;
+  summaryNotInstalled: string;
+  installGuidance: string;
   open: string;
-  continueSetup: string;
   installNorBot: string;
   addNorgoth: string;
   refresh: string;
@@ -67,11 +69,13 @@ const FALLBACK_COPY: Record<"en" | "tr", ServersCopy> = {
     empty:
       "No manageable servers found. Make sure you have Manage Server permission, then install NorBot from a server card.",
     available: "Available to manage",
-    notInstalled: "Not installed",
-    notConfigured: "Not configured",
-    configured: "Configured",
+    installed: "Installed",
+    notInstalled: "Not Installed",
+    summaryInstalled: "Installed",
+    summaryNotInstalled: "Not Installed",
+    installGuidance:
+      "Pick Install NorBot on any server where the bot is missing, then approve the Discord prompt.",
     open: "Open Command Center",
-    continueSetup: "Continue setup",
     installNorBot: "Install NorBot",
     addNorgoth: "Install NorBot",
     refresh: "Refresh",
@@ -104,11 +108,13 @@ const FALLBACK_COPY: Record<"en" | "tr", ServersCopy> = {
     empty:
       "Yönetilebilir sunucu bulunamadı. Sunucuyu Yönet izniniz olduğundan emin olun, ardından bir sunucu kartından NorBot’u yükleyin.",
     available: "Yönetime hazır",
-    notInstalled: "Yüklü değil",
-    notConfigured: "Yapılandırılmadı",
-    configured: "Yapılandırıldı",
+    installed: "Yüklü",
+    notInstalled: "Yüklü Değil",
+    summaryInstalled: "Yüklü",
+    summaryNotInstalled: "Yüklü Değil",
+    installGuidance:
+      "NorBot’un olmadığı sunucularda NorBot’u yükle’yi seçin ve Discord onayını tamamlayın.",
     open: "Komuta Merkezini aç",
-    continueSetup: "Kuruluma devam et",
     installNorBot: "NorBot’u yükle",
     addNorgoth: "NorBot’u yükle",
     refresh: "Yenile",
@@ -153,22 +159,27 @@ function messageForCode(copy: ServersCopy, code: string): string {
 }
 
 function normalizeServer(raw: ServerGuildItem): ServerGuildItem {
-  const setupState = isSetupState(raw.setup_state)
-    ? raw.setup_state
-    : raw.bot_installed
-      ? "not_configured"
-      : "not_installed";
+  // bot_installed is the selector SoT; setup_state is derived for compatibility.
+  const setupState = resolveSetupState({
+    bot_installed: Boolean(raw.bot_installed),
+    setup_state: raw.setup_state,
+  });
+  const botInstalled = setupState === "installed";
   return {
     ...raw,
     id: String(raw.id),
+    bot_installed: botInstalled,
     setup_state: setupState,
   };
 }
 
 function sortServers(list: ServerGuildItem[]): ServerGuildItem[] {
-  return [...list].sort((a, b) =>
-    a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
-  );
+  return [...list].sort((a, b) => {
+    const aInstalled = a.bot_installed ? 0 : 1;
+    const bInstalled = b.bot_installed ? 0 : 1;
+    if (aInstalled !== bInstalled) return aInstalled - bInstalled;
+    return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+  });
 }
 
 function ServerGridSkeleton() {
@@ -285,11 +296,11 @@ export function ServerSelector({ copy }: { copy?: Partial<ServersCopy> }) {
     void loadServers();
   }, [loadServers, reloadKey, lang, router]);
 
-  // Clear awaiting when the target guild leaves not_installed.
+  // Clear awaiting when the target guild becomes installed.
   useEffect(() => {
     if (!awaitingGuildId) return;
     const target = servers.find((s) => s.id === awaitingGuildId);
-    if (target && target.setup_state !== "not_installed") {
+    if (target?.bot_installed) {
       setAwaitingGuildId(null);
       setAwaitingStartedAt(null);
       setInstallTimedOut(false);
@@ -335,6 +346,13 @@ export function ServerSelector({ copy }: { copy?: Partial<ServersCopy> }) {
     return servers.slice(start, start + PAGE_SIZE);
   }, [servers, safePage]);
 
+  const installedCount = useMemo(
+    () => servers.filter((server) => server.bot_installed).length,
+    [servers],
+  );
+  const notInstalledCount = servers.length - installedCount;
+  const showSummary = !loading && !error && servers.length > 0;
+
   function goToPage(next: number) {
     setPage(next);
     requestAnimationFrame(() => {
@@ -343,7 +361,7 @@ export function ServerSelector({ copy }: { copy?: Partial<ServersCopy> }) {
   }
 
   async function openServer(server: ServerGuildItem) {
-    if (server.setup_state === "not_installed" || !server.bot_installed) {
+    if (!server.bot_installed || server.setup_state === "not_installed") {
       return;
     }
     const guild: SelectedGuild = {
@@ -383,14 +401,12 @@ export function ServerSelector({ copy }: { copy?: Partial<ServersCopy> }) {
       className="norgoth-server-selector py-4 d-flex flex-column"
       style={{ maxWidth: 1180, minHeight: 0, flex: "1 1 auto" }}
     >
-      <div className="d-flex flex-column flex-md-row align-items-md-end justify-content-between gap-3 mb-4 flex-shrink-0">
-        <div className="min-w-0">
-          <h1 className="h3 mb-2">{t.title}</h1>
-          <p className="text-body-secondary mb-0" style={{ maxWidth: 640 }}>
-            {t.subtitle}
-          </p>
-        </div>
-        <div className="d-flex flex-wrap gap-2">
+      <div className="norgoth-server-selector-ambient" aria-hidden="true" />
+
+      <PageHeader
+        title={t.title}
+        description={t.subtitle}
+        actions={
           <Button
             type="button"
             variant="secondary"
@@ -401,8 +417,26 @@ export function ServerSelector({ copy }: { copy?: Partial<ServersCopy> }) {
           >
             {t.refresh}
           </Button>
+        }
+      />
+
+      {showSummary ? (
+        <div className="mb-3 flex-shrink-0">
+          <div className="norgoth-server-summary mb-2">
+            <div className="norgoth-metric-widget" data-accent="success">
+              <div className="norgoth-metric-label">{t.summaryInstalled}</div>
+              <div className="norgoth-metric-value">{installedCount}</div>
+            </div>
+            <div className="norgoth-metric-widget" data-accent="danger">
+              <div className="norgoth-metric-label">{t.summaryNotInstalled}</div>
+              <div className="norgoth-metric-value">{notInstalledCount}</div>
+            </div>
+          </div>
+          {notInstalledCount > 0 ? (
+            <p className="small text-body-secondary mb-0">{t.installGuidance}</p>
+          ) : null}
         </div>
-      </div>
+      ) : null}
 
       {awaitingServer ? (
         <p className="small text-body-secondary mb-3 flex-shrink-0" role="status">
@@ -428,7 +462,14 @@ export function ServerSelector({ copy }: { copy?: Partial<ServersCopy> }) {
         </div>
       ) : null}
 
-      {loading ? <ServerGridSkeleton /> : null}
+      {loading ? (
+        <>
+          <p className="visually-hidden" role="status">
+            {t.loading}
+          </p>
+          <ServerGridSkeleton />
+        </>
+      ) : null}
 
       {error ? (
         <div className="mb-3">
