@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
+import { cilX } from "@coreui/icons";
 import { CIcon } from "@coreui/icons-react";
 import type { LandingCopy } from "@/components/landing/landing-copy";
 import type { LandingFeatureId } from "@/components/landing/landing-feature-catalog";
@@ -32,12 +33,31 @@ export function LandingFeatureCard({
   onToggle: (id: LandingFeatureId) => void;
 }) {
   const shellRef = useRef<HTMLDivElement | null>(null);
+  const faceRef = useRef<HTMLButtonElement | null>(null);
+  const dismissedUntilLeaveRef = useRef(false);
+  const wasOpenRef = useRef(open);
   const def = landingFeatureDef(id);
   const feature = copy.features[id];
   const tokens = CATEGORY_TOKENS[def.category];
   const overlayId = landingFeatureOverlayId(id);
   const titleId = `landing-feature-title-${id}`;
   const groupLabel = landingNavGroupLabel(id, sidebar);
+
+  useEffect(() => {
+    if (wasOpenRef.current && !open && shellRef.current?.matches(":hover")) {
+      dismissedUntilLeaveRef.current = true;
+    }
+    wasOpenRef.current = open;
+  }, [open]);
+
+  function requestOpen() {
+    if (dismissedUntilLeaveRef.current) return;
+    onOpen(id);
+  }
+
+  function clearDismissLatch() {
+    dismissedUntilLeaveRef.current = false;
+  }
 
   return (
     <div
@@ -48,7 +68,7 @@ export function LandingFeatureCard({
       style={{ borderLeft: `3px solid ${tokens.color}` }}
       onPointerEnter={(event) => {
         if (event.pointerType === "touch") return;
-        onOpen(id);
+        requestOpen();
       }}
       onPointerLeave={() => {
         if (
@@ -58,10 +78,11 @@ export function LandingFeatureCard({
         ) {
           return;
         }
+        clearDismissLatch();
         onClose(id);
       }}
       onFocusCapture={() => {
-        onOpen(id);
+        requestOpen();
       }}
       onBlurCapture={(event) => {
         const next = event.relatedTarget;
@@ -72,11 +93,15 @@ export function LandingFeatureCard({
       }}
     >
       <button
+        ref={faceRef}
         type="button"
         className="norgoth-landing-card-face w-100 p-3 border-0 bg-transparent text-start"
         aria-expanded={open}
         aria-controls={overlayId}
-        onClick={() => onToggle(id)}
+        onClick={() => {
+          clearDismissLatch();
+          onToggle(id);
+        }}
       >
         <span className="norgoth-landing-card-icon" aria-hidden="true">
           <CIcon icon={def.icon} />
@@ -109,12 +134,12 @@ export function LandingFeatureCard({
             >
               <CIcon icon={def.icon} />
             </span>
-            <span className="min-w-0">
+            <span className="norgoth-landing-card-overlay-copy">
               <span className="d-block fw-semibold text-truncate">
                 {feature.title}
               </span>
               <span
-                className="d-block small"
+                className="d-block small text-truncate"
                 style={{ letterSpacing: "0.06em", color: tokens.color }}
               >
                 {groupLabel}
@@ -122,13 +147,16 @@ export function LandingFeatureCard({
             </span>
             <button
               type="button"
-              className="btn btn-sm btn-outline-secondary norgoth-landing-card-overlay-close ms-auto flex-shrink-0"
+              className="btn btn-sm btn-outline-secondary norgoth-landing-card-overlay-close"
+              aria-label={copy.cardsDetailClose}
               onClick={(event) => {
                 event.stopPropagation();
+                dismissedUntilLeaveRef.current = true;
                 onClose(id);
+                faceRef.current?.focus();
               }}
             >
-              {copy.cardsDetailClose}
+              <CIcon icon={cilX} aria-hidden />
             </button>
           </div>
           <div className="norgoth-landing-card-overlay-body norgoth-scrollbar">

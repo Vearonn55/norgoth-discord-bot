@@ -42,7 +42,8 @@ const SERVER_KEYS = [
   "installed",
   "notInstalled",
   "manage",
-  "installNorBot",
+  "install",
+  "installAria",
   "refresh",
   "roleOwner",
   "awaitingInstall",
@@ -86,8 +87,14 @@ describe("dictionary keys", () => {
       expect(en.servers[key].length).toBeGreaterThan(0);
       expect(tr.servers[key].length).toBeGreaterThan(0);
     }
-    expect(en.servers.installNorBot).toContain("NorBot");
-    expect(tr.servers.installNorBot).toContain("NorBot");
+    expect(en.servers.installAria).toContain("NorBot");
+    expect(tr.servers.installAria).toContain("NorBot");
+    expect(en.servers.installAria).toContain("{name}");
+    expect(tr.servers.installAria).toContain("{name}");
+    expect(en.servers.install).toBe("Install");
+    expect(tr.servers.install).toBe("Yükle");
+    expect(en.landing.cardsDetailClose.length).toBeGreaterThan(5);
+    expect(tr.landing.cardsDetailClose.length).toBeGreaterThan(5);
     expect(en.servers).not.toHaveProperty("addBot");
     expect(tr.servers).not.toHaveProperty("addBot");
     expect(en.dashboard.description).toContain("NorBot");
@@ -204,12 +211,16 @@ describe("landing source contracts", () => {
     expect(card).toContain("norgoth-landing-card-overlay");
     expect(card).toContain("onPointerEnter");
     expect(card).toContain("onPointerLeave");
-    expect(card).toContain("cardsDetailClose");
+    expect(card).toContain("cilX");
+    expect(card).toContain("aria-label={copy.cardsDetailClose}");
+    expect(card).toContain("dismissedUntilLeaveRef");
+    expect(card).toContain("faceRef.current?.focus()");
     expect(card).toContain("landingNavGroupLabel");
     expect(card).toContain("cap1");
     expect(card).not.toContain('aria-haspopup="dialog"');
     expect(card).not.toContain("LANDING_FEATURE_DETAIL_MODAL_ID");
     expect(card).not.toContain("CModal");
+    expect(card).not.toMatch(/>\s*\{copy\.cardsDetailClose\}\s*</);
     expect(grid).toContain("norgoth-landing-cards");
     expect(grid).toContain('event.key === "Escape"');
     expect(grid).toContain("pointerdown");
@@ -217,7 +228,10 @@ describe("landing source contracts", () => {
     expect(grid).not.toContain("AnimatePresence");
     expect(grid).not.toContain("CModal");
     expect(css).toContain(".norgoth-landing-card-overlay");
+    expect(css).toContain(".norgoth-landing-card-overlay-close");
+    expect(css).toContain(".norgoth-landing-card-overlay-copy");
     expect(css).toContain("overscroll-behavior: contain");
+    expect(css).toContain("width: 2rem");
     expect(css).not.toContain(".norgoth-landing-feature-modal");
     expect(row).not.toContain("demoSidebar");
     expect(visual).toContain("groupLabel");

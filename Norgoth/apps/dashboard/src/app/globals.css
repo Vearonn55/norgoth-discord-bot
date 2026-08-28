@@ -1832,6 +1832,12 @@ body {
   flex-shrink: 0;
 }
 
+.norgoth-landing-card-overlay-copy {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
 .norgoth-landing-card-overlay-body {
   flex: 1 1 auto;
   min-height: 0;
@@ -1839,6 +1845,20 @@ body {
   overflow-y: auto;
   overscroll-behavior: contain;
   overflow-wrap: anywhere;
+}
+
+.norgoth-landing-card-overlay-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  min-width: 2rem;
+  min-height: 2rem;
+  padding: 0;
+  margin-left: auto;
+  line-height: 1;
 }
 
 .norgoth-landing-card-overlay-close:focus-visible {

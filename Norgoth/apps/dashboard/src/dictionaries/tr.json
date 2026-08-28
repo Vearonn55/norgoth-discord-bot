@@ -861,8 +861,9 @@
     "installed": "Yüklü",
     "notInstalled": "Yüklü Değil",
     "manage": "Yönet",
-    "installNorBot": "NorBot’u yükle",
-    "addNorgoth": "NorBot’u yükle",
+    "install": "Yükle",
+    "installAria": "NorBot’u {name} sunucusuna yükle",
+    "addNorgoth": "Yükle",
     "refresh": "Yenile",
     "roleOwner": "Sahip",
     "roleAdministrator": "Yönetici",
@@ -1135,7 +1136,7 @@
         "cap3": "Bot durumu özeti"
       }
     },
-    "cardsDetailClose": "Kapat"
+    "cardsDetailClose": "Özellik ayrıntılarını kapat"
   },
   "campaignCommandCenter": {
     "loading": "Komuta Merkezi yükleniyor…",

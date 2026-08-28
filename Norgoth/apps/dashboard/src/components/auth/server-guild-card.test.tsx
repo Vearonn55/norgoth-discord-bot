@@ -11,8 +11,9 @@ const copy = {
   notInstalled: "Not Installed",
   installed: "Installed",
   manage: "Manage",
-  installNorBot: "Install NorBot",
-  addNorgoth: "Install NorBot",
+  install: "Install",
+  installAria: "Install NorBot on {name}",
+  addNorgoth: "Install",
   roleOwner: "Owner",
   roleAdministrator: "Administrator",
   roleManageServer: "Manage Server",
@@ -49,7 +50,7 @@ describe("ServerGuildCard", () => {
     expect(html).toContain('aria-label="Manage Ready Guild"');
   });
 
-  it("renders Not Installed status with install link and no nested button", () => {
+  it("renders Not Installed status with short Install label and branded aria", () => {
     const html = renderToStaticMarkup(
       <ServerGuildCard
         server={{
@@ -67,7 +68,8 @@ describe("ServerGuildCard", () => {
     );
 
     expect(html).toContain("Not Installed");
-    expect(html).toContain("Install NorBot");
+    expect(html).toContain(">Install<");
+    expect(html).not.toContain(">Install NorBot<");
     expect(html).toContain('data-install="not_installed"');
     expect(html).toContain("var(--cui-danger)");
     expect(html).toContain("guild_id=222");
@@ -75,7 +77,7 @@ describe("ServerGuildCard", () => {
     expect(html).toContain('role="group"');
     expect(html).not.toContain("<button");
     expect(html).toContain("justify-content-center");
-    expect(html).toContain('aria-label="Install NorBot Needs Install"');
+    expect(html).toContain('aria-label="Install NorBot on Needs Install"');
   });
 
   it("treats legacy not_configured setup_state as installed when bot is present", () => {

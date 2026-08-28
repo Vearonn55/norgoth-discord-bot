@@ -25,7 +25,8 @@ export type ServerGuildCopy = {
   notInstalled: string;
   installed: string;
   manage: string;
-  installNorBot: string;
+  install: string;
+  installAria: string;
   addNorgoth: string;
   roleOwner: string;
   roleAdministrator: string;
@@ -50,7 +51,7 @@ function statusLabel(state: SetupState, copy: ServerGuildCopy): string {
 function actionLabel(state: SetupState, copy: ServerGuildCopy): string {
   return setupStateAction(state) === "open"
     ? copy.manage
-    : copy.installNorBot || copy.addNorgoth;
+    : copy.install || copy.addNorgoth;
 }
 
 function cardClassName(selected: boolean): string {
@@ -85,6 +86,8 @@ export function ServerGuildCard({
   const installAttr = installed ? "installed" : "not_installed";
   const style = { ["--norgoth-section-accent" as string]: accent };
   const ariaLabel = `${server.name}, ${status}`;
+  const installAria = copy.installAria.replace("{name}", server.name);
+  const manageAria = `${action} ${server.name}`;
 
   const header = (
     <span className="d-flex align-items-center gap-3 w-100">
@@ -122,7 +125,7 @@ export function ServerGuildCard({
             target="_blank"
             rel="noopener noreferrer"
             className={`${actionClassName} btn-primary`}
-            aria-label={`${action} ${server.name}`}
+            aria-label={installAria}
             onClick={() => {
               onInstall?.(server);
             }}
@@ -148,7 +151,7 @@ export function ServerGuildCard({
         <button
           type="button"
           className={`${actionClassName} btn-success`}
-          aria-label={`${action} ${server.name}`}
+          aria-label={manageAria}
           onClick={() => onOpen(server)}
         >
           {action}

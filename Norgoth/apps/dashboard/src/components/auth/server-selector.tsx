@@ -36,7 +36,8 @@ type ServersCopy = {
   installed: string;
   notInstalled: string;
   manage: string;
-  installNorBot: string;
+  install: string;
+  installAria: string;
   addNorgoth: string;
   refresh: string;
   roleOwner: string;
@@ -69,8 +70,9 @@ const FALLBACK_COPY: Record<"en" | "tr", ServersCopy> = {
     installed: "Installed",
     notInstalled: "Not Installed",
     manage: "Manage",
-    installNorBot: "Install NorBot",
-    addNorgoth: "Install NorBot",
+    install: "Install",
+    installAria: "Install NorBot on {name}",
+    addNorgoth: "Install",
     refresh: "Refresh",
     roleOwner: "Owner",
     roleAdministrator: "Administrator",
@@ -104,8 +106,9 @@ const FALLBACK_COPY: Record<"en" | "tr", ServersCopy> = {
     installed: "Yüklü",
     notInstalled: "Yüklü Değil",
     manage: "Yönet",
-    installNorBot: "NorBot’u yükle",
-    addNorgoth: "NorBot’u yükle",
+    install: "Yükle",
+    installAria: "NorBot’u {name} sunucusuna yükle",
+    addNorgoth: "Yükle",
     refresh: "Yenile",
     roleOwner: "Sahip",
     roleAdministrator: "Yönetici",
