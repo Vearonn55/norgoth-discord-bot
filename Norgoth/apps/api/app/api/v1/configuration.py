@@ -1,8 +1,10 @@
 """Version 1 API endpoints for guild verification configuration."""
 
+from datetime import datetime, timezone
 from typing import Annotated
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, status
 
 from app.api.v1.dependencies import (
     ConfigurationServiceDependency,
@@ -58,6 +60,45 @@ async def _invalidate_join(discord_guild_id: str) -> None:
     await invalidate_verification_join_cache(discord_guild_id)
 
 
+def _provisional_configuration_view(
+    guild_id: UUID,
+    payload: ConfigurationUpsertRequest,
+) -> ConfigurationView:
+    """Build an in-memory configuration view from a draft upsert payload."""
+
+    return ConfigurationView(
+        id=uuid4(),
+        guild_id=guild_id,
+        verification_channel_id=payload.verification_channel_id,
+        log_channel_id=payload.log_channel_id,
+        unverified_role_id=payload.unverified_role_id,
+        member_role_id=payload.member_role_id,
+        manual_review_role_id=payload.manual_review_role_id or "",
+        minimum_account_age_days=payload.minimum_account_age_days,
+        session_timeout_seconds=payload.session_timeout_seconds,
+        deny_vpn_or_proxy=payload.deny_vpn_or_proxy,
+        deny_shared_ip=payload.deny_shared_ip,
+        vpn_or_proxy_action=payload.vpn_or_proxy_action,
+        shared_ip_action=payload.shared_ip_action,
+        enabled=payload.enabled,
+        panel_message_id=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+
+
+def _validation_issues_response(
+    *,
+    setup_state: str,
+    issues: list[dict[str, str | None]],
+) -> VerificationValidateResponse:
+    return VerificationValidateResponse(
+        ok=False,
+        setup_state=setup_state,
+        issues=issues,
+    )
+
+
 @router.get(
     "/setup",
     response_model=VerificationSetupResponse,
@@ -96,6 +137,7 @@ async def validate_verification_configuration(
     guild_service: GuildServiceDependency,
     configuration_service: ConfigurationServiceDependency,
     bot_client: DiscordBotClientDependency,
+    payload: ConfigurationUpsertRequest | None = Body(default=None),
 ) -> VerificationValidateResponse:
     """Validate configured Discord channels/roles for verification."""
 
@@ -107,21 +149,6 @@ async def validate_verification_configuration(
             detail="Discord guild not found.",
         )
 
-    configuration = await configuration_service.get_by_guild_id(guild.id)
-    setup = derive_verification_setup_state(configuration)
-    if configuration is None or setup.state in {"not_configured", "incomplete"}:
-        return VerificationValidateResponse(
-            ok=False,
-            setup_state=setup.state,
-            issues=[
-                {
-                    "code": setup.code,
-                    "message": "Save required channels and roles before validating.",
-                    "field": None,
-                }
-            ],
-        )
-
     if bot_client is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -131,14 +158,44 @@ async def validate_verification_configuration(
             },
         )
 
+    if payload is not None:
+        configuration = _provisional_configuration_view(guild.id, payload)
+        setup = derive_verification_setup_state(configuration)
+        if setup.state in {"not_configured", "incomplete"}:
+            return _validation_issues_response(
+                setup_state=setup.state,
+                issues=[
+                    {
+                        "code": setup.code,
+                        "message": "Required channels and roles are missing from this draft.",
+                        "field": None,
+                    }
+                ],
+            )
+    else:
+        configuration = await configuration_service.get_by_guild_id(guild.id)
+        setup = derive_verification_setup_state(configuration)
+        if configuration is None or setup.state in {"not_configured", "incomplete"}:
+            return _validation_issues_response(
+                setup_state=setup.state,
+                issues=[
+                    {
+                        "code": setup.code,
+                        "message": "Save required channels and roles before validating.",
+                        "field": None,
+                    }
+                ],
+            )
+
     result = await validate_verification_discord_resources(
         bot_client=bot_client,
         discord_guild_id=discord_guild_id,
         configuration=configuration,
     )
+    persisted_setup = derive_verification_setup_state(configuration)
     return VerificationValidateResponse(
         ok=result.ok,
-        setup_state=result.setup_state if not result.ok else setup.state,
+        setup_state=result.setup_state if not result.ok else persisted_setup.state,
         issues=[
             {"code": issue.code, "message": issue.message, "field": issue.field}
             for issue in result.issues
@@ -198,53 +255,39 @@ async def create_or_update_configuration(
             detail="Discord guild not found.",
         )
 
-    # Build a temporary view for Discord membership validation before persist.
-    if bot_client is not None:
-        from datetime import datetime, timezone
-        from uuid import uuid4
+    if bot_client is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "guild_metadata_unavailable",
+                "message": "Discord bot token is not configured.",
+            },
+        )
 
-        provisional = ConfigurationView(
-            id=uuid4(),
-            guild_id=guild.id,
-            verification_channel_id=payload.verification_channel_id,
-            log_channel_id=payload.log_channel_id,
-            unverified_role_id=payload.unverified_role_id,
-            member_role_id=payload.member_role_id,
-            manual_review_role_id=payload.manual_review_role_id or "",
-            minimum_account_age_days=payload.minimum_account_age_days,
-            session_timeout_seconds=payload.session_timeout_seconds,
-            deny_vpn_or_proxy=payload.deny_vpn_or_proxy,
-            deny_shared_ip=payload.deny_shared_ip,
-            vpn_or_proxy_action=payload.vpn_or_proxy_action,
-            shared_ip_action=payload.shared_ip_action,
-            enabled=payload.enabled,
-            panel_message_id=None,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+    provisional = _provisional_configuration_view(guild.id, payload)
+    validation = await validate_verification_discord_resources(
+        bot_client=bot_client,
+        discord_guild_id=discord_guild_id,
+        configuration=provisional,
+    )
+    if not validation.ok:
+        primary = validation.issues[0]
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": primary.code,
+                "message": primary.message,
+                "field": primary.field,
+                "issues": [
+                    {
+                        "code": issue.code,
+                        "message": issue.message,
+                        "field": issue.field,
+                    }
+                    for issue in validation.issues
+                ],
+            },
         )
-        validation = await validate_verification_discord_resources(
-            bot_client=bot_client,
-            discord_guild_id=discord_guild_id,
-            configuration=provisional,
-        )
-        if not validation.ok:
-            primary = validation.issues[0]
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={
-                    "code": primary.code,
-                    "message": primary.message,
-                    "field": primary.field,
-                    "issues": [
-                        {
-                            "code": issue.code,
-                            "message": issue.message,
-                            "field": issue.field,
-                        }
-                        for issue in validation.issues
-                    ],
-                },
-            )
 
     configuration = await configuration_service.create_or_update(
         guild_id=guild.id,

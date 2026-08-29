@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   CAlert,
   CCol,
@@ -55,12 +55,25 @@ export function VerificationSettingsForm() {
   const setConfig = useVerificationStore((s) => s.setConfig);
   const loadConfig = useVerificationStore((s) => s.loadConfig);
   const validateDiscord = useVerificationStore((s) => s.validateDiscord);
+  const validationIssues = useVerificationStore((s) => s.validationIssues);
   const copyVerifyLink = useVerificationStore((s) => s.copyVerifyLink);
+  const [validateSuccess, setValidateSuccess] = useState(false);
 
   useEffect(() => {
     if (!guildId) return;
     void loadConfig(guildId);
   }, [guildId, loadConfig]);
+
+  useEffect(() => {
+    setValidateSuccess(false);
+  }, [
+    config.verification_channel_id,
+    config.log_channel_id,
+    config.unverified_role_id,
+    config.member_role_id,
+    config.manual_review_role_id,
+    validationIssues,
+  ]);
 
   if (guildLoading || loading) {
     return (
@@ -273,11 +286,22 @@ export function VerificationSettingsForm() {
       <div className="d-flex flex-wrap align-items-center gap-3">
         <Button
           variant="secondary"
-          onClick={() => void validateDiscord(guildId)}
+          onClick={() => {
+            setValidateSuccess(false);
+            void validateDiscord(guildId).then((result) => {
+              if (result.ok) setValidateSuccess(true);
+            });
+          }}
           disabled={validating || !hasLocalRequired(config)}
         >
           {validating ? d.validating : d.validateDiscord}
         </Button>
+
+        {validateSuccess && !validationIssues?.length ? (
+          <CAlert color="success" className="py-1 px-2 mb-0 small">
+            {d.validationErrors.validationSucceeded}
+          </CAlert>
+        ) : null}
 
         {savedAt && (
           <span className="small text-success">

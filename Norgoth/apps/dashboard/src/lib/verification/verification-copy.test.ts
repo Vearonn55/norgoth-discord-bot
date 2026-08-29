@@ -53,4 +53,33 @@ describe("verification settings modal save close", () => {
     expect(src).not.toContain("saveAndPublish");
     expect(src).not.toContain("await loadConfig(guildId);");
   });
+
+  it("routes validation errors into the modal for every tab", () => {
+    const modalSrc = readFileSync(
+      resolve(
+        __dirname,
+        "../../components/verification/verification-settings-modal.tsx",
+      ),
+      "utf8",
+    );
+    expect(modalSrc).toContain("formatVerificationValidationIssues");
+    expect(modalSrc).toContain("error={localizedValidationError}");
+    expect(modalSrc).not.toContain('error={section === "general" ? error : null}');
+  });
+
+  it("suppresses page-level alerts while the settings modal is open", () => {
+    const viewSrc = readFileSync(viewPath, "utf8");
+    expect(viewSrc).toContain("settingsModalOpen");
+    expect(viewSrc).toContain("error && !settingsModalOpen");
+  });
+
+  it("validateDiscord posts the current draft configuration body", () => {
+    const src = readFileSync(
+      resolve(__dirname, "../../stores/verification-store.ts"),
+      "utf8",
+    );
+    expect(src).toContain("configUpsertPayload(config)");
+    expect(src).toContain('method: "POST"');
+    expect(src).toContain("/configuration/validate");
+  });
 });
