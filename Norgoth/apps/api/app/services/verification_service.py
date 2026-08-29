@@ -51,6 +51,7 @@ class VerificationResult:
     shared_ip_detected: bool
     high_risk_guild_detected: bool
     matched_high_risk_guild_ids: tuple[str, ...]
+    attempt_id: UUID | None = None
 
 
 class VerificationService:
@@ -126,7 +127,7 @@ class VerificationService:
             ),
         )
 
-        await self._verification_log_service.create_log(
+        attempt = await self._verification_log_service.create_log(
             guild_id=request.guild_id,
             discord_user_id=request.discord_user_id,
             status=_OUTCOME_TO_STATUS[decision.outcome],
@@ -145,6 +146,7 @@ class VerificationService:
             shared_ip_detected=shared_ip_detected,
             high_risk_guild_detected=high_risk_guild_detected,
             matched_high_risk_guild_ids=matched_high_risk_guild_ids,
+            attempt_id=attempt.id,
         )
 
 

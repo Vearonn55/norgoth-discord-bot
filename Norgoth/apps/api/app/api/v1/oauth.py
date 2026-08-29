@@ -19,6 +19,7 @@ from fastapi.responses import RedirectResponse
 
 from app.api.v1.dependencies import (
     ConfigurationServiceDependency,
+    DatabaseSession,
     DiscordBotClientDependency,
     DiscordOAuthClientDependency,
     DiscordOAuthStateServiceDependency,
@@ -365,6 +366,7 @@ async def authorize_discord(
 )
 async def discord_callback(
     request: Request,
+    session: DatabaseSession,
     oauth_client: DiscordOAuthClientDependency,
     oauth_state_service: DiscordOAuthStateServiceDependency,
     guild_service: GuildServiceDependency,
@@ -705,6 +707,32 @@ async def discord_callback(
             outcome="error",
             reason="verification_processing_failed",
             display_context=context_token,
+        )
+
+    try:
+        await session.commit()
+    except Exception:
+        logger.exception("verification_callback code=commit_failed")
+        _log_callback_event(
+            request,
+            stage="verification_persist",
+            code="verification_processing_failed",
+            guild_id=verified_state.discord_guild_id,
+        )
+        return _verify_result_redirect(
+            request,
+            lang=lang,
+            outcome="error",
+            reason="verification_processing_failed",
+            display_context=context_token,
+        )
+
+    if verification_result.attempt_id is not None:
+        logger.info(
+            "verification_callback code=attempt_persisted attempt_id=%s guild_id=%s manual_review=%s",
+            verification_result.attempt_id,
+            verified_state.discord_guild_id,
+            verification_result.manual_review,
         )
 
     role_grant_failed = False

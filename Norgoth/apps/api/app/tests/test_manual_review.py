@@ -12,9 +12,10 @@ These cover the post-Blacklisted-Guild behavior:
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -33,6 +34,37 @@ from app.services.verification_service import (
     VerificationRequest,
     VerificationService,
 )
+
+
+def _mock_create_log_return(
+    verification_log_service: AsyncMock,
+    *,
+    attempt_id: UUID | None = None,
+) -> UUID:
+    """Configure create_log to return a view with a stable attempt id."""
+
+    resolved_id = attempt_id or uuid4()
+
+    async def _create_log(**kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(
+            id=resolved_id,
+            guild_id=kwargs.get("guild_id"),
+            discord_user_id=kwargs.get("discord_user_id"),
+            status=kwargs.get("status"),
+            reason=kwargs.get("reason"),
+            vpn_or_proxy_detected=kwargs.get("vpn_or_proxy_detected", False),
+            shared_ip_detected=kwargs.get("shared_ip_detected", False),
+            high_risk_guild_detected=kwargs.get("high_risk_guild_detected", False),
+            matched_high_risk_guild_ids=tuple(
+                kwargs.get("matched_high_risk_guild_ids") or ()
+            ),
+            reviewed_by=None,
+            reviewed_at=None,
+            created_at=datetime.now(timezone.utc),
+        )
+
+    verification_log_service.create_log.side_effect = _create_log
+    return resolved_id
 
 
 class _RecordingBotClient:
@@ -70,6 +102,7 @@ async def test_high_risk_membership_captures_ids_and_routes_manual_review() -> N
 
     verification_log_service = AsyncMock()
     verification_log_service.has_shared_ip.return_value = False
+    attempt_id = _mock_create_log_return(verification_log_service)
 
     service = VerificationService(
         user_list_service=user_list_service,
@@ -100,6 +133,7 @@ async def test_high_risk_membership_captures_ids_and_routes_manual_review() -> N
     assert result.allowed is False
     assert result.reason is VerificationDecisionReason.HIGH_RISK_GUILD
     assert result.matched_high_risk_guild_ids == ("900000000000000002",)
+    assert result.attempt_id == attempt_id
 
     create_kwargs = verification_log_service.create_log.await_args.kwargs
     assert create_kwargs["status"] is VerificationStatus.MANUAL_REVIEW
@@ -120,6 +154,7 @@ async def test_whitelisted_user_bypasses_high_risk() -> None:
     ]
     verification_log_service = AsyncMock()
     verification_log_service.has_shared_ip.return_value = False
+    _mock_create_log_return(verification_log_service)
 
     service = VerificationService(
         user_list_service=user_list_service,
@@ -151,6 +186,111 @@ async def test_whitelisted_user_bypasses_high_risk() -> None:
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("request_kwargs", "configuration_kwargs", "expected_reason"),
+    [
+        (
+            {
+                "matched_high_risk_guild_ids": ("900000000000000002",),
+                "vpn_or_proxy_detected": False,
+                "membership_check_unavailable": False,
+            },
+            {
+                "deny_vpn_or_proxy": True,
+                "deny_shared_ip": True,
+                "vpn_or_proxy_action": RiskAction.DENY,
+                "shared_ip_action": RiskAction.DENY,
+            },
+            VerificationDecisionReason.HIGH_RISK_GUILD,
+        ),
+        (
+            {
+                "matched_high_risk_guild_ids": (),
+                "vpn_or_proxy_detected": False,
+                "membership_check_unavailable": True,
+            },
+            {
+                "deny_vpn_or_proxy": True,
+                "deny_shared_ip": True,
+                "vpn_or_proxy_action": RiskAction.DENY,
+                "shared_ip_action": RiskAction.DENY,
+            },
+            VerificationDecisionReason.MEMBERSHIP_CHECK_UNAVAILABLE,
+        ),
+        (
+            {
+                "matched_high_risk_guild_ids": (),
+                "vpn_or_proxy_detected": True,
+                "membership_check_unavailable": False,
+            },
+            {
+                "deny_vpn_or_proxy": True,
+                "deny_shared_ip": False,
+                "vpn_or_proxy_action": RiskAction.MANUAL_REVIEW,
+                "shared_ip_action": RiskAction.DENY,
+            },
+            VerificationDecisionReason.VPN_OR_PROXY_DETECTED,
+        ),
+        (
+            {
+                "matched_high_risk_guild_ids": (),
+                "vpn_or_proxy_detected": False,
+                "membership_check_unavailable": False,
+            },
+            {
+                "deny_vpn_or_proxy": False,
+                "deny_shared_ip": True,
+                "vpn_or_proxy_action": RiskAction.DENY,
+                "shared_ip_action": RiskAction.MANUAL_REVIEW,
+            },
+            VerificationDecisionReason.SHARED_IP_DETECTED,
+        ),
+    ],
+)
+async def test_manual_review_paths_create_pending_attempt(
+    request_kwargs: dict[str, object],
+    configuration_kwargs: dict[str, object],
+    expected_reason: VerificationDecisionReason,
+) -> None:
+    """Each manual-review decision path persists a pending attempt id."""
+
+    user_list_service = AsyncMock()
+    user_list_service.get_entry.return_value = None
+    high_risk_guild_service = AsyncMock()
+    verification_log_service = AsyncMock()
+    shared_ip = expected_reason is VerificationDecisionReason.SHARED_IP_DETECTED
+    verification_log_service.has_shared_ip.return_value = shared_ip
+    attempt_id = _mock_create_log_return(verification_log_service)
+
+    service = VerificationService(
+        user_list_service=user_list_service,
+        high_risk_guild_service=high_risk_guild_service,
+        verification_log_service=verification_log_service,
+        verification_decision_service=VerificationDecisionService(),
+    )
+
+    result = await service.verify(
+        configuration=SimpleNamespace(
+            minimum_account_age_days=7,
+            **configuration_kwargs,
+        ),
+        request=VerificationRequest(
+            guild_id=uuid4(),
+            discord_user_id="123456789012345678",
+            discord_account_age_days=365,
+            ip_address="203.0.113.7",
+            **request_kwargs,
+        ),
+    )
+
+    assert result.manual_review is True
+    assert result.reason is expected_reason
+    assert result.attempt_id == attempt_id
+    create_kwargs = verification_log_service.create_log.await_args.kwargs
+    assert create_kwargs["status"] is VerificationStatus.MANUAL_REVIEW
+
+
+@pytest.mark.anyio
 async def test_membership_check_unavailable_routes_to_manual_review() -> None:
     """Unavailable guild membership lookup must not auto-approve."""
 
@@ -159,6 +299,7 @@ async def test_membership_check_unavailable_routes_to_manual_review() -> None:
     high_risk_guild_service = AsyncMock()
     verification_log_service = AsyncMock()
     verification_log_service.has_shared_ip.return_value = False
+    _mock_create_log_return(verification_log_service)
 
     service = VerificationService(
         user_list_service=user_list_service,
@@ -189,6 +330,7 @@ async def test_membership_check_unavailable_routes_to_manual_review() -> None:
     assert result.manual_review is True
     assert result.allowed is False
     assert result.reason is VerificationDecisionReason.MEMBERSHIP_CHECK_UNAVAILABLE
+    assert result.attempt_id is not None
 
 
 @pytest.mark.anyio
