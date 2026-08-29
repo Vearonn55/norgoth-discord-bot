@@ -174,36 +174,36 @@ function extractValidationIssues(data: unknown): VerificationValidationIssue[] {
     issues?: unknown;
   };
   if (Array.isArray(record.issues)) {
-    return record.issues
-      .map((issue) => {
-        if (!issue || typeof issue !== "object") return null;
-        const row = issue as {
-          code?: unknown;
-          field?: unknown;
-          message?: unknown;
-          channel_id?: unknown;
-          channel_name?: unknown;
-          missing_permissions?: unknown;
-          overwrite_scope?: unknown;
-        };
-        if (typeof row.code !== "string" || !row.code) return null;
-        return {
-          code: row.code,
-          field: typeof row.field === "string" ? row.field : null,
-          message: typeof row.message === "string" ? row.message : null,
-          channel_id: typeof row.channel_id === "string" ? row.channel_id : null,
-          channel_name:
-            typeof row.channel_name === "string" ? row.channel_name : null,
-          missing_permissions: Array.isArray(row.missing_permissions)
-            ? row.missing_permissions.filter(
-                (item): item is string => typeof item === "string",
-              )
-            : null,
-          overwrite_scope:
-            typeof row.overwrite_scope === "string" ? row.overwrite_scope : null,
-        };
-      })
-      .filter((issue): issue is VerificationValidationIssue => issue !== null);
+    const issues: VerificationValidationIssue[] = [];
+    for (const issue of record.issues) {
+      if (!issue || typeof issue !== "object") continue;
+      const row = issue as {
+        code?: unknown;
+        field?: unknown;
+        message?: unknown;
+        channel_id?: unknown;
+        channel_name?: unknown;
+        missing_permissions?: unknown;
+        overwrite_scope?: unknown;
+      };
+      if (typeof row.code !== "string" || !row.code) continue;
+      issues.push({
+        code: row.code,
+        field: typeof row.field === "string" ? row.field : null,
+        message: typeof row.message === "string" ? row.message : null,
+        channel_id: typeof row.channel_id === "string" ? row.channel_id : null,
+        channel_name:
+          typeof row.channel_name === "string" ? row.channel_name : null,
+        missing_permissions: Array.isArray(row.missing_permissions)
+          ? row.missing_permissions.filter(
+              (item): item is string => typeof item === "string",
+            )
+          : null,
+        overwrite_scope:
+          typeof row.overwrite_scope === "string" ? row.overwrite_scope : null,
+      });
+    }
+    return issues;
   }
   if (typeof record.code === "string" && record.code) {
     return [
