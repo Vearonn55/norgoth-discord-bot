@@ -7,6 +7,9 @@ import {
 } from "@/components/ui/date-range-filter";
 import { apiUrl } from "@/lib/api";
 import { readApiError } from "@/lib/api-error";
+import {
+  type VerificationValidationIssue,
+} from "@/lib/verification/validation-errors";
 
 const FETCH_OPTS: RequestInit = {
   cache: "no-store",
@@ -140,6 +143,75 @@ export const DEFAULT_VERIFICATION_CONFIG: VerificationConfig = {
   ],
 };
 
+export type { VerificationValidationIssue };
+export { configUpsertPayload };
+
+function configUpsertPayload(config: VerificationConfig): Record<string, unknown> {
+  return {
+    verification_channel_id: config.verification_channel_id,
+    ...(config.log_channel_id ? { log_channel_id: config.log_channel_id } : {}),
+    unverified_role_id: config.unverified_role_id,
+    member_role_id: config.member_role_id,
+    manual_review_role_id: config.manual_review_role_id,
+    minimum_account_age_days: config.minimum_account_age_days,
+    session_timeout_seconds: config.session_timeout_seconds,
+    deny_vpn_or_proxy: config.deny_vpn_or_proxy,
+    deny_shared_ip: config.deny_shared_ip,
+    vpn_or_proxy_action: config.vpn_or_proxy_action,
+    shared_ip_action: config.shared_ip_action,
+    enabled: config.enabled,
+  };
+}
+
+function extractValidationIssues(data: unknown): VerificationValidationIssue[] {
+  if (!data || typeof data !== "object") return [];
+  const detail = (data as { detail?: unknown }).detail;
+  if (!detail || typeof detail !== "object") return [];
+  const record = detail as {
+    code?: unknown;
+    field?: unknown;
+    message?: unknown;
+    issues?: unknown;
+  };
+  if (Array.isArray(record.issues)) {
+    return record.issues
+      .map((issue) => {
+        if (!issue || typeof issue !== "object") return null;
+        const row = issue as { code?: unknown; field?: unknown; message?: unknown };
+        if (typeof row.code !== "string" || !row.code) return null;
+        return {
+          code: row.code,
+          field: typeof row.field === "string" ? row.field : null,
+          message: typeof row.message === "string" ? row.message : null,
+        };
+      })
+      .filter((issue): issue is VerificationValidationIssue => issue !== null);
+  }
+  if (typeof record.code === "string" && record.code) {
+    return [
+      {
+        code: record.code,
+        field: typeof record.field === "string" ? record.field : null,
+        message: typeof record.message === "string" ? record.message : null,
+      },
+    ];
+  }
+  return [];
+}
+
+function bindingFieldsChanged(
+  previous: VerificationConfig,
+  next: VerificationConfig,
+): boolean {
+  return (
+    previous.verification_channel_id !== next.verification_channel_id ||
+    previous.log_channel_id !== next.log_channel_id ||
+    previous.unverified_role_id !== next.unverified_role_id ||
+    previous.member_role_id !== next.member_role_id ||
+    previous.manual_review_role_id !== next.manual_review_role_id
+  );
+}
+
 function mapStoredConfig(stored: VerificationConfig): VerificationConfig {
   return {
     verification_channel_id: stored.verification_channel_id ?? "",
@@ -166,6 +238,9 @@ type VerificationState = {
   saving: boolean;
   validating: boolean;
   error: string | null;
+  validationIssues: VerificationValidationIssue[] | null;
+  settingsModalOpen: boolean;
+  validationRequestSeq: number;
   savedAt: string | null;
   publishing: boolean;
   publishFeedback: string | null;
@@ -180,6 +255,8 @@ type VerificationState = {
       | ((current: VerificationConfig) => VerificationConfig)
   ) => void;
   setError: (error: string | null) => void;
+  setSettingsModalOpen: (open: boolean) => void;
+  clearValidationFeedback: () => void;
   setDateRange: (range: DateRangeValue) => void;
   loadConfig: (guildId: string) => Promise<void>;
   save: (guildId: string) => Promise<{ ok: boolean; error?: string }>;
@@ -208,6 +285,9 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
   saving: false,
   validating: false,
   error: null,
+  validationIssues: null,
+  settingsModalOpen: false,
+  validationRequestSeq: 0,
   savedAt: null,
   publishing: false,
   publishFeedback: null,
@@ -217,13 +297,33 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
   logsError: null,
   dateRange: defaultDateRange(7),
   setConfig: (config) =>
-    set((state) => ({
-      config: typeof config === "function" ? config(state.config) : config,
-    })),
+    set((state) => {
+      const next =
+        typeof config === "function" ? config(state.config) : config;
+      return {
+        config: next,
+        ...(bindingFieldsChanged(state.config, next)
+          ? { validationIssues: null, error: null }
+          : {}),
+      };
+    }),
   setError: (error) => set({ error }),
+  setSettingsModalOpen: (open) =>
+    set((state) => ({
+      settingsModalOpen: open,
+      validationRequestSeq: open
+        ? state.validationRequestSeq
+        : state.validationRequestSeq + 1,
+      ...(open ? {} : { validationIssues: null }),
+    })),
+  clearValidationFeedback: () => set({ validationIssues: null, error: null }),
   setDateRange: (range) => set({ dateRange: range }),
   loadConfig: async (guildId) => {
-    set({ loading: true, error: null });
+    set((state) => ({
+      loading: true,
+      error: null,
+      validationRequestSeq: state.validationRequestSeq + 1,
+    }));
 
     try {
       const [configResponse, setupResponse] = await Promise.all([
@@ -290,13 +390,25 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
 
     for (const [field, label] of requiredFields) {
       if (!config[field]) {
-        const message = `${label} is required.`;
-        set({ error: message });
-        return { ok: false, error: message };
+        const issues: VerificationValidationIssue[] = [
+          {
+            code: "verification_setup_incomplete",
+            field: String(field),
+            message: null,
+          },
+        ];
+        set({ validationIssues: issues, error: null });
+        return { ok: false, error: `${label} is required.` };
       }
     }
 
-    set({ saving: true, error: null });
+    const saveSeq = get().validationRequestSeq + 1;
+    set({
+      saving: true,
+      error: null,
+      validationIssues: null,
+      validationRequestSeq: saveSeq,
+    });
 
     try {
       const response = await fetch(
@@ -305,33 +417,28 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({
-            verification_channel_id: config.verification_channel_id,
-            // Omit empty log_channel_id so the API preserves any legacy binding.
-            ...(config.log_channel_id
-              ? { log_channel_id: config.log_channel_id }
-              : {}),
-            unverified_role_id: config.unverified_role_id,
-            member_role_id: config.member_role_id,
-            manual_review_role_id: config.manual_review_role_id,
-            minimum_account_age_days: config.minimum_account_age_days,
-            session_timeout_seconds: config.session_timeout_seconds,
-            deny_vpn_or_proxy: config.deny_vpn_or_proxy,
-            deny_shared_ip: config.deny_shared_ip,
-            vpn_or_proxy_action: config.vpn_or_proxy_action,
-            shared_ip_action: config.shared_ip_action,
-            enabled: config.enabled,
-          }),
+          body: JSON.stringify(configUpsertPayload(config)),
         }
       );
 
+      if (get().validationRequestSeq !== saveSeq) {
+        return { ok: false };
+      }
+
       if (!response.ok) {
-        const apiError = await readApiError(response);
+        const raw = await response.json().catch(() => null);
+        const issues = extractValidationIssues(raw);
+        const apiError = await readApiError(
+          new Response(JSON.stringify(raw), { status: response.status }),
+        );
         const message =
           response.status === 404
             ? "Guild is not registered yet. Make sure the bot is online (it registers the server automatically), then retry."
-            : `Save failed: ${apiError.message}`;
-        set({ error: message });
+            : apiError.message;
+        set({
+          validationIssues: issues.length ? issues : null,
+          error: issues.length ? null : message,
+        });
         return { ok: false, error: message };
       }
 
@@ -344,6 +451,8 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
           mapped.setup_state === "disabled" ||
           mapped.setup_state === "degraded",
         savedAt: new Date().toLocaleTimeString(),
+        validationIssues: null,
+        error: null,
       });
       return { ok: true };
     } catch {
@@ -355,48 +464,103 @@ export const useVerificationStore = create<VerificationState>((set, get) => ({
     }
   },
   validateDiscord: async (guildId) => {
-    set({ validating: true, error: null });
+    const { config } = get();
+    if (!hasRequiredBindings(config)) {
+      const issues: VerificationValidationIssue[] = [
+        { code: "verification_setup_incomplete", field: null, message: null },
+      ];
+      set({ validationIssues: issues, error: null });
+      return { ok: false, error: "Required bindings missing." };
+    }
+
+    const validateSeq = get().validationRequestSeq + 1;
+    set({
+      validating: true,
+      error: null,
+      validationIssues: null,
+      validationRequestSeq: validateSeq,
+    });
+
     try {
       const response = await fetch(
         apiUrl(`/api/v1/guilds/${guildId}/configuration/validate`),
-        { method: "POST", credentials: "include" }
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(configUpsertPayload(config)),
+        }
       );
+
+      if (get().validationRequestSeq !== validateSeq) {
+        return { ok: false };
+      }
+
       if (!response.ok) {
-        const apiError = await readApiError(response);
-        set({ error: apiError.message });
+        const raw = await response.json().catch(() => null);
+        const issues = extractValidationIssues(raw);
+        const apiError = await readApiError(
+          new Response(JSON.stringify(raw), { status: response.status }),
+        );
+        set({
+          validationIssues: issues.length
+            ? issues
+            : [{ code: apiError.code, field: null, message: apiError.message }],
+          error: null,
+        });
         return { ok: false, error: apiError.message };
       }
+
       const body = (await response.json()) as {
         ok?: boolean;
-        issues?: Array<{ message?: string }>;
+        issues?: VerificationValidationIssue[];
         setup_state?: VerificationSetupState;
       };
+
+      if (get().validationRequestSeq !== validateSeq) {
+        return { ok: false };
+      }
+
       if (!body?.ok) {
-        const issue = Array.isArray(body?.issues) ? body.issues[0] : null;
-        const message = issue?.message || "Discord validation failed.";
+        const issues = Array.isArray(body?.issues) ? body.issues : [];
         set({
           config: {
             ...get().config,
             setup_state: body?.setup_state ?? "degraded",
           },
           configured: false,
-          error: String(message),
+          validationIssues: issues.length
+            ? issues
+            : [{ code: "validationUnexpected", field: null, message: null }],
+          error: null,
         });
-        return { ok: false, error: String(message) };
+        return { ok: false, error: "Discord validation failed." };
       }
+
       set({
         config: {
           ...get().config,
           setup_state: body?.setup_state ?? get().config.setup_state,
         },
+        validationIssues: null,
         error: null,
       });
       return { ok: true };
     } catch {
-      set({ error: "Could not reach the NorBot API to validate Discord." });
+      if (get().validationRequestSeq !== validateSeq) {
+        return { ok: false };
+      }
+      set({
+        validationIssues: [
+          { code: "guild_metadata_unavailable", field: null, message: null },
+        ],
+        error: null,
+      });
       return { ok: false, error: "Could not reach the NorBot API." };
     } finally {
-      set({ validating: false });
+      if (get().validationRequestSeq === validateSeq) {
+        set({ validating: false });
+      }
     }
   },
   patchDetectors: async (guildId, patch) => {

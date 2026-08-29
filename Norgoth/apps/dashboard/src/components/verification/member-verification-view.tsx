@@ -28,6 +28,7 @@ export function MemberVerificationView() {
   const config = useVerificationStore((s) => s.config);
   const loading = useVerificationStore((s) => s.loading);
   const error = useVerificationStore((s) => s.error);
+  const settingsModalOpen = useVerificationStore((s) => s.settingsModalOpen);
   const publishFeedback = useVerificationStore((s) => s.publishFeedback);
   const setError = useVerificationStore((s) => s.setError);
   const loadConfig = useVerificationStore((s) => s.loadConfig);
@@ -68,13 +69,13 @@ export function MemberVerificationView() {
         }}
       />
 
-      {error && (
+      {error && !settingsModalOpen && (
         <CAlert color="danger" className="mb-0">
           {error}
         </CAlert>
       )}
 
-      {publishFeedback && !error ? (
+      {publishFeedback && !error && !settingsModalOpen ? (
         <CAlert color="success" className="mb-0">
           {publishFeedback}
         </CAlert>

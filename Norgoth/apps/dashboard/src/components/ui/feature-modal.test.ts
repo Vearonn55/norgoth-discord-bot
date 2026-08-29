@@ -11,5 +11,8 @@ describe("FeatureConfigurationModal overflow", () => {
     expect(src).toContain("scrollable={scrollable}");
     expect(src).toContain("shouldInvokeModalClose");
     expect(src).toContain("handleClose");
+    expect(src).toContain('role="alert"');
+    expect(src).toContain("scrollIntoView");
+    expect(src).toContain("errorSummaryLabel");
   });
 });

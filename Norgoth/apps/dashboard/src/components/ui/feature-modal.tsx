@@ -40,6 +40,7 @@ type FeatureConfigurationModalProps = {
   footer?: ReactNode;
   /** CoreUI `modal-dialog-scrollable`. Disable for split-pane sticky preview. */
   scrollable?: boolean;
+  errorSummaryLabel?: string;
   dialogClassName?: string;
   bodyClassName?: string;
 };
@@ -71,6 +72,7 @@ export function FeatureConfigurationModal({
   scrollable = true,
   dialogClassName,
   bodyClassName,
+  errorSummaryLabel,
 }: FeatureConfigurationModalProps) {
   const dict = useLocaleDict();
   const resolvedSave = saveLabel ?? dict.common.save;
@@ -81,6 +83,8 @@ export function FeatureConfigurationModal({
   const isSaved = saveState === "saved";
   const openerRef = useRef<HTMLElement | null>(null);
   const wasVisible = useRef(false);
+  const errorRef = useRef<HTMLDivElement | null>(null);
+  const previousError = useRef<string | null>(null);
 
   useEffect(() => {
     if (visible && !wasVisible.current) {
@@ -95,6 +99,14 @@ export function FeatureConfigurationModal({
     }
     wasVisible.current = visible;
   }, [visible]);
+
+  useEffect(() => {
+    if (error && error !== previousError.current && errorRef.current) {
+      errorRef.current.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      errorRef.current.focus({ preventScroll: true });
+    }
+    previousError.current = error ?? null;
+  }, [error]);
 
   function handleClose() {
     if (!shouldInvokeModalClose(visible, isSaving)) return;
@@ -128,9 +140,18 @@ export function FeatureConfigurationModal({
           <p className="text-body-secondary small mb-3">{description}</p>
         ) : null}
         {error ? (
-          <CAlert color="danger" className="py-2 px-3 mb-3">
-            {error}
-          </CAlert>
+          <div
+            ref={errorRef}
+            tabIndex={-1}
+            role="alert"
+            aria-live="assertive"
+            aria-label={errorSummaryLabel}
+            className="mb-3"
+          >
+            <CAlert color="danger" className="py-2 px-3 mb-0">
+              {error}
+            </CAlert>
+          </div>
         ) : null}
         {children}
       </CModalBody>

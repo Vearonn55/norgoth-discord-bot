@@ -159,8 +159,30 @@ async def validate_verification_discord_resources(
                 setup_state="degraded",
                 issues=[
                     ValidationIssue(
-                        code="discord_resource_not_in_guild",
-                        message="Guild or bot membership was not found on Discord.",
+                        code="bot_not_installed",
+                        message="NorBot is not installed in this server.",
+                    )
+                ],
+            )
+        if status == 429:
+            return VerificationDiscordValidation(
+                ok=False,
+                setup_state="error",
+                issues=[
+                    ValidationIssue(
+                        code="discord_rate_limited",
+                        message="Discord rate-limited this validation request.",
+                    )
+                ],
+            )
+        if status >= 500:
+            return VerificationDiscordValidation(
+                ok=False,
+                setup_state="error",
+                issues=[
+                    ValidationIssue(
+                        code="discord_unavailable",
+                        message="Discord is temporarily unavailable.",
                     )
                 ],
             )
@@ -219,7 +241,7 @@ async def validate_verification_discord_resources(
         if role.get("managed"):
             issues.append(
                 ValidationIssue(
-                    code="discord_resource_not_in_guild",
+                    code="role_managed",
                     message=f"Role {role_id} is managed and cannot be assigned by the bot.",
                     field=field_name,
                 )
@@ -264,6 +286,22 @@ async def validate_verification_discord_resources(
                     ValidationIssue(
                         code="missing_bot_permissions",
                         message=f"Bot cannot access channel {channel_id}.",
+                        field=field_name,
+                    )
+                )
+            elif status == 429:
+                issues.append(
+                    ValidationIssue(
+                        code="discord_rate_limited",
+                        message=f"Discord rate-limited while reading channel {channel_id}.",
+                        field=field_name,
+                    )
+                )
+            elif status >= 500:
+                issues.append(
+                    ValidationIssue(
+                        code="discord_unavailable",
+                        message=f"Discord is temporarily unavailable while reading channel {channel_id}.",
                         field=field_name,
                     )
                 )
@@ -314,7 +352,11 @@ async def validate_verification_discord_resources(
 
     if issues:
         codes = {issue.code for issue in issues}
-        if "guild_metadata_unavailable" in codes:
+        if codes & {
+            "guild_metadata_unavailable",
+            "discord_unavailable",
+            "discord_rate_limited",
+        }:
             setup_state = "error"
         else:
             setup_state = "degraded"

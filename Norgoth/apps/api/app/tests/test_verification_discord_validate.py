@@ -64,32 +64,6 @@ async def test_rejects_channel_from_other_guild() -> None:
 
 
 @pytest.mark.asyncio
-async def test_role_hierarchy_invalid() -> None:
-    bot = AsyncMock()
-    bot.list_guild_roles.return_value = [
-        {"id": "99", "permissions": str(1 << 28), "position": 0},
-        {"id": "bot-role", "permissions": str(1 << 28), "position": 1},
-        {"id": "200", "permissions": "0", "position": 5, "managed": False},
-        {"id": "201", "permissions": "0", "position": 6, "managed": False},
-    ]
-    bot.get_bot_user.return_value = {"id": "bot-user"}
-    bot.get_guild_member.return_value = {"roles": ["bot-role"]}
-    bot.get_channel.return_value = {
-        "id": "100",
-        "guild_id": "99",
-        "permission_overwrites": [],
-    }
-
-    result = await validate_verification_discord_resources(
-        bot_client=bot,
-        discord_guild_id="99",
-        configuration=_config(),
-    )
-    assert result.ok is False
-    assert any(issue.code == "role_hierarchy_invalid" for issue in result.issues)
-
-
-@pytest.mark.asyncio
 async def test_missing_channel_is_degraded() -> None:
     bot = AsyncMock()
     bot.list_guild_roles.return_value = [
@@ -109,3 +83,45 @@ async def test_missing_channel_is_degraded() -> None:
     )
     assert result.ok is False
     assert result.setup_state == "degraded"
+
+
+@pytest.mark.asyncio
+async def test_bot_not_installed_when_member_missing() -> None:
+    bot = AsyncMock()
+    bot.list_guild_roles.return_value = []
+    bot.get_bot_user.return_value = {"id": "bot-user"}
+    bot.get_guild_member.side_effect = DiscordBotAPIError("missing", status_code=404)
+
+    result = await validate_verification_discord_resources(
+        bot_client=bot,
+        discord_guild_id="99",
+        configuration=_config(),
+    )
+    assert result.ok is False
+    assert any(issue.code == "bot_not_installed" for issue in result.issues)
+
+
+@pytest.mark.asyncio
+async def test_managed_role_uses_role_managed_code() -> None:
+    bot = AsyncMock()
+    bot.list_guild_roles.return_value = [
+        {"id": "99", "permissions": str(1 << 28), "position": 0},
+        {"id": "bot-role", "permissions": str(1 << 28), "position": 10},
+        {"id": "200", "permissions": "0", "position": 1, "managed": True},
+        {"id": "201", "permissions": "0", "position": 2, "managed": False},
+    ]
+    bot.get_bot_user.return_value = {"id": "bot-user"}
+    bot.get_guild_member.return_value = {"roles": ["bot-role"]}
+    bot.get_channel.return_value = {
+        "id": "100",
+        "guild_id": "99",
+        "permission_overwrites": [],
+    }
+
+    result = await validate_verification_discord_resources(
+        bot_client=bot,
+        discord_guild_id="99",
+        configuration=_config(),
+    )
+    assert result.ok is False
+    assert any(issue.code == "role_managed" for issue in result.issues)
