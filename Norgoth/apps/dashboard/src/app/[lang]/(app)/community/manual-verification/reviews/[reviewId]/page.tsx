@@ -29,7 +29,7 @@ export default function ReviewTranscriptPage() {
 
   const detail = useManualReviewStore((s) => s.detail);
   const detailLoading = useManualReviewStore((s) => s.detailLoading);
-  const detailError = useManualReviewStore((s) => s.detailError);
+  const detailErrorKey = useManualReviewStore((s) => s.detailErrorKey);
   const loadDetail = useManualReviewStore((s) => s.loadDetail);
 
   useEffect(() => {
@@ -66,9 +66,9 @@ export default function ReviewTranscriptPage() {
             <CSpinner size="sm" />
             {dict.common.loading}
           </div>
-        ) : detailError ? (
+        ) : detailErrorKey ? (
           <CAlert color="warning" className="mb-0">
-            {detailError}
+            {v[detailErrorKey]}
           </CAlert>
         ) : detail ? (
           <ReviewRecord detail={detail} lang={lang} />
