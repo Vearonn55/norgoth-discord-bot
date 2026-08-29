@@ -15,7 +15,9 @@ import { Badge } from "@/components/ui/badge";
 import { NumberInput } from "@/components/ui/number-input";
 import { useParams } from "next/navigation";
 import { browserApiUrl } from "@/lib/api";
+import { botInviteHref } from "@/lib/bot-invite";
 import { formatDict, useLocaleDict } from "@/lib/locale-dict";
+import { verificationIssuesNeedPermissionUpdate } from "@/lib/verification/validation-errors";
 import { ChannelSelect } from "@/components/ui/channel-select";
 import {
   ChannelPickerToolbar,
@@ -58,6 +60,10 @@ export function VerificationSettingsForm() {
   const validationIssues = useVerificationStore((s) => s.validationIssues);
   const copyVerifyLink = useVerificationStore((s) => s.copyVerifyLink);
   const [validateSuccess, setValidateSuccess] = useState(false);
+  const showPermissionRecovery =
+    Boolean(guildId) &&
+    Boolean(validationIssues?.length) &&
+    verificationIssuesNeedPermissionUpdate(validationIssues ?? []);
 
   useEffect(() => {
     if (!guildId) return;
@@ -301,6 +307,22 @@ export function VerificationSettingsForm() {
           <CAlert color="success" className="py-1 px-2 mb-0 small">
             {d.validationErrors.validationSucceeded}
           </CAlert>
+        ) : null}
+
+        {showPermissionRecovery ? (
+          <div className="d-flex flex-wrap align-items-center gap-2">
+            <a
+              href={botInviteHref(guildId ?? undefined)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="d-inline-flex"
+            >
+              <Button variant="primary">{d.validationErrors.updatePermissions}</Button>
+            </a>
+            <span className="small text-body-secondary">
+              {d.validationErrors.retryValidation}
+            </span>
+          </div>
         ) : null}
 
         {savedAt && (

@@ -25,6 +25,7 @@ from app.api.v1.dependencies import (
     GuildServiceDependency,
     HighRiskGuildServiceDependency,
     ProxycheckClientDependency,
+    VerificationLogServiceDependency,
     VerificationServiceDependency,
 )
 from app.core.config import get_settings
@@ -62,7 +63,7 @@ from app.security.verification_rate_limit import (
 )
 from app.services.guild_meta import resolve_guild_public_meta
 from app.services.verification_service import VerificationRequest
-from app.services.verification_guild_membership import resolve_matched_high_risk_guilds
+from app.services.verification_guild_membership import resolve_high_risk_membership
 from app.services.verification_setup import derive_verification_setup_state
 from app.services.views import ConfigurationView
 
@@ -370,6 +371,7 @@ async def discord_callback(
     configuration_service: ConfigurationServiceDependency,
     proxycheck_client: ProxycheckClientDependency,
     verification_service: VerificationServiceDependency,
+    verification_log_service: VerificationLogServiceDependency,
     high_risk_guild_service: HighRiskGuildServiceDependency,
     bot_client: DiscordBotClientDependency,
     code: Annotated[str | None, Query(min_length=1, max_length=2048)] = None,
@@ -633,15 +635,38 @@ async def discord_callback(
             display_context=context_token,
         )
 
+    open_review = await verification_log_service.get_open_manual_review_for_user(
+        guild_id=guild.id,
+        discord_user_id=user.id,
+    )
+    if open_review is not None:
+        pending_reason = open_review.reason or "manual_review_pending"
+        _log_callback_event(
+            request,
+            stage="manual_review_pending",
+            code=pending_reason,
+            guild_id=verified_state.discord_guild_id,
+            outcome="pending",
+        )
+        return _verify_result_redirect(
+            request,
+            lang=lang,
+            outcome="pending",
+            reason=pending_reason,
+            display_context=context_token,
+        )
+
     high_risk_guild_entries = await high_risk_guild_service.list_entries(guild.id)
     high_risk_guild_ids = frozenset(
         entry.high_risk_discord_guild_id for entry in high_risk_guild_entries
     )
-    matched_high_risk_guild_ids = await resolve_matched_high_risk_guilds(
-        bot_client,
-        user_id=user.id,
+    high_risk_membership = await resolve_high_risk_membership(
+        oauth_client,
+        access_token=token.access_token,
+        token_scopes=token.scope,
         high_risk_guild_ids=high_risk_guild_ids,
     )
+    matched_high_risk_guild_ids = high_risk_membership.matched_high_risk_guild_ids
 
     vpn_or_proxy_detected = await _proxycheck_vpn_or_proxy_detected(
         request=request,
@@ -661,6 +686,9 @@ async def discord_callback(
                 discord_account_age_days=account_age_days,
                 ip_address=client_ip,
                 vpn_or_proxy_detected=vpn_or_proxy_detected,
+                membership_check_unavailable=(
+                    high_risk_membership.membership_check_unavailable
+                ),
             ),
         )
     except Exception:

@@ -14,9 +14,11 @@ _DISCORD_AUTHORIZE_URL = "https://discord.com/oauth2/authorize"
 _DISCORD_TOKEN_URL = f"{_DISCORD_API_BASE_URL}/oauth2/token"
 _DISCORD_CURRENT_USER_URL = f"{_DISCORD_API_BASE_URL}/users/@me"
 _DISCORD_CURRENT_USER_GUILDS_URL = f"{_DISCORD_API_BASE_URL}/users/@me/guilds"
-VERIFICATION_OAUTH_SCOPES = ("identify",)
+VERIFICATION_OAUTH_SCOPES = ("identify", "guilds")
 DASHBOARD_OAUTH_SCOPES = ("identify", "guilds")
 _DEFAULT_OAUTH_SCOPES = DASHBOARD_OAUTH_SCOPES
+_DISCORD_GUILDS_PAGE_LIMIT = 200
+_MAX_GUILD_PAGES = 50
 
 logger = logging.getLogger(__name__)
 
@@ -228,9 +230,57 @@ class DiscordOAuthClient:
     ) -> list[DiscordOAuthGuild]:
         """Return guilds belonging to the authenticated Discord user."""
 
+        guilds: list[DiscordOAuthGuild] = []
+        async for page in self.iter_current_user_guild_pages(access_token=access_token):
+            guilds.extend(page)
+        return guilds
+
+    async def get_current_user_guild_ids(
+        self,
+        *,
+        access_token: str,
+    ) -> frozenset[str]:
+        """Return every guild snowflake for the authenticated Discord user."""
+
+        guild_ids: set[str] = set()
+        async for page in self.iter_current_user_guild_pages(access_token=access_token):
+            guild_ids.update(guild.id for guild in page)
+        return frozenset(guild_ids)
+
+    async def iter_current_user_guild_pages(
+        self,
+        *,
+        access_token: str,
+    ):
+        """Yield paginated guild lists from Discord ``/users/@me/guilds``."""
+
+        after: str | None = None
+        for _ in range(_MAX_GUILD_PAGES):
+            page = await self._fetch_current_user_guild_page(
+                access_token=access_token,
+                after=after,
+            )
+            if not page:
+                return
+            yield page
+            if len(page) < _DISCORD_GUILDS_PAGE_LIMIT:
+                return
+            after = page[-1].id
+
+    async def _fetch_current_user_guild_page(
+        self,
+        *,
+        access_token: str,
+        after: str | None = None,
+    ) -> list[DiscordOAuthGuild]:
+        params: dict[str, str] = {"limit": str(_DISCORD_GUILDS_PAGE_LIMIT)}
+        if after is not None:
+            params["after"] = after
+
         try:
             response = await self._http_client.get(
                 _DISCORD_CURRENT_USER_GUILDS_URL,
+                params=params,
                 headers=self._authorization_headers(access_token),
             )
         except httpx.HTTPError as error:
@@ -265,12 +315,10 @@ class DiscordOAuthClient:
             )
 
         guilds: list[DiscordOAuthGuild] = []
-
         for item in payload:
             parsed = self._try_parse_guild(item)
             if parsed is not None:
                 guilds.append(parsed)
-
         return guilds
 
     def _parse_token_response(

@@ -15,7 +15,11 @@ from app.api.v1.dependencies import get_http_client, get_settings
 from app.security.discord_permissions import (
     BOT_INSTALL_SCOPES,
     BOT_INVITE_PERMISSIONS_MINIMAL,
+    EMBED_LINKS,
+    MANAGE_ROLES,
+    SEND_MESSAGES,
     VIEW_AUDIT_LOG,
+    VIEW_CHANNEL,
     build_bot_invite_url,
     compute_member_permissions,
     missing_logging_permissions,
@@ -49,6 +53,11 @@ def test_build_bot_invite_url_without_guild() -> None:
 
 def test_minimal_invite_bitmask_includes_view_audit_log() -> None:
     assert BOT_INVITE_PERMISSIONS_MINIMAL & VIEW_AUDIT_LOG
+
+
+def test_minimal_invite_bitmask_includes_verification_channel_permissions() -> None:
+    required = VIEW_CHANNEL | SEND_MESSAGES | EMBED_LINKS | MANAGE_ROLES
+    assert BOT_INVITE_PERMISSIONS_MINIMAL & required == required
 
 
 def test_compute_member_permissions_reports_missing_view_audit_log() -> None:

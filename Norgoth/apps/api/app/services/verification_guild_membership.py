@@ -1,47 +1,72 @@
-"""Bot-backed guild membership checks for member verification."""
+"""OAuth-backed guild membership checks for member verification."""
 
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 
-from app.integrations.discord.bot_rest import DiscordBotAPIError, DiscordBotClient
+from app.integrations.discord.oauth import DiscordOAuthClient, DiscordOAuthError
 
 logger = logging.getLogger(__name__)
 
 
-async def resolve_matched_high_risk_guilds(
-    bot_client: DiscordBotClient | None,
+@dataclass(frozen=True, slots=True)
+class HighRiskMembershipResult:
+    """Outcome of matching configured high-risk servers against user guilds."""
+
+    matched_high_risk_guild_ids: tuple[str, ...]
+    membership_check_unavailable: bool
+
+
+def resolve_matched_high_risk_guilds_from_user_guilds(
     *,
-    user_id: str,
+    user_guild_ids: frozenset[str],
     high_risk_guild_ids: frozenset[str],
 ) -> tuple[str, ...]:
-    """Return high-risk guild IDs where the user is a member.
+    """Return configured high-risk guild IDs present in the user's guild list."""
 
-    Membership is resolved through the bot REST API, so only guilds where NorBot
-    is installed can be checked. A 404 means the user is not a member; other
-    failures are logged and skipped to avoid false positives when the bot lacks
-    access to a configured high-risk guild.
-    """
-
-    if bot_client is None or not high_risk_guild_ids:
+    if not high_risk_guild_ids:
         return ()
-
-    matched: list[str] = []
-    for guild_id in sorted(high_risk_guild_ids):
-        try:
-            await bot_client.get_guild_member(guild_id, user_id)
-        except DiscordBotAPIError as error:
-            if error.status_code == 404:
-                continue
-            logger.info(
-                "high_risk_guild_membership_skipped guild_id=%s status=%s",
-                guild_id,
-                error.status_code,
-            )
-            continue
-        matched.append(guild_id)
-
-    return tuple(matched)
+    return tuple(sorted(user_guild_ids & high_risk_guild_ids))
 
 
-__all__ = ["resolve_matched_high_risk_guilds"]
+async def resolve_high_risk_membership(
+    oauth_client: DiscordOAuthClient,
+    *,
+    access_token: str,
+    token_scopes: frozenset[str],
+    high_risk_guild_ids: frozenset[str],
+) -> HighRiskMembershipResult:
+    """Match configured high-risk servers using the verifying user's OAuth guilds."""
+
+    if not high_risk_guild_ids:
+        return HighRiskMembershipResult((), False)
+
+    if "guilds" not in token_scopes:
+        logger.info("high_risk_membership_unavailable missing_guilds_scope")
+        return HighRiskMembershipResult((), True)
+
+    try:
+        user_guild_ids = await oauth_client.get_current_user_guild_ids(
+            access_token=access_token,
+        )
+    except DiscordOAuthError as error:
+        logger.info(
+            "high_risk_membership_unavailable operation=%s status=%s",
+            error.operation,
+            error.http_status,
+        )
+        return HighRiskMembershipResult((), True)
+
+    matched = resolve_matched_high_risk_guilds_from_user_guilds(
+        user_guild_ids=user_guild_ids,
+        high_risk_guild_ids=high_risk_guild_ids,
+    )
+    return HighRiskMembershipResult(matched, False)
+
+
+__all__ = [
+    "HighRiskMembershipResult",
+    "resolve_high_risk_membership",
+    "resolve_matched_high_risk_guilds_from_user_guilds",
+]

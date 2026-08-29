@@ -73,7 +73,7 @@ def test_build_authorization_url_contains_required_parameters() -> None:
 
 
 def test_build_authorization_url_supports_verification_scopes_without_prompt() -> None:
-    """Member verification should request identify only and skip forced consent."""
+    """Member verification should request identify + guilds and skip forced consent."""
 
     http_client = AsyncMock(spec=httpx.AsyncClient)
     client = _build_client(http_client)
@@ -86,7 +86,7 @@ def test_build_authorization_url_supports_verification_scopes_without_prompt() -
 
     query = parse_qs(urlparse(authorization_url).query)
 
-    assert query["scope"] == ["identify"]
+    assert query["scope"] == ["identify guilds"]
     assert "prompt" not in query
 
 
@@ -245,10 +245,48 @@ async def test_get_current_user_guilds_returns_partial_guilds() -> None:
 
     http_client.get.assert_awaited_once_with(
         "https://discord.com/api/v10/users/@me/guilds",
+        params={"limit": "200"},
         headers={
             "Authorization": f"Bearer {ACCESS_TOKEN}",
         },
     )
+
+
+@pytest.mark.anyio
+async def test_get_current_user_guild_ids_paginates_after_cursor() -> None:
+    first_page = _build_response(
+        [
+            {
+                "id": f"{index:020d}",
+                "name": f"Guild {index}",
+                "owner": False,
+                "permissions": "8",
+            }
+            for index in range(200)
+        ]
+    )
+    second_page = _build_response(
+        [
+            {
+                "id": "222222222222222222",
+                "name": "Second Guild",
+                "owner": False,
+                "permissions": "32",
+            }
+        ]
+    )
+
+    http_client = AsyncMock(spec=httpx.AsyncClient)
+    http_client.get.side_effect = [first_page, second_page]
+    client = _build_client(http_client)
+
+    guild_ids = await client.get_current_user_guild_ids(access_token=ACCESS_TOKEN)
+
+    assert "222222222222222222" in guild_ids
+    assert len(guild_ids) == 201
+    assert http_client.get.await_count == 2
+    second_call = http_client.get.await_args_list[1]
+    assert second_call.kwargs["params"]["after"] == "00000000000000000199"
 
 
 @pytest.mark.anyio

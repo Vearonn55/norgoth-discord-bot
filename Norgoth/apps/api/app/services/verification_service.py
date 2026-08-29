@@ -38,6 +38,7 @@ class VerificationRequest:
     discord_account_age_days: int
     ip_address: str
     vpn_or_proxy_detected: bool
+    membership_check_unavailable: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,6 +115,7 @@ class VerificationService:
                 shared_ip_detected=shared_ip_detected,
                 discord_account_age_days=(request.discord_account_age_days),
                 high_risk_guild_detected=high_risk_guild_detected,
+                membership_check_unavailable=request.membership_check_unavailable,
             ),
             policy=VerificationPolicy(
                 minimum_account_age_days=(configuration.minimum_account_age_days),

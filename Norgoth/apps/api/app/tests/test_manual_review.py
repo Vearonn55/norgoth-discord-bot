@@ -151,6 +151,47 @@ async def test_whitelisted_user_bypasses_high_risk() -> None:
 
 
 @pytest.mark.anyio
+async def test_membership_check_unavailable_routes_to_manual_review() -> None:
+    """Unavailable guild membership lookup must not auto-approve."""
+
+    user_list_service = AsyncMock()
+    user_list_service.get_entry.return_value = None
+    high_risk_guild_service = AsyncMock()
+    verification_log_service = AsyncMock()
+    verification_log_service.has_shared_ip.return_value = False
+
+    service = VerificationService(
+        user_list_service=user_list_service,
+        high_risk_guild_service=high_risk_guild_service,
+        verification_log_service=verification_log_service,
+        verification_decision_service=VerificationDecisionService(),
+    )
+
+    result = await service.verify(
+        configuration=SimpleNamespace(
+            minimum_account_age_days=7,
+            deny_vpn_or_proxy=True,
+            deny_shared_ip=True,
+            vpn_or_proxy_action=RiskAction.DENY,
+            shared_ip_action=RiskAction.DENY,
+        ),
+        request=VerificationRequest(
+            guild_id=uuid4(),
+            discord_user_id="123456789012345678",
+            matched_high_risk_guild_ids=(),
+            discord_account_age_days=365,
+            ip_address="203.0.113.7",
+            vpn_or_proxy_detected=False,
+            membership_check_unavailable=True,
+        ),
+    )
+
+    assert result.manual_review is True
+    assert result.allowed is False
+    assert result.reason is VerificationDecisionReason.MEMBERSHIP_CHECK_UNAVAILABLE
+
+
+@pytest.mark.anyio
 async def test_resolve_manual_review_atomic_claim_maps_lost_race_to_none() -> None:
     """When the atomic claim finds nothing to update, resolution is None."""
 

@@ -1,7 +1,7 @@
 """Request and response schemas for verification configuration."""
 
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -129,4 +129,4 @@ class VerificationValidateResponse(BaseModel):
 
     ok: bool
     setup_state: str
-    issues: list[dict[str, str | None]] = Field(default_factory=list)
+    issues: list[dict[str, Any]] = Field(default_factory=list)

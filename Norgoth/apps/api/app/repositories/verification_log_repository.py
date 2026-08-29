@@ -102,6 +102,30 @@ class VerificationLogRepository:
 
         return list(result.scalars().all())
 
+    async def get_open_manual_review_for_user(
+        self,
+        *,
+        guild_id: UUID,
+        discord_user_id: str,
+    ) -> VerificationAttempt | None:
+        """Return the newest unresolved manual-review attempt for one user."""
+
+        statement = (
+            select(VerificationAttempt)
+            .join(DiscordUser, VerificationAttempt.user_id == DiscordUser.id)
+            .where(
+                VerificationAttempt.guild_id == guild_id,
+                DiscordUser.discord_user_id == discord_user_id,
+                VerificationAttempt.status == VerificationStatus.MANUAL_REVIEW,
+                VerificationAttempt.reviewed_at.is_(None),
+            )
+            .order_by(VerificationAttempt.created_at.desc())
+            .limit(1)
+            .options(selectinload(VerificationAttempt.user))
+        )
+        result = await self._session.execute(statement)
+        return result.scalar_one_or_none()
+
     def _apply_filters(
         self,
         statement,
