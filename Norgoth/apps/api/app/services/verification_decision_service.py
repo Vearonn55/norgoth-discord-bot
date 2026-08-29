@@ -11,7 +11,8 @@ The engine returns a three-state outcome — ``ALLOW``, ``DENY`` or
 6. VPN/proxy  (enabled + detected + action=MANUAL_REVIEW) -> MANUAL_REVIEW
 7. Shared IP  (enabled + detected + action=MANUAL_REVIEW) -> MANUAL_REVIEW
 8. High-risk-guild member -> MANUAL_REVIEW
-9. Otherwise              -> ALLOW
+9. Membership lookup unavailable -> MANUAL_REVIEW
+10. Otherwise              -> ALLOW
 
 Each detector carries a configurable action (``deny`` or ``manual_review``); a
 DENY from any enabled detector always outranks a MANUAL_REVIEW. High-risk-guild
@@ -45,6 +46,7 @@ class VerificationDecisionReason(StrEnum):
     SHARED_IP_DETECTED = "shared_ip_detected"
     ACCOUNT_TOO_NEW = "account_too_new"
     HIGH_RISK_GUILD = "high_risk_guild"
+    MEMBERSHIP_CHECK_UNAVAILABLE = "membership_check_unavailable"
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +79,7 @@ class VerificationSignals:
     shared_ip_detected: bool
     discord_account_age_days: int
     high_risk_guild_detected: bool = False
+    membership_check_unavailable: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,6 +161,12 @@ class VerificationDecisionService:
             return VerificationDecision(
                 outcome=VerificationOutcome.MANUAL_REVIEW,
                 reason=VerificationDecisionReason.HIGH_RISK_GUILD,
+            )
+
+        if signals.membership_check_unavailable:
+            return VerificationDecision(
+                outcome=VerificationOutcome.MANUAL_REVIEW,
+                reason=VerificationDecisionReason.MEMBERSHIP_CHECK_UNAVAILABLE,
             )
 
         return VerificationDecision(

@@ -11,6 +11,9 @@ MANAGE_GUILD = 1 << 5  # 0x20
 VIEW_AUDIT_LOG = 1 << 7  # 0x80
 VIEW_CHANNEL = 1 << 10  # 0x400
 SEND_MESSAGES = 1 << 11  # 0x800
+EMBED_LINKS = 1 << 14  # 0x4000
+READ_MESSAGE_HISTORY = 1 << 16  # 0x10000
+MANAGE_ROLES = 1 << 28  # 0x10000000
 
 # Match Discord Developer Portal Guild Install links (not /api/oauth2).
 DISCORD_OAUTH_AUTHORIZE_URL = "https://discord.com/oauth2/authorize"
@@ -53,17 +56,17 @@ BOT_INVITE_PERMISSIONS = (
 BOT_INVITE_PERMISSIONS_MINIMAL = (
     VIEW_CHANNEL
     | SEND_MESSAGES
-    | (1 << 14)  # EMBED_LINKS
+    | EMBED_LINKS
     | (1 << 13)  # MANAGE_MESSAGES
     | (1 << 1)  # KICK_MEMBERS
     | (1 << 2)  # BAN_MEMBERS
     | (1 << 40)  # MODERATE_MEMBERS
     | MANAGE_CHANNELS
-    | (1 << 28)  # MANAGE_ROLES
+    | MANAGE_ROLES
     | MANAGE_GUILD
     | VIEW_AUDIT_LOG
     | (1 << 15)  # ATTACH_FILES
-    | (1 << 16)  # READ_MESSAGE_HISTORY
+    | READ_MESSAGE_HISTORY
     | (1 << 17)  # MENTION_EVERYONE (for ping roles in security alerts)
     | (1 << 29)  # MANAGE_WEBHOOKS (content notifications)
 )
@@ -168,8 +171,11 @@ def build_bot_invite_url(
 
 __all__ = [
     "ADMINISTRATOR",
+    "EMBED_LINKS",
     "MANAGE_CHANNELS",
     "MANAGE_GUILD",
+    "MANAGE_ROLES",
+    "READ_MESSAGE_HISTORY",
     "SEND_MESSAGES",
     "VIEW_AUDIT_LOG",
     "VIEW_CHANNEL",

@@ -2,25 +2,32 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.integrations.discord.bot_rest import DiscordBotAPIError, DiscordBotClient
+from app.integrations.discord.bot_rest import (
+    CHANNEL_TYPE_ANNOUNCEMENT,
+    CHANNEL_TYPE_TEXT,
+    DiscordBotAPIError,
+    DiscordBotClient,
+)
+from app.security.discord_effective_permissions import (
+    VERIFICATION_CHANNEL_REQUIRED,
+    infer_overwrite_scope,
+    missing_permission_labels,
+    resolve_effective_channel_permissions,
+)
+from app.security.discord_permissions import (
+    ADMINISTRATOR,
+    MANAGE_ROLES,
+    compute_member_permissions,
+)
 from app.services.views import ConfigurationView
 
-PERM_ADMINISTRATOR = 1 << 3
-PERM_VIEW_CHANNEL = 1 << 10
-PERM_SEND_MESSAGES = 1 << 11
-PERM_MANAGE_ROLES = 1 << 28
-PERM_EMBED_LINKS = 1 << 14
-PERM_READ_MESSAGE_HISTORY = 1 << 16
+logger = logging.getLogger(__name__)
 
-CHANNEL_REQUIRED = (
-    PERM_VIEW_CHANNEL
-    | PERM_SEND_MESSAGES
-    | PERM_EMBED_LINKS
-    | PERM_READ_MESSAGE_HISTORY
-)
+TEXT_CHANNEL_TYPES = {CHANNEL_TYPE_TEXT, CHANNEL_TYPE_ANNOUNCEMENT}
 
 
 @dataclass
@@ -28,6 +35,26 @@ class ValidationIssue:
     code: str
     message: str
     field: str | None = None
+    channel_id: str | None = None
+    channel_name: str | None = None
+    missing_permissions: list[str] | None = None
+    overwrite_scope: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "code": self.code,
+            "message": self.message,
+            "field": self.field,
+        }
+        if self.channel_id is not None:
+            payload["channel_id"] = self.channel_id
+        if self.channel_name is not None:
+            payload["channel_name"] = self.channel_name
+        if self.missing_permissions is not None:
+            payload["missing_permissions"] = self.missing_permissions
+        if self.overwrite_scope is not None:
+            payload["overwrite_scope"] = self.overwrite_scope
+        return payload
 
 
 @dataclass
@@ -52,60 +79,6 @@ def _role_map(roles: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return {str(role.get("id")): role for role in roles if role.get("id")}
 
 
-def _compute_base_permissions(
-    *,
-    guild_id: str,
-    member_role_ids: list[str],
-    roles_by_id: dict[str, dict[str, Any]],
-) -> int:
-    everyone = roles_by_id.get(str(guild_id))
-    permissions = _as_int(everyone.get("permissions") if everyone else 0)
-    for role_id in member_role_ids:
-        role = roles_by_id.get(str(role_id))
-        if role is None:
-            continue
-        permissions |= _as_int(role.get("permissions"))
-    return permissions
-
-
-def _apply_overwrites(
-    base: int,
-    *,
-    guild_id: str,
-    member_id: str,
-    member_role_ids: list[str],
-    overwrites: list[dict[str, Any]],
-) -> int:
-    permissions = base
-    everyone_ow = next(
-        (ow for ow in overwrites if str(ow.get("id")) == str(guild_id)),
-        None,
-    )
-    if everyone_ow is not None:
-        permissions &= ~_as_int(everyone_ow.get("deny"))
-        permissions |= _as_int(everyone_ow.get("allow"))
-
-    allow = 0
-    deny = 0
-    for role_id in member_role_ids:
-        ow = next((item for item in overwrites if str(item.get("id")) == str(role_id)), None)
-        if ow is None:
-            continue
-        allow |= _as_int(ow.get("allow"))
-        deny |= _as_int(ow.get("deny"))
-    permissions &= ~deny
-    permissions |= allow
-
-    member_ow = next(
-        (ow for ow in overwrites if str(ow.get("id")) == str(member_id)),
-        None,
-    )
-    if member_ow is not None:
-        permissions &= ~_as_int(member_ow.get("deny"))
-        permissions |= _as_int(member_ow.get("allow"))
-    return permissions
-
-
 def _highest_bot_position(
     *,
     guild_id: str,
@@ -121,6 +94,119 @@ def _highest_bot_position(
             continue
         highest = max(highest, _as_int(role.get("position")))
     return highest
+
+
+def _channel_display_name(channel: dict[str, Any], channel_id: str) -> str:
+    name = str(channel.get("name") or "").strip()
+    return name or channel_id
+
+
+def _log_channel_permission_diagnostics(
+    *,
+    guild_id: str,
+    channel_id: str,
+    channel: dict[str, Any],
+    member_role_ids: list[str],
+    base_permissions: int,
+    effective_permissions: int,
+    missing: int,
+    category_overwrites: list[dict[str, Any]] | None,
+    channel_overwrites: list[dict[str, Any]],
+    overwrite_scope: str | None,
+) -> None:
+    logger.info(
+        "verification_channel_permission_check",
+        extra={
+            "guild_id": guild_id,
+            "channel_id": channel_id,
+            "channel_type": channel.get("type"),
+            "parent_id": channel.get("parent_id"),
+            "bot_role_ids": member_role_ids,
+            "guild_permission_bits": base_permissions,
+            "category_overwrite_count": len(category_overwrites or []),
+            "channel_overwrite_count": len(channel_overwrites),
+            "effective_permission_bits": effective_permissions,
+            "missing_permission_bits": missing,
+            "administrator_bypass": bool(base_permissions & ADMINISTRATOR),
+            "overwrite_scope": overwrite_scope,
+        },
+    )
+
+
+async def _fetch_category_overwrites(
+    bot_client: DiscordBotClient,
+    *,
+    parent_id: str | None,
+    guild_id: str,
+    field_name: str,
+    issues: list[ValidationIssue],
+) -> list[dict[str, Any]] | None:
+    if not parent_id:
+        return None
+
+    try:
+        category = await bot_client.get_channel(str(parent_id))
+    except DiscordBotAPIError as error:
+        status = error.status_code or 0
+        if status == 404:
+            issues.append(
+                ValidationIssue(
+                    code="discord_resource_not_in_guild",
+                    message=f"Parent category {parent_id} was not found.",
+                    field=field_name,
+                )
+            )
+        elif status in {401, 403}:
+            issues.append(
+                ValidationIssue(
+                    code="missing_bot_permissions",
+                    message=f"Bot cannot access parent category {parent_id}.",
+                    field=field_name,
+                )
+            )
+        elif status == 429:
+            issues.append(
+                ValidationIssue(
+                    code="discord_rate_limited",
+                    message=(
+                        f"Discord rate-limited while reading category {parent_id}."
+                    ),
+                    field=field_name,
+                )
+            )
+        elif status >= 500:
+            issues.append(
+                ValidationIssue(
+                    code="discord_unavailable",
+                    message=(
+                        "Discord is temporarily unavailable while reading "
+                        f"category {parent_id}."
+                    ),
+                    field=field_name,
+                )
+            )
+        else:
+            issues.append(
+                ValidationIssue(
+                    code="guild_metadata_unavailable",
+                    message=f"Discord failed while reading category {parent_id}.",
+                    field=field_name,
+                )
+            )
+        return None
+
+    if str(category.get("guild_id") or "") != str(guild_id):
+        issues.append(
+            ValidationIssue(
+                code="discord_resource_not_in_guild",
+                message=f"Parent category {parent_id} does not belong to this guild.",
+                field=field_name,
+            )
+        )
+        return None
+
+    overwrites = category.get("permission_overwrites") or []
+    return overwrites if isinstance(overwrites, list) else []
 
 
 async def validate_verification_discord_resources(
@@ -199,13 +285,16 @@ async def validate_verification_discord_resources(
 
     roles_by_id = _role_map(roles)
     member_role_ids = [str(role_id) for role_id in (bot_member.get("roles") or [])]
-    base_permissions = _compute_base_permissions(
+    bot_user_id = str(bot_user["id"])
+    base_permissions = compute_member_permissions(
         guild_id=discord_guild_id,
-        member_role_ids=member_role_ids,
-        roles_by_id=roles_by_id,
+        owner_id=None,
+        member_user_id=bot_user_id,
+        member_roles=member_role_ids,
+        roles=roles,
     )
-    if not (base_permissions & PERM_ADMINISTRATOR) and not (
-        base_permissions & PERM_MANAGE_ROLES
+    if not (base_permissions & ADMINISTRATOR) and not (
+        base_permissions & MANAGE_ROLES
     ):
         issues.append(
             ValidationIssue(
@@ -249,7 +338,7 @@ async def validate_verification_discord_resources(
             continue
         if field_name in {"unverified_role_id", "member_role_id"}:
             if _as_int(role.get("position")) >= bot_top and not (
-                base_permissions & PERM_ADMINISTRATOR
+                base_permissions & ADMINISTRATOR
             ):
                 issues.append(
                     ValidationIssue(
@@ -325,30 +414,100 @@ async def validate_verification_discord_resources(
             )
             continue
 
-        overwrites = channel.get("permission_overwrites") or []
-        if not isinstance(overwrites, list):
-            overwrites = []
-        channel_perms = _apply_overwrites(
-            base_permissions,
-            guild_id=discord_guild_id,
-            member_id=str(bot_user["id"]),
-            member_role_ids=member_role_ids,
-            overwrites=overwrites,
-        )
-        if base_permissions & PERM_ADMINISTRATOR:
-            continue
-        missing = CHANNEL_REQUIRED & ~channel_perms
-        if missing:
+        channel_type = _as_int(channel.get("type"))
+        if channel_type not in TEXT_CHANNEL_TYPES:
             issues.append(
                 ValidationIssue(
-                    code="missing_bot_permissions",
+                    code="unsupported_verification_channel_type",
                     message=(
-                        f"Bot needs View Channel, Send Messages, Embed Links, "
-                        f"and Read Message History in {field_name.replace('_', ' ')}."
+                        f"Channel {_channel_display_name(channel, str(channel_id))} "
+                        "must be a text or announcement channel."
                     ),
                     field=field_name,
+                    channel_id=str(channel_id),
+                    channel_name=_channel_display_name(channel, str(channel_id)),
                 )
             )
+            continue
+
+        channel_overwrites = channel.get("permission_overwrites") or []
+        if not isinstance(channel_overwrites, list):
+            channel_overwrites = []
+
+        category_overwrites = await _fetch_category_overwrites(
+            bot_client,
+            parent_id=str(channel.get("parent_id") or "").strip() or None,
+            guild_id=discord_guild_id,
+            field_name=field_name,
+            issues=issues,
+        )
+        if category_overwrites is None and any(
+            issue.field == field_name
+            and issue.code
+            in {
+                "discord_resource_not_in_guild",
+                "missing_bot_permissions",
+                "discord_rate_limited",
+                "discord_unavailable",
+                "guild_metadata_unavailable",
+            }
+            for issue in issues
+        ):
+            continue
+
+        effective_permissions, admin_bypass = resolve_effective_channel_permissions(
+            guild_id=discord_guild_id,
+            member_user_id=bot_user_id,
+            member_role_ids=member_role_ids,
+            roles=roles,
+            category_overwrites=category_overwrites,
+            channel_overwrites=channel_overwrites,
+        )
+        if admin_bypass:
+            continue
+
+        missing = VERIFICATION_CHANNEL_REQUIRED & ~effective_permissions
+        if not missing:
+            continue
+
+        channel_name = _channel_display_name(channel, str(channel_id))
+        missing_labels = missing_permission_labels(missing)
+        overwrite_scope = infer_overwrite_scope(
+            base=base_permissions,
+            effective=effective_permissions,
+            required=VERIFICATION_CHANNEL_REQUIRED,
+            category_overwrites=category_overwrites,
+            channel_overwrites=channel_overwrites,
+            guild_id=discord_guild_id,
+            member_user_id=bot_user_id,
+            member_role_ids=member_role_ids,
+            roles_by_id=roles_by_id,
+        )
+        _log_channel_permission_diagnostics(
+            guild_id=discord_guild_id,
+            channel_id=str(channel_id),
+            channel=channel,
+            member_role_ids=member_role_ids,
+            base_permissions=base_permissions,
+            effective_permissions=effective_permissions,
+            missing=missing,
+            category_overwrites=category_overwrites,
+            channel_overwrites=channel_overwrites,
+            overwrite_scope=overwrite_scope,
+        )
+        issues.append(
+            ValidationIssue(
+                code="missing_channel_permissions",
+                message=(
+                    f"Bot needs {', '.join(missing_labels)} in #{channel_name}."
+                ),
+                field=field_name,
+                channel_id=str(channel_id),
+                channel_name=channel_name,
+                missing_permissions=missing_labels,
+                overwrite_scope=overwrite_scope,
+            )
+        )
 
     if issues:
         codes = {issue.code for issue in issues}

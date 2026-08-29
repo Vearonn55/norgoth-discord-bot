@@ -88,6 +88,15 @@ async def set_high_risk_guild(
             detail="Discord guild not found.",
         )
 
+    if high_risk_discord_guild_id == discord_guild_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "self_reference_server_id",
+                "message": "A server cannot list itself as a High Risk Server.",
+            },
+        )
+
     entry = await high_risk_guild_service.set_entry(
         guild_id=guild.id,
         high_risk_discord_guild_id=high_risk_discord_guild_id,

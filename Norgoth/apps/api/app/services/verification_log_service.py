@@ -179,6 +179,22 @@ class VerificationLogService:
 
         return _to_view(attempt, discord_user_id=attempt.user.discord_user_id)
 
+    async def get_open_manual_review_for_user(
+        self,
+        *,
+        guild_id: UUID,
+        discord_user_id: str,
+    ) -> VerificationAttemptView | None:
+        """Return the newest unresolved manual-review attempt for one user."""
+
+        attempt = await self._verification_log_repository.get_open_manual_review_for_user(
+            guild_id=guild_id,
+            discord_user_id=discord_user_id,
+        )
+        if attempt is None:
+            return None
+        return _to_view(attempt, discord_user_id=attempt.user.discord_user_id)
+
     async def find_other_users_with_ip(
         self,
         *,

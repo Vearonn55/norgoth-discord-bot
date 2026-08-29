@@ -50,9 +50,23 @@ describe("manualReviewReasonLabel", () => {
     );
   });
 
+  it("derives membership check unavailable from persisted reason", () => {
+    expect(
+      deriveManualReviewReasons({
+        reason: "membership_check_unavailable",
+      }),
+    ).toEqual(["membership_check_unavailable"]);
+  });
+
+  it("localizes membership check unavailable", () => {
+    expect(manualReviewReasonLabel("membership_check_unavailable", "en")).toBe(
+      "Server membership check unavailable",
+    );
+  });
+
   it("provides short labels and a localized heading", () => {
     expect(manualReviewReasonShortLabel("high_risk_server", "en")).toBe(
-      "High Risk"
+      "High Risk",
     );
     expect(manualReviewReasonHeading("tr")).toBe("Manuel inceleme nedeni");
     expect(manualReviewReasonHeading("en")).toBe("Manual review reason");

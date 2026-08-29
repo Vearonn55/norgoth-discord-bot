@@ -491,3 +491,42 @@ def test_whitelist_bypasses_configurable_detectors() -> None:
 
     assert decision.outcome is VerificationOutcome.ALLOW
     assert decision.reason is VerificationDecisionReason.WHITELISTED
+
+
+def test_membership_check_unavailable_routes_to_manual_review() -> None:
+    """When guild membership cannot be verified, route to manual review."""
+
+    decision = VerificationDecisionService().evaluate(
+        signals=VerificationSignals(
+            whitelisted=False,
+            user_blacklisted=False,
+            vpn_or_proxy_detected=False,
+            shared_ip_detected=False,
+            discord_account_age_days=365,
+            high_risk_guild_detected=False,
+            membership_check_unavailable=True,
+        ),
+        policy=_default_policy(),
+    )
+
+    assert decision.outcome is VerificationOutcome.MANUAL_REVIEW
+    assert decision.reason is VerificationDecisionReason.MEMBERSHIP_CHECK_UNAVAILABLE
+
+
+def test_high_risk_precedes_membership_unavailable() -> None:
+    """A confirmed high-risk match outranks unavailable lookup fallback."""
+
+    decision = VerificationDecisionService().evaluate(
+        signals=VerificationSignals(
+            whitelisted=False,
+            user_blacklisted=False,
+            vpn_or_proxy_detected=False,
+            shared_ip_detected=False,
+            discord_account_age_days=365,
+            high_risk_guild_detected=True,
+            membership_check_unavailable=True,
+        ),
+        policy=_default_policy(),
+    )
+
+    assert decision.reason is VerificationDecisionReason.HIGH_RISK_GUILD

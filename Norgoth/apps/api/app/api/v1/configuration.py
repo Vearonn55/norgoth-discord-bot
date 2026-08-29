@@ -196,10 +196,7 @@ async def validate_verification_configuration(
     return VerificationValidateResponse(
         ok=result.ok,
         setup_state=result.setup_state if not result.ok else persisted_setup.state,
-        issues=[
-            {"code": issue.code, "message": issue.message, "field": issue.field}
-            for issue in result.issues
-        ],
+        issues=[issue.to_dict() for issue in result.issues],
     )
 
 
@@ -278,14 +275,7 @@ async def create_or_update_configuration(
                 "code": primary.code,
                 "message": primary.message,
                 "field": primary.field,
-                "issues": [
-                    {
-                        "code": issue.code,
-                        "message": issue.message,
-                        "field": issue.field,
-                    }
-                    for issue in validation.issues
-                ],
+                "issues": [issue.to_dict() for issue in validation.issues],
             },
         )
 

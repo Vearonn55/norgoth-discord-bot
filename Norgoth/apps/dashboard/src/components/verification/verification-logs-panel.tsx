@@ -13,6 +13,7 @@ import {
 import { useFirstGuild } from "@/lib/use-first-guild";
 import { useVerificationStore } from "@/stores/verification-store";
 import { formatDateTime } from "@/lib/datetime";
+import { useLocaleDict } from "@/lib/locale-dict";
 
 type StatusFilter = "all" | "manual_review" | "success" | "failed";
 
@@ -26,6 +27,8 @@ const STATUS_FILTERS: { id: StatusFilter; label: string }[] = [
 export function VerificationLogsPanel() {
   const params = useParams();
   const lang = String(params?.lang || "en");
+  const dict = useLocaleDict();
+  const d = dict.verificationPage;
   const { guildId, loading: guildLoading, error: guildError } = useFirstGuild();
 
   const logs = useVerificationStore((s) => s.logs);
@@ -165,7 +168,7 @@ export function VerificationLogsPanel() {
                     <Badge variant="warning">Shared IP</Badge>
                   )}
                   {log.high_risk_guild_detected && (
-                    <Badge variant="warning">High risk server</Badge>
+                    <Badge variant="warning">{d.badgeHighRiskMember}</Badge>
                   )}
                   {log.reviewed_by ? (
                     <span title={`Reviewed by ${log.reviewed_by}`}>

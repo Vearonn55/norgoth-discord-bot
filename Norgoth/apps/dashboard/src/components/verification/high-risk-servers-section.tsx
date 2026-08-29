@@ -128,7 +128,7 @@ export function HighRiskServersSection({ guildId }: { guildId: string }) {
     <div className="d-flex flex-column gap-3">
       <div className="d-flex align-items-start justify-content-between gap-3 flex-wrap">
         <p className="mb-0 small text-body-secondary" style={{ maxWidth: 520 }}>
-          {d.highRiskIntro}
+          {d.highRiskIntro} {d.highRiskWhitelistNote}
         </p>
         <Button variant="primary" size="sm" onClick={() => setAddOpen(true)}>
           {d.addServer}
