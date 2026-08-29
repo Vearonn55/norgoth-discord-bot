@@ -1,6 +1,6 @@
 """Add indexes for open manual-review queue lookups.
 
-Revision ID: 0034_verification_open_manual_review_idx
+Revision ID: 0034_manual_review_queue_idx
 Revises: 0033_link_embeds_providers
 Create Date: 2026-08-30
 """
@@ -10,7 +10,7 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0034_verification_open_manual_review_idx"
+revision = "0034_manual_review_queue_idx"
 down_revision = "0033_link_embeds_providers"
 branch_labels = None
 depends_on = None
