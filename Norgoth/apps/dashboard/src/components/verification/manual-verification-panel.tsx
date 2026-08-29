@@ -10,7 +10,7 @@ import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { ManualReviewModal } from "@/components/verification/manual-review-modal";
 import { useFirstGuild } from "@/lib/use-first-guild";
 import { formatDateTime } from "@/lib/datetime";
-import { formatDict, useLocaleDict } from "@/lib/locale-dict";
+import { useLocaleDict } from "@/lib/locale-dict";
 import {
   deriveManualReviewReasons,
   manualReviewReasonShortLabel,
@@ -23,18 +23,11 @@ import {
 
 function memberName(
   item: ManualReviewItem,
-  userFallback: string,
+  unavailableMember: string,
 ): string {
-  return (
-    item.display_name ||
-    item.username ||
-    formatDict(userFallback, {
-      id:
-        item.discord_user_id.length >= 4
-          ? item.discord_user_id.slice(-4)
-          : item.discord_user_id,
-    })
-  );
+  if (item.display_name) return item.display_name;
+  if (item.username) return item.username;
+  return unavailableMember;
 }
 
 export function ManualVerificationPanel() {
@@ -51,7 +44,7 @@ export function ManualVerificationPanel() {
   const query = useManualReviewStore((s) => s.query);
   const statusFilter = useManualReviewStore((s) => s.statusFilter);
   const loading = useManualReviewStore((s) => s.loading);
-  const error = useManualReviewStore((s) => s.error);
+  const errorKey = useManualReviewStore((s) => s.errorKey);
   const setPage = useManualReviewStore((s) => s.setPage);
   const setQuery = useManualReviewStore((s) => s.setQuery);
   const setStatusFilter = useManualReviewStore((s) => s.setStatusFilter);
@@ -107,7 +100,7 @@ export function ManualVerificationPanel() {
           ) : null}
           <div className="min-w-0">
             <div className="text-truncate">
-              {memberName(row, d.userFallback)}
+              {memberName(row, d.unavailableMember)}
             </div>
             <div className="font-monospace text-body-secondary" style={{ fontSize: 11 }}>
               {row.discord_user_id}
@@ -206,9 +199,18 @@ export function ManualVerificationPanel() {
             ))}
           </div>
 
-          {error ? (
+          {errorKey ? (
             <CAlert color="warning" className="mb-0">
-              {error}
+              <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <span>{d[errorKey]}</span>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => void load(guildId)}
+                >
+                  {d.retry}
+                </Button>
+              </div>
             </CAlert>
           ) : loading && items.length === 0 ? (
             <div className="d-flex align-items-center gap-2 text-body-secondary">

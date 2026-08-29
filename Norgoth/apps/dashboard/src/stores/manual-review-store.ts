@@ -23,12 +23,39 @@ export type ManualReviewStatusFilter =
   | "failed"
   | "all";
 
+export type ManualReviewErrorKey =
+  | "queueLoadError"
+  | "queueForbidden"
+  | "queueNotFound"
+  | "queueReachError"
+  | "detailNotFound"
+  | "detailForbidden"
+  | "detailLoadError"
+  | "detailReachError";
+
 type ListResponse = {
   items: ManualReviewItem[];
   total: number;
 };
 
 const PAGE_SIZE = 10;
+
+const FETCH_OPTS: RequestInit = {
+  cache: "no-store",
+  credentials: "include",
+};
+
+export function manualReviewListErrorKey(status: number): ManualReviewErrorKey {
+  if (status === 404) return "queueNotFound";
+  if (status === 403) return "queueForbidden";
+  return "queueLoadError";
+}
+
+export function manualReviewDetailErrorKey(status: number): ManualReviewErrorKey {
+  if (status === 404) return "detailNotFound";
+  if (status === 403) return "detailForbidden";
+  return "detailLoadError";
+}
 
 type ManualReviewState = {
   items: ManualReviewItem[];
@@ -38,11 +65,11 @@ type ManualReviewState = {
   query: string;
   statusFilter: ManualReviewStatusFilter;
   loading: boolean;
-  error: string | null;
+  errorKey: ManualReviewErrorKey | null;
 
   detail: ManualReviewDetail | null;
   detailLoading: boolean;
-  detailError: string | null;
+  detailErrorKey: ManualReviewErrorKey | null;
 
   reviewingId: string | null;
   reviewError: string | null;
@@ -67,11 +94,11 @@ export const useManualReviewStore = create<ManualReviewState>((set, get) => ({
   query: "",
   statusFilter: "manual_review",
   loading: true,
-  error: null,
+  errorKey: null,
 
   detail: null,
   detailLoading: true,
-  detailError: null,
+  detailErrorKey: null,
 
   reviewingId: null,
   reviewError: null,
@@ -82,7 +109,7 @@ export const useManualReviewStore = create<ManualReviewState>((set, get) => ({
 
   load: async (guildId) => {
     const { page, pageSize, query, statusFilter } = get();
-    set({ loading: true, error: null });
+    set({ loading: true, errorKey: null });
 
     const params = new URLSearchParams({
       limit: String(pageSize),
@@ -94,54 +121,50 @@ export const useManualReviewStore = create<ManualReviewState>((set, get) => ({
     try {
       const response = await fetch(
         apiUrl(`/api/v1/guilds/${guildId}/verification-logs?${params.toString()}`),
-        { cache: "no-store" }
+        FETCH_OPTS
       );
 
       if (!response.ok) {
         set({
-          error:
-            response.status === 404
-              ? "Guild is not registered in the verification domain yet."
-              : response.status === 403
-                ? "You do not have permission to review this server."
-                : "Could not load the manual verification queue.",
+          errorKey: manualReviewListErrorKey(response.status),
+          items: [],
+          total: 0,
         });
         return;
       }
 
       const data = (await response.json()) as ListResponse;
-      set({ items: data.items, total: data.total });
+      set({ items: data.items, total: data.total, errorKey: null });
     } catch {
-      set({ error: "Could not reach the Norgoth API." });
+      set({
+        errorKey: "queueReachError",
+        items: [],
+        total: 0,
+      });
     } finally {
       set({ loading: false });
     }
   },
 
   loadDetail: async (guildId, attemptId) => {
-    set({ detailLoading: true, detailError: null, detail: null });
+    set({ detailLoading: true, detailErrorKey: null, detail: null });
 
     try {
       const response = await fetch(
         apiUrl(`/api/v1/guilds/${guildId}/verification-logs/${attemptId}`),
-        { cache: "no-store" }
+        FETCH_OPTS
       );
 
       if (!response.ok) {
         set({
-          detailError:
-            response.status === 404
-              ? "This review record could not be found."
-              : response.status === 403
-                ? "You do not have permission to view this record."
-                : "Could not load the review record.",
+          detailErrorKey: manualReviewDetailErrorKey(response.status),
         });
         return;
       }
 
       set({ detail: (await response.json()) as ManualReviewDetail });
     } catch {
-      set({ detailError: "Could not reach the Norgoth API." });
+      set({ detailErrorKey: "detailReachError" });
     } finally {
       set({ detailLoading: false });
     }
@@ -156,6 +179,7 @@ export const useManualReviewStore = create<ManualReviewState>((set, get) => ({
           `/api/v1/guilds/${guildId}/verification-logs/${attemptId}/review`
         ),
         {
+          ...FETCH_OPTS,
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ approved }),
@@ -182,7 +206,7 @@ export const useManualReviewStore = create<ManualReviewState>((set, get) => ({
       }));
       return { ok: true };
     } catch {
-      const error = "Could not reach the Norgoth API.";
+      const error = "queueReachError";
       set({ reviewError: error });
       return { ok: false, error };
     } finally {

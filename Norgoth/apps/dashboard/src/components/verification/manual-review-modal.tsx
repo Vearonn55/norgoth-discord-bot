@@ -34,7 +34,7 @@ export function ManualReviewModal({
   const d = dict.verificationPage;
   const detail = useManualReviewStore((s) => s.detail);
   const detailLoading = useManualReviewStore((s) => s.detailLoading);
-  const detailError = useManualReviewStore((s) => s.detailError);
+  const detailErrorKey = useManualReviewStore((s) => s.detailErrorKey);
   const loadDetail = useManualReviewStore((s) => s.loadDetail);
   const review = useManualReviewStore((s) => s.review);
   const reviewingId = useManualReviewStore((s) => s.reviewingId);
@@ -103,9 +103,9 @@ export function ManualReviewModal({
           <CSpinner size="sm" />
           {d.loading}
         </div>
-      ) : detailError ? (
+      ) : detailErrorKey ? (
         <CAlert color="warning" className="mb-0">
-          {detailError}
+          {d[detailErrorKey]}
         </CAlert>
       ) : detail ? (
         <ReviewRecord detail={detail} lang={lang} />

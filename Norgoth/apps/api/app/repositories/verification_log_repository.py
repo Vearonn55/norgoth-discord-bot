@@ -137,6 +137,10 @@ class VerificationLogRepository:
 
         if status is not None:
             statement = statement.where(VerificationAttempt.status == status)
+            if status is VerificationStatus.MANUAL_REVIEW:
+                statement = statement.where(
+                    VerificationAttempt.reviewed_at.is_(None),
+                )
 
         if query:
             like = f"%{query.strip()}%"
