@@ -603,7 +603,7 @@ async def test_kick_enrich_offline_event() -> None:
 
 
 @pytest.mark.anyio
-async def test_kick_enrich_live_event_uses_fetch_latest_thumbnail() -> None:
+async def test_kick_enrich_live_event_preserves_webhook_thumbnail() -> None:
     from app.integrations.content_platforms.kick.adapter import KickAdapter
 
     adapter = KickAdapter(http_client=AsyncMock())
@@ -615,7 +615,7 @@ async def test_kick_enrich_live_event_uses_fetch_latest_thumbnail() -> None:
         creator_name="Demo",
         title="Friday Night",
         content_url="https://kick.com/demo",
-        thumbnail_url="https://kick.com/thumbs/live.jpg",
+        thumbnail_url="https://images.kick.com/webhook-first.jpg",
         is_live=True,
         game="Just Chatting",
         viewer_count=12,
@@ -635,12 +635,13 @@ async def test_kick_enrich_live_event_uses_fetch_latest_thumbnail() -> None:
             },
             "is_live": True,
             "title": "Going live",
+            "thumbnail": "https://images.kick.com/webhook-first.jpg",
             "started_at": "2026-08-13T10:00:00Z",
         },
     )
     event = await adapter.enrich_event(raw)
     assert event.is_live is True
-    assert event.thumbnail_url == "https://kick.com/thumbs/live.jpg"
+    assert event.thumbnail_url == "https://images.kick.com/webhook-first.jpg"
     assert event.title == "Friday Night"
     assert event.game == "Just Chatting"
     adapter.fetch_latest.assert_awaited_once()
