@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from app.services.media.cn_preview_keys import is_cn_preview_key
 from app.services.media.keys import build_media_key
 from app.services.media.protocol import StoredMedia
 from app.services.uploads.image_store import validate_image_bytes
@@ -81,6 +82,35 @@ class S3MediaStorage:
             self._bucket,
             key,
             len(data),
+        )
+        return StoredMedia(
+            storage_key=key,
+            public_url=self.public_url(key, public_base_url=public_base_url),
+            mime_type=mime_type,
+            byte_size=len(data),
+            width=width,
+            height=height,
+            filename=key.rsplit("/", 1)[-1],
+        )
+
+    def upload_at_key(
+        self,
+        *,
+        data: bytes,
+        storage_key: str,
+        mime_type: str,
+        public_base_url: str | None = None,
+    ) -> StoredMedia:
+        verified_ext, verified_mime, width, height = validate_image_bytes(data)
+        mime_type = verified_mime
+        key = storage_key.strip()
+        if not is_cn_preview_key(key):
+            raise S3ConfigError("Invalid CN preview storage key.")
+        self._client.put_object(
+            Bucket=self._bucket,
+            Key=key,
+            Body=data,
+            ContentType=mime_type,
         )
         return StoredMedia(
             storage_key=key,

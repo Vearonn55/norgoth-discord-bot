@@ -51,6 +51,7 @@ from app.services.content_notifications.avatar import (
     refresh_stale_avatars,
     write_resolve_cache,
 )
+from app.services.content_notifications.i18n import normalize_locale
 from app.services.content_notifications.fanout import (
     ensure_source,
     event_from_row,
@@ -113,6 +114,7 @@ class CreateSubscriptionRequest(BaseModel):
     sender_style_id: Optional[UUID] = None
     event_types: list[str] = Field(default_factory=list)
     enabled: bool = True
+    notification_locale: Optional[str] = Field(default="en", max_length=5)
 
 
 class UpdateSubscriptionRequest(BaseModel):
@@ -122,6 +124,7 @@ class UpdateSubscriptionRequest(BaseModel):
     sender_style_id: Optional[UUID] = None
     event_types: Optional[list[str]] = None
     enabled: Optional[bool] = None
+    notification_locale: Optional[str] = Field(default=None, max_length=5)
 
 
 class TemplateBody(BaseModel):
@@ -233,6 +236,7 @@ def _serialize_subscription(sub: GuildContentSubscription) -> dict[str, Any]:
         "event_types": sub.event_types or [],
         "enabled": sub.enabled,
         "status": sub.status,
+        "notification_locale": sub.notification_locale,
         "last_event_at": sub.last_event_at.isoformat() if sub.last_event_at else None,
         "created_at": sub.created_at.isoformat() if sub.created_at else None,
     }
@@ -527,6 +531,7 @@ async def create_account(
         event_types=event_types,
         enabled=body.enabled,
         status="waiting_first_event" if adapter.is_available() else "blocked",
+        notification_locale=normalize_locale(body.notification_locale),
     )
     session.add(sub)
     await session.flush()
@@ -645,6 +650,8 @@ async def update_account(
         sub.enabled = body.enabled
         if not body.enabled:
             sub.status = "paused"
+    if "notification_locale" in fields_set and body.notification_locale is not None:
+        sub.notification_locale = normalize_locale(body.notification_locale)
     await session.commit()
     await session.refresh(sub, attribute_names=["source"])
     return _serialize_subscription(sub)

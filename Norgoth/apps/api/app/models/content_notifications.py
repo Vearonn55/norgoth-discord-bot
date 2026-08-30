@@ -198,6 +198,26 @@ class NormalizedContentEventRow(UUIDPrimaryKeyMixin, Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    stream_preview_url: Mapped[str | None] = mapped_column(
+        String(1000),
+        nullable=True,
+    )
+    stream_preview_storage_key: Mapped[str | None] = mapped_column(
+        String(512),
+        nullable=True,
+    )
+    preview_capture_status: Mapped[str | None] = mapped_column(
+        String(32),
+        nullable=True,
+    )
+    preview_captured_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    stream_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
 
 class NotificationTemplate(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -273,6 +293,12 @@ class GuildContentSubscription(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     last_event_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
+    )
+    notification_locale: Mapped[str] = mapped_column(
+        String(5),
+        nullable=False,
+        default="en",
+        server_default="en",
     )
 
     source: Mapped[ContentCreatorSource] = relationship(

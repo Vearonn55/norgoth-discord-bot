@@ -37,6 +37,17 @@ def _youtube_api_key() -> str | None:
     return os.getenv("YOUTUBE_API_KEY", "").strip() or None
 
 
+def _best_youtube_thumbnail(snippet: dict[str, Any], video_id: str) -> str:
+    thumbs = snippet.get("thumbnails") or {}
+    for key in ("maxres", "high", "medium", "default"):
+        candidate = thumbs.get(key)
+        if isinstance(candidate, dict):
+            url = candidate.get("url")
+            if isinstance(url, str) and url.strip():
+                return url.strip()
+    return f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+
+
 class YouTubeAdapter(ContentPlatformAdapter):
     platform = PlatformType.YOUTUBE
 
@@ -262,6 +273,7 @@ class YouTubeAdapter(ContentPlatformAdapter):
         )
         is_live = None
         event_type = event.event_type
+        stream_started_at = None
 
         api_key = _youtube_api_key()
         if api_key:
@@ -281,7 +293,16 @@ class YouTubeAdapter(ContentPlatformAdapter):
                     if items:
                         snippet = items[0].get("snippet") or {}
                         title = snippet.get("title") or title
+                        thumbnail = _best_youtube_thumbnail(snippet, video_id)
                         live = items[0].get("liveStreamingDetails") or {}
+                        actual_start = live.get("actualStartTime")
+                        if isinstance(actual_start, str):
+                            try:
+                                stream_started_at = datetime.fromisoformat(
+                                    actual_start.replace("Z", "+00:00")
+                                )
+                            except ValueError:
+                                stream_started_at = None
                         if live.get("actualStartTime") and not live.get("actualEndTime"):
                             is_live = True
                             event_type = ContentEventType.STREAM_STARTED
@@ -312,6 +333,7 @@ class YouTubeAdapter(ContentPlatformAdapter):
             thumbnail_url=thumbnail,
             published_at=published_at,
             is_live=is_live,
+            stream_started_at=stream_started_at or published_at,
             raw_metadata=event.raw,
         )
 

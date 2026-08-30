@@ -88,6 +88,11 @@ async def persist_and_fanout(
             raw_metadata=event.raw_metadata or {},
             received_at=datetime.now(timezone.utc),
             enriched_at=datetime.now(timezone.utc),
+            stream_preview_url=event.stream_preview_url,
+            stream_preview_storage_key=event.stream_preview_storage_key,
+            preview_capture_status=event.preview_capture_status,
+            preview_captured_at=event.preview_captured_at,
+            stream_started_at=event.stream_started_at,
         )
         .on_conflict_do_nothing(
             constraint="uq_normalized_content_events_dedupe",
@@ -179,6 +184,11 @@ def event_from_row(row: NormalizedContentEventRow) -> NormalizedContentEvent:
         raw_metadata=row.raw_metadata or {},
         source_id=row.source_id,
         event_id=row.id,
+        stream_preview_url=row.stream_preview_url,
+        stream_preview_storage_key=row.stream_preview_storage_key,
+        preview_capture_status=row.preview_capture_status,
+        preview_captured_at=row.preview_captured_at,
+        stream_started_at=row.stream_started_at,
     )
 
 

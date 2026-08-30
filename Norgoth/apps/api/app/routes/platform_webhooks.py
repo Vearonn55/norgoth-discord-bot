@@ -7,6 +7,7 @@ import logging
 import os
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +17,6 @@ from app.integrations.content_platforms.kick.adapter import (
     KickAdapter,
     verify_kick_signature,
 )
-from app.integrations.content_platforms.registry import get_adapter
 from app.integrations.content_platforms.twitch.adapter import (
     TwitchAdapter,
     verify_twitch_signature,
@@ -25,6 +25,7 @@ from app.integrations.content_platforms.types import (
     ContentEventType,
     PlatformRawEvent,
     PlatformType,
+    ResolvedCreator,
 )
 from app.integrations.content_platforms.youtube.adapter import (
     YouTubeAdapter,
@@ -34,13 +35,38 @@ from app.models.content_notifications import (
     ContentCreatorSource,
     PlatformSubscription,
 )
-from app.services.content_notifications.fanout import persist_and_fanout
+from app.services.content_notifications.fanout import FanoutResult, persist_and_fanout
+from app.services.content_notifications.preview_capture import capture_stream_preview
 from app.services.content_notifications.queue import enqueue_jobs, mark_replay
 from app.security.secret_box import get_secret_box
 
 logger = logging.getLogger("norgoth.content.webhooks")
 
 router = APIRouter(tags=["Platform Webhooks"])
+
+
+async def _fanout_content_event(
+    session: AsyncSession,
+    event,
+    source: ContentCreatorSource,
+    http_client: httpx.AsyncClient,
+) -> FanoutResult:
+    if event.event_type == ContentEventType.STREAM_STARTED:
+        event.creator_platform_id = source.platform_creator_id
+        creator = ResolvedCreator(
+            platform=PlatformType(source.platform),
+            platform_creator_id=source.platform_creator_id,
+            username=source.username or source.display_name,
+            display_name=source.display_name,
+            profile_url=source.profile_url or event.content_url or "",
+            avatar_url=source.avatar_url or event.creator_avatar,
+        )
+        event = await capture_stream_preview(
+            event,
+            http_client=http_client,
+            creator=creator,
+        )
+    return await persist_and_fanout(session, event, source=source)
 
 
 @router.get("/webhooks/youtube/websub")
@@ -70,22 +96,23 @@ async def youtube_websub_notify(
 
     adapter = YouTubeAdapter()
     job_ids: list[str] = []
-    for raw in raw_events:
-        source = await session.scalar(
-            select(ContentCreatorSource).where(
-                ContentCreatorSource.platform == PlatformType.YOUTUBE.value,
-                ContentCreatorSource.platform_creator_id == raw.platform_creator_id,
+    async with httpx.AsyncClient(timeout=20.0) as http_client:
+        for raw in raw_events:
+            source = await session.scalar(
+                select(ContentCreatorSource).where(
+                    ContentCreatorSource.platform == PlatformType.YOUTUBE.value,
+                    ContentCreatorSource.platform_creator_id == raw.platform_creator_id,
+                )
             )
-        )
-        if source is None:
-            continue
-        if source.display_name:
-            raw.raw["creator_name"] = source.display_name
-        if source.avatar_url:
-            raw.raw["creator_avatar"] = source.avatar_url
-        event = await adapter.enrich_event(raw)
-        result = await persist_and_fanout(session, event, source=source)
-        job_ids.extend(str(job_id) for job_id in result.job_ids)
+            if source is None:
+                continue
+            if source.display_name:
+                raw.raw["creator_name"] = source.display_name
+            if source.avatar_url:
+                raw.raw["creator_avatar"] = source.avatar_url
+            event = await adapter.enrich_event(raw)
+            result = await _fanout_content_event(session, event, source, http_client)
+            job_ids.extend(str(job_id) for job_id in result.job_ids)
     await session.commit()
     await enqueue_jobs(job_ids)
     return {"ok": True}
@@ -172,7 +199,8 @@ async def twitch_eventsub(
         raw=payload,
     )
     event = await adapter.enrich_event(raw)
-    result = await persist_and_fanout(session, event, source=source)
+    async with httpx.AsyncClient(timeout=20.0) as http_client:
+        result = await _fanout_content_event(session, event, source, http_client)
     await session.commit()
     await enqueue_jobs(result.job_ids)
     return {"ok": True}
@@ -245,7 +273,8 @@ async def kick_events(
         raw=payload,
     )
     event = await adapter.enrich_event(raw)
-    result = await persist_and_fanout(session, event, source=source)
+    async with httpx.AsyncClient(timeout=20.0) as http_client:
+        result = await _fanout_content_event(session, event, source, http_client)
     await session.commit()
     await enqueue_jobs(result.job_ids)
     return {"ok": True}

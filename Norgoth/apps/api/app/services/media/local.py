@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from app.services.media.cn_preview_keys import is_cn_preview_key
 from app.services.media.keys import build_media_key
 from app.services.media.protocol import StoredMedia
 from app.services.uploads.image_store import (
@@ -44,6 +45,37 @@ class LocalMediaStorage:
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(data)
 
+        base = (public_base_url or "").rstrip("/")
+        public = f"{base}/uploads/{key}" if base else f"/uploads/{key}"
+        return StoredMedia(
+            storage_key=key,
+            public_url=public,
+            mime_type=mime_type,
+            byte_size=len(data),
+            width=width,
+            height=height,
+            filename=Path(key).name,
+        )
+
+    def upload_at_key(
+        self,
+        *,
+        data: bytes,
+        storage_key: str,
+        mime_type: str,
+        public_base_url: str | None = None,
+    ) -> StoredMedia:
+        verified_ext, verified_mime, width, height = validate_image_bytes(data)
+        mime_type = verified_mime
+        key = storage_key.strip()
+        if not is_cn_preview_key(key):
+            raise UploadValidationError("Invalid CN preview storage key.")
+        destination = (self._upload_root / key).resolve()
+        root = self._upload_root.resolve()
+        if root not in destination.parents and destination != root:
+            raise UploadValidationError("Invalid storage path.")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(data)
         base = (public_base_url or "").rstrip("/")
         public = f"{base}/uploads/{key}" if base else f"/uploads/{key}"
         return StoredMedia(

@@ -68,6 +68,15 @@ class JobStatus(StrEnum):
     DEAD = "dead"
 
 
+class PreviewCaptureStatus(StrEnum):
+    CAPTURED_URL = "captured_url"
+    CAPTURED_SNAPSHOT = "captured_snapshot"
+    PENDING = "pending"
+    UNAVAILABLE = "unavailable"
+    REJECTED_PLACEHOLDER = "rejected_placeholder"
+    FETCH_REJECTED = "fetch_rejected"
+
+
 @dataclass(slots=True)
 class ResolvedCreator:
     platform: PlatformType
@@ -111,6 +120,11 @@ class NormalizedContentEvent:
     raw_metadata: dict[str, Any] = field(default_factory=dict)
     source_id: UUID | None = None
     event_id: UUID | None = None
+    stream_preview_url: str | None = None
+    stream_preview_storage_key: str | None = None
+    preview_capture_status: str | None = None
+    preview_captured_at: datetime | None = None
+    stream_started_at: datetime | None = None
 
 
 class PlatformAdapterError(Exception):

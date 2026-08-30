@@ -517,6 +517,16 @@ class KickAdapter(ContentPlatformAdapter):
             f"{creator_id}:{raw.get('started_at') or event.external_content_id}"
         )
         webhook_thumbnail = extract_stream_thumbnail(raw)
+        stream_started_at = None
+        started_raw = raw.get("started_at")
+        if isinstance(started_raw, str):
+            try:
+                stream_started_at = datetime.fromisoformat(
+                    started_raw.replace("Z", "+00:00")
+                )
+            except ValueError:
+                stream_started_at = None
+        published = stream_started_at or datetime.now(timezone.utc)
         event_out = NormalizedContentEvent(
             platform=PlatformType.KICK,
             event_type=(
@@ -533,7 +543,8 @@ class KickAdapter(ContentPlatformAdapter):
             playable_url=profile,
             thumbnail_url=webhook_thumbnail,
             is_live=is_live,
-            published_at=datetime.now(timezone.utc),
+            published_at=published,
+            stream_started_at=stream_started_at or published,
             raw_metadata=raw,
         )
         if is_live:
@@ -559,7 +570,7 @@ class KickAdapter(ContentPlatformAdapter):
                 latest = []
             if latest:
                 live = latest[0]
-                if live.thumbnail_url:
+                if live.thumbnail_url and not event_out.thumbnail_url:
                     event_out.thumbnail_url = live.thumbnail_url
                 if live.title:
                     event_out.title = live.title

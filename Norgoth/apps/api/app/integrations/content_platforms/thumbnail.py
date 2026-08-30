@@ -72,8 +72,51 @@ def is_trusted_preview_host(platform: PlatformType, url: str) -> bool:
     return any(host == suffix or host.endswith(f".{suffix}") for suffix in suffixes)
 
 
+def is_rejected_stream_preview(
+    url: str | None,
+    *,
+    platform: PlatformType,
+    creator_avatar: str | None = None,
+) -> bool:
+    """Return True when a candidate URL is not a genuine live-stream preview."""
+
+    if not url or not isinstance(url, str):
+        return True
+    trimmed = url.strip()
+    if not trimmed.lower().startswith("https://"):
+        return True
+    lowered = trimmed.lower()
+    if "preview-404" in lowered:
+        return True
+    if creator_avatar and trimmed.rstrip("/") == creator_avatar.rstrip("/"):
+        return True
+    parsed = urlparse(trimmed)
+    host = (parsed.hostname or "").lower()
+    path = (parsed.path or "").lower()
+    if platform == PlatformType.KICK and host == "files.kick.com":
+        if "/user/" in path or "/users/" in path:
+            return True
+    return False
+
+
+def preview_requires_snapshot(platform: PlatformType, url: str) -> bool:
+    """Return True when the preview URL content may change during a live session."""
+
+    if platform == PlatformType.TWITCH:
+        return True
+    if platform == PlatformType.KICK:
+        parsed = urlparse(url)
+        if parsed.query:
+            return True
+        host = (parsed.hostname or "").lower()
+        return host.endswith("kick.com") or "kick.com" in host
+    return False
+
+
 __all__ = [
     "extract_stream_thumbnail",
+    "is_rejected_stream_preview",
     "is_trusted_preview_host",
     "normalize_twitch_preview_url",
+    "preview_requires_snapshot",
 ]

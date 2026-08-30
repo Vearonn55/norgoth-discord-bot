@@ -290,6 +290,7 @@ class TwitchAdapter(ContentPlatformAdapter):
         game = None
         viewers = None
         thumb = None
+        stream_started_at = None
         if event_type == ContentEventType.STREAM_STARTED and self.is_available():
             latest = await self.fetch_latest(
                 ResolvedCreator(
@@ -307,7 +308,16 @@ class TwitchAdapter(ContentPlatformAdapter):
                 viewers = latest[0].viewer_count
                 thumb = latest[0].thumbnail_url
                 stream_id = latest[0].external_content_id
+                raw_started = (latest[0].raw_metadata or {}).get("started_at")
+                if isinstance(raw_started, str):
+                    try:
+                        stream_started_at = datetime.fromisoformat(
+                            raw_started.replace("Z", "+00:00")
+                        )
+                    except ValueError:
+                        stream_started_at = None
 
+        published = stream_started_at or datetime.now(timezone.utc)
         return NormalizedContentEvent(
             platform=PlatformType.TWITCH,
             event_type=event_type,
@@ -321,7 +331,8 @@ class TwitchAdapter(ContentPlatformAdapter):
             is_live=event_type == ContentEventType.STREAM_STARTED,
             game=game,
             viewer_count=viewers,
-            published_at=datetime.now(timezone.utc),
+            published_at=published,
+            stream_started_at=stream_started_at or published,
             raw_metadata=event.raw,
         )
 

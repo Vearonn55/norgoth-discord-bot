@@ -8,9 +8,15 @@ from urllib.parse import urlencode, urlparse, urlunparse
 
 from app.integrations.content_platforms.thumbnail import is_trusted_preview_host
 from app.integrations.content_platforms.types import (
+    ContentEventType,
     NormalizedContentEvent,
     PlatformType,
+    PreviewCaptureStatus,
 )
+from app.services.content_notifications.components_builder import (
+    build_stream_watch_components,
+)
+from app.services.content_notifications.preview_capture import resolve_embed_preview_url
 from app.services.content_notifications.tag_registry import (
     PLATFORM_EMBED_COLORS,
     is_legacy_stock_thumbnail,
@@ -73,10 +79,13 @@ def _resolve_image_url(
     event: NormalizedContentEvent,
 ) -> str | None:
     candidate = None
-    if resolved and resolved.get("image_url"):
-        candidate = resolved["image_url"]
-    elif is_legacy_stock_thumbnail(embed_template):
-        candidate = event.thumbnail_url
+    if event.event_type == ContentEventType.STREAM_STARTED:
+        candidate = resolve_embed_preview_url(event)
+    if not candidate:
+        if resolved and resolved.get("image_url"):
+            candidate = resolved["image_url"]
+        elif is_legacy_stock_thumbnail(embed_template):
+            candidate = event.thumbnail_url
     cleaned = usable_image_url(candidate)
     if cleaned is None:
         if candidate:
@@ -86,14 +95,22 @@ def _resolve_image_url(
                 event.event_type,
             )
         return None
-    if not is_trusted_preview_host(event.platform, cleaned):
+    captured = event.preview_capture_status in {
+        PreviewCaptureStatus.CAPTURED_URL.value,
+        PreviewCaptureStatus.CAPTURED_SNAPSHOT.value,
+    }
+    if not captured and not is_trusted_preview_host(event.platform, cleaned):
         logger.info(
             "cn_image_omitted platform=%s event_type=%s reason=untrusted_host",
             event.platform,
             event.event_type,
         )
         return None
-    if event.platform == PlatformType.TWITCH:
+    if (
+        event.platform == PlatformType.TWITCH
+        and event.preview_capture_status != PreviewCaptureStatus.CAPTURED_SNAPSHOT.value
+        and not event.stream_preview_storage_key
+    ):
         return cache_bust_twitch_thumbnail(cleaned, event.external_content_id)
     return cleaned
 
@@ -106,6 +123,7 @@ def build_discord_payload(
     ping_role_id: str | None = None,
     username: str | None = None,
     avatar_url: str | None = None,
+    locale: str | None = "en",
 ) -> dict[str, Any]:
     content = resolve_tags(
         content_template,
@@ -190,6 +208,10 @@ def build_discord_payload(
 
         if embed:
             payload["embeds"] = [embed]
+
+    components = build_stream_watch_components(event, locale=locale)
+    if components:
+        payload["components"] = components
 
     # Discord requires at least content or embeds.
     if not payload.get("content") and not payload.get("embeds"):
