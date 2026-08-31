@@ -722,6 +722,9 @@ class ServerLoggingCog(commands.Cog):
         actor_id: str | None = None,
         actor_name: str | None = None,
         detail: AuditDetail | dict[str, Any] | None = None,
+        target_discord_user_id: str | None = None,
+        target_username: str | None = None,
+        target_display_name: str | None = None,
     ) -> dict[str, Any]:
         if not await self.bot.state.is_module_enabled(guild.id, "logging"):
             return {"id": None, "posted": [], "fields": dict(fields or {})}
@@ -744,6 +747,9 @@ class ServerLoggingCog(commands.Cog):
             "actor_name": actor_name,
             "event_type": event_type,
             "created_at": now_iso(),
+            "target_discord_user_id": target_discord_user_id,
+            "target_username": target_username,
+            "target_display_name": target_display_name,
         }
 
         try:
@@ -848,6 +854,9 @@ class ServerLoggingCog(commands.Cog):
                         "description": entry.get("description"),
                         "fields": entry.get("fields") or {},
                         "detail": detail_payload,
+                        "target_discord_user_id": entry.get("target_discord_user_id"),
+                        "username": entry.get("target_username"),
+                        "display_name": entry.get("target_display_name"),
                     },
                 },
             )
@@ -1720,6 +1729,9 @@ class ServerLoggingCog(commands.Cog):
             event_type="member_ban",
             actor_id=actor_id,
             actor_name=actor_name,
+            target_discord_user_id=str(user.id),
+            target_username=getattr(user, "name", None) or str(user),
+            target_display_name=getattr(user, "global_name", None),
         )
 
     @commands.Cog.listener()
@@ -1742,6 +1754,9 @@ class ServerLoggingCog(commands.Cog):
             event_type="member_unban",
             actor_id=actor_id,
             actor_name=actor_name,
+            target_discord_user_id=str(user.id),
+            target_username=getattr(user, "name", None) or str(user),
+            target_display_name=getattr(user, "global_name", None),
         )
 
     # ---- bulk message + server + voice events ------------------------------

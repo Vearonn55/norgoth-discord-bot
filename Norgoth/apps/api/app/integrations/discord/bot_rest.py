@@ -310,6 +310,41 @@ class DiscordBotClient:
             )
         return response.json()
 
+    async def get_user(self, user_id: str) -> dict[str, Any]:
+        response = await self._request(
+            "GET",
+            f"{DISCORD_API_BASE_URL}/users/{user_id}",
+        )
+        if response.status_code != 200:
+            raise DiscordBotAPIError(
+                f"Failed to get user: HTTP {response.status_code} {response.text}",
+                status_code=response.status_code,
+            )
+        return response.json()
+
+    async def list_guild_bans(
+        self,
+        guild_id: str,
+        *,
+        limit: int = 1000,
+        after: str | None = None,
+    ) -> list[dict[str, Any]]:
+        params: dict[str, str | int] = {"limit": min(limit, 1000)}
+        if after:
+            params["after"] = after
+        response = await self._http_client.get(
+            f"{DISCORD_API_BASE_URL}/guilds/{guild_id}/bans",
+            headers=self._headers,
+            params=params,
+        )
+        if response.status_code != 200:
+            raise DiscordBotAPIError(
+                f"Failed to list bans: HTTP {response.status_code} {response.text}",
+                status_code=response.status_code,
+            )
+        data = response.json()
+        return data if isinstance(data, list) else []
+
     # ── Rate-limit aware request helper ─────────────────────────────────────
     async def _request(
         self,

@@ -41,6 +41,7 @@ from app.models.feature_configs import (
 )
 from app.models.guild import Guild
 from app.models.guild_bindings import GuildChannelBinding, GuildRoleBinding
+from app.models.guild_active_ban import GuildActiveBan
 from app.models.guild_high_risk_guild import GuildHighRiskGuild
 from app.models.guild_moderation_entry import GuildModerationEntry
 from app.models.guild_settings import GuildSettings
@@ -116,6 +117,7 @@ __all__ = [
     "TicketTranscript",
     "WelcomeConfig",
     "Guild",
+    "GuildActiveBan",
     "GuildHighRiskGuild",
     "GuildChannelBinding",
     "GuildContentSubscription",

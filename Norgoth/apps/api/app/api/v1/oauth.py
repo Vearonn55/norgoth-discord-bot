@@ -17,6 +17,8 @@ from fastapi import (
 )
 from fastapi.responses import RedirectResponse
 
+from dataclasses import dataclass
+
 from app.api.v1.dependencies import (
     ConfigurationServiceDependency,
     DatabaseSession,
@@ -26,6 +28,7 @@ from app.api.v1.dependencies import (
     GuildServiceDependency,
     HighRiskGuildServiceDependency,
     ProxycheckClientDependency,
+    SettingsDependency,
     VerificationLogServiceDependency,
     VerificationServiceDependency,
 )
@@ -63,6 +66,9 @@ from app.security.verification_rate_limit import (
     enforce_verification_rate_limit,
 )
 from app.services.guild_meta import resolve_guild_public_meta
+from app.services.verification_manual_review_embed import (
+    build_manual_review_log_payload,
+)
 from app.services.verification_service import VerificationRequest
 from app.services.verification_guild_membership import resolve_high_risk_membership
 from app.services.verification_setup import derive_verification_setup_state
@@ -207,6 +213,15 @@ def _log_callback_event(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class ProxycheckSignals:
+    """VPN/proxy detector output for one verification callback."""
+
+    vpn_or_proxy_detected: bool
+    risk_provider_unavailable: bool
+    proxy_classification: str | None
+
+
 async def _proxycheck_vpn_or_proxy_detected(
     *,
     request: Request,
@@ -214,30 +229,42 @@ async def _proxycheck_vpn_or_proxy_detected(
     proxycheck_client: ProxycheckClientDependency,
     client_ip: str,
     guild_id: str,
-) -> bool:
-    """Return the VPN/proxy signal, degrading open if the provider is unavailable."""
+) -> ProxycheckSignals:
+    """Return VPN/proxy signals, routing provider outages to manual review."""
 
     if not configuration.deny_vpn_or_proxy:
-        return False
+        return ProxycheckSignals(
+            vpn_or_proxy_detected=False,
+            risk_provider_unavailable=False,
+            proxy_classification=None,
+        )
 
     try:
         proxycheck_result = await proxycheck_client.check_ip(client_ip)
     except (InvalidProxycheckIPAddressError, ProxycheckError):
         logger.warning(
-            "verification_callback code=risk_provider_unavailable_skipped guild_id=%s",
+            "verification_callback code=risk_provider_unavailable guild_id=%s",
             guild_id,
             exc_info=True,
         )
         _log_callback_event(
             request,
             stage="risk_provider",
-            code="risk_provider_unavailable_skipped",
+            code="risk_provider_unavailable",
             guild_id=guild_id,
-            outcome="continued",
+            outcome="manual_review",
         )
-        return False
+        return ProxycheckSignals(
+            vpn_or_proxy_detected=False,
+            risk_provider_unavailable=True,
+            proxy_classification=None,
+        )
 
-    return proxycheck_result.vpn_or_proxy_detected
+    return ProxycheckSignals(
+        vpn_or_proxy_detected=proxycheck_result.vpn_or_proxy_detected,
+        risk_provider_unavailable=False,
+        proxy_classification=proxycheck_result.proxy_classification,
+    )
 
 
 @router.get(
@@ -376,6 +403,7 @@ async def discord_callback(
     verification_log_service: VerificationLogServiceDependency,
     high_risk_guild_service: HighRiskGuildServiceDependency,
     bot_client: DiscordBotClientDependency,
+    settings: SettingsDependency,
     code: Annotated[str | None, Query(min_length=1, max_length=2048)] = None,
     state_value: Annotated[
         str | None,
@@ -670,7 +698,7 @@ async def discord_callback(
     )
     matched_high_risk_guild_ids = high_risk_membership.matched_high_risk_guild_ids
 
-    vpn_or_proxy_detected = await _proxycheck_vpn_or_proxy_detected(
+    proxycheck_signals = await _proxycheck_vpn_or_proxy_detected(
         request=request,
         configuration=configuration,
         proxycheck_client=proxycheck_client,
@@ -684,14 +712,18 @@ async def discord_callback(
             request=VerificationRequest(
                 guild_id=guild.id,
                 discord_user_id=user.id,
+                discord_guild_id=verified_state.discord_guild_id,
                 matched_high_risk_guild_ids=matched_high_risk_guild_ids,
                 discord_account_age_days=account_age_days,
                 ip_address=client_ip,
-                vpn_or_proxy_detected=vpn_or_proxy_detected,
+                vpn_or_proxy_detected=proxycheck_signals.vpn_or_proxy_detected,
                 membership_check_unavailable=(
                     high_risk_membership.membership_check_unavailable
                 ),
+                risk_provider_unavailable=proxycheck_signals.risk_provider_unavailable,
+                proxy_classification=proxycheck_signals.proxy_classification,
             ),
+            lang=lang,
         )
     except Exception:
         logger.exception("verification_callback code=verification_processing_failed")
@@ -759,9 +791,19 @@ async def discord_callback(
             reason=verification_result.reason,
             role_grant_failed=role_grant_failed,
             review_role_id=configuration.manual_review_role_id,
-            vpn_or_proxy_detected=vpn_or_proxy_detected,
+            vpn_or_proxy_detected=proxycheck_signals.vpn_or_proxy_detected,
             shared_ip_detected=verification_result.shared_ip_detected,
             high_risk_guild_detected=verification_result.high_risk_guild_detected,
+            banned_ip_match_detected=verification_result.banned_ip_match_detected,
+            membership_check_unavailable=(
+                high_risk_membership.membership_check_unavailable
+            ),
+            risk_provider_unavailable=proxycheck_signals.risk_provider_unavailable,
+            attempt_id=verification_result.attempt_id,
+            created_at=verification_result.created_at,
+            review_evidence=verification_result.review_evidence,
+            dashboard_public_url=settings.dashboard_public_url,
+            lang=lang,
         )
 
     if verification_result.manual_review:
@@ -886,12 +928,20 @@ async def _send_verification_log_embed(
     username: str,
     allowed: bool,
     manual_review: bool,
-    reason: str,
+    reason: object,
     role_grant_failed: bool,
     review_role_id: str,
     vpn_or_proxy_detected: bool,
     shared_ip_detected: bool,
     high_risk_guild_detected: bool,
+    banned_ip_match_detected: bool = False,
+    membership_check_unavailable: bool = False,
+    risk_provider_unavailable: bool = False,
+    attempt_id: object | None = None,
+    created_at: object | None = None,
+    review_evidence: object | None = None,
+    dashboard_public_url: str | None = None,
+    lang: str = "en",
 ) -> None:
     event_type = classification_to_event_type(
         allowed=allowed,
@@ -915,6 +965,40 @@ async def _send_verification_log_embed(
         color = 0xFBBF24
         state = "Role pending"
     elif manual_review:
+        if (
+            attempt_id is not None
+            and created_at is not None
+        ):
+            payload = build_manual_review_log_payload(
+                lang=lang,
+                discord_guild_id=discord_guild_id,
+                user_id=user_id,
+                username=username,
+                review_role_id=review_role_id,
+                attempt_id=attempt_id,
+                created_at=created_at,
+                dashboard_public_url=dashboard_public_url,
+                review_evidence=review_evidence,
+                vpn_or_proxy_detected=vpn_or_proxy_detected,
+                shared_ip_detected=shared_ip_detected,
+                banned_ip_match_detected=banned_ip_match_detected,
+                high_risk_guild_detected=high_risk_guild_detected,
+                membership_check_unavailable=membership_check_unavailable,
+                risk_provider_unavailable=risk_provider_unavailable,
+            )
+            try:
+                await bot_client.send_channel_message(log_channel_id, payload)
+            except DiscordBotAPIError:
+                logger.exception(
+                    "verification_log_embed_failed user_id=%s guild_id=%s "
+                    "channel_id=%s source=%s event_type=%s",
+                    user_id,
+                    discord_guild_id,
+                    log_channel_id,
+                    source,
+                    event_type,
+                )
+            return
         title = "Manual Review Required"
         color = 0xFBBF24
         state = "Manual Review"
@@ -932,8 +1016,8 @@ async def _send_verification_log_embed(
         reasons.append("Shared IP / possible alternate account")
     if high_risk_guild_detected:
         reasons.append("Member of a configured High Risk Server")
-    if reason and reason not in {"allowed", "whitelisted"}:
-        reasons.append(reason.replace("_", " "))
+    if reason and str(reason) not in {"allowed", "whitelisted"}:
+        reasons.append(str(reason).replace("_", " "))
 
     trigger = "; ".join(reasons) if reasons else "Policy decision"
 

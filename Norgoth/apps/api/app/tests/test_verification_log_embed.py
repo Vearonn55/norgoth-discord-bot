@@ -106,3 +106,40 @@ async def test_verification_log_embed_prefixes_emoji_and_skips_empty_display(
     assert "Display" not in field_names
     assert "User" in field_names
     assert "State" in field_names
+
+
+@pytest.mark.asyncio
+async def test_manual_review_embed_includes_link_button(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from datetime import datetime, timezone
+    from uuid import uuid4
+
+    from app.services.verification_manual_review_embed import (
+        build_manual_review_log_payload,
+    )
+
+    attempt_id = uuid4()
+    payload = build_manual_review_log_payload(
+        lang="en",
+        discord_guild_id="111111111111111111",
+        user_id="123456789012345678",
+        username="Tester",
+        review_role_id="999999999999999999",
+        attempt_id=attempt_id,
+        created_at=datetime.now(timezone.utc),
+        dashboard_public_url="https://dashboard.example.com",
+        review_evidence=None,
+        vpn_or_proxy_detected=True,
+        shared_ip_detected=False,
+        banned_ip_match_detected=False,
+        high_risk_guild_detected=False,
+        membership_check_unavailable=False,
+        risk_provider_unavailable=False,
+    )
+
+    assert "components" in payload
+    button = payload["components"][0]["components"][0]
+    assert button["style"] == 5
+    assert attempt_id.hex in button["url"] or str(attempt_id) in button["url"]
+    assert "ip_hash" not in str(payload).lower()

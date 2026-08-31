@@ -115,8 +115,18 @@ export function ReviewRecord({
             {detail.shared_ip_detected ? (
               <Badge variant="warning">{d.badgeSharedIp}</Badge>
             ) : null}
+            {detail.banned_ip_match_detected ? (
+              <Badge variant="warning">{d.badgeBannedIpMatch}</Badge>
+            ) : null}
             {detail.high_risk_guild_detected ? (
               <Badge variant="warning">{d.badgeHighRiskMember}</Badge>
+            ) : null}
+            {detail.proxy_classification ? (
+              <Badge variant="warning">
+                {formatDict(d.proxyClassificationLabel, {
+                  classification: detail.proxy_classification,
+                })}
+              </Badge>
             ) : null}
           </div>
         ) : (
@@ -131,6 +141,36 @@ export function ReviewRecord({
           </div>
         ) : null}
       </div>
+
+      {detail.matched_banned_accounts && detail.matched_banned_accounts.length > 0 ? (
+        <div>
+          <div className="small fw-semibold text-uppercase text-body-secondary mb-2">
+            {d.matchedBannedAccount}
+          </div>
+          <div className="d-flex flex-column gap-2">
+            {detail.matched_banned_accounts.map((account) => (
+              <div
+                key={account.discord_user_id}
+                className="border rounded px-3 py-2"
+              >
+                <div className="fw-medium">
+                  {account.display_name ||
+                    account.username ||
+                    formatDict(d.unavailableDiscordUser, {
+                      id: account.discord_user_id,
+                    })}
+                </div>
+                {account.username ? (
+                  <div className="small text-body-secondary">@{account.username}</div>
+                ) : null}
+                <div className="font-monospace small text-body-secondary">
+                  {account.discord_user_id}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {detail.high_risk_guild_detected ? (
         <div>
@@ -162,6 +202,7 @@ export function ReviewRecord({
       ) : null}
 
       <div className="border-top pt-3 small text-body-secondary">
+        <div className="mb-2">{d.humanReviewDisclaimer}</div>
         <div>
           {formatDict(d.attemptedLabel, {
             time: formatDateTime(detail.created_at, lang),

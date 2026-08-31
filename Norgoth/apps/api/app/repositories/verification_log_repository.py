@@ -33,6 +33,9 @@ class VerificationLogRepository:
         shared_ip_detected: bool,
         high_risk_guild_detected: bool = False,
         matched_high_risk_guild_ids: list[str] | None = None,
+        banned_ip_match_detected: bool = False,
+        matched_banned_user_ids: list[str] | None = None,
+        review_evidence: dict | None = None,
     ) -> VerificationAttempt:
         """Insert a verification attempt (upserting the user dimension)."""
 
@@ -51,6 +54,9 @@ class VerificationLogRepository:
             shared_ip_detected=shared_ip_detected,
             high_risk_guild_detected=high_risk_guild_detected,
             matched_high_risk_guild_ids=matched_high_risk_guild_ids or None,
+            banned_ip_match_detected=banned_ip_match_detected,
+            matched_banned_user_ids=matched_banned_user_ids or None,
+            review_evidence=review_evidence,
         )
         self._session.add(attempt)
         await self._session.flush()

@@ -18,6 +18,7 @@ from app.repositories.configuration_repository import (
 from app.repositories.discord_guild_repository import (
     DiscordGuildRepository,
 )
+from app.repositories.guild_active_ban_repository import GuildActiveBanRepository
 from app.repositories.high_risk_guild_repository import (
     HighRiskGuildRepository,
 )
@@ -32,6 +33,7 @@ from app.security.oauth_state import DiscordOAuthStateService
 from app.services.configuration_service import (
     ConfigurationService,
 )
+from app.services.guild_ban_service import GuildBanService
 from app.services.guild_service import GuildService
 from app.services.high_risk_guild_service import HighRiskGuildService
 from app.services.user_list_service import UserListService
@@ -279,10 +281,31 @@ VerificationLogServiceDependency = Annotated[
 ]
 
 
+def get_guild_ban_service(
+    session: DatabaseSession,
+    ip_protection_service: IPProtectionServiceDependency,
+) -> GuildBanService:
+    """Create a guild-ban service for the current request."""
+
+    return GuildBanService(
+        guild_repository=DiscordGuildRepository(session),
+        ban_repository=GuildActiveBanRepository(session),
+        ip_protection_service=ip_protection_service,
+    )
+
+
+GuildBanServiceDependency = Annotated[
+    GuildBanService,
+    Depends(get_guild_ban_service),
+]
+
+
 def get_verification_service(
     user_list_service: UserListServiceDependency,
     high_risk_guild_service: HighRiskGuildServiceDependency,
     verification_log_service: VerificationLogServiceDependency,
+    guild_ban_service: GuildBanServiceDependency,
+    bot_client: DiscordBotClientDependency,
 ) -> VerificationService:
     """Create the complete Discord verification workflow."""
 
@@ -291,6 +314,8 @@ def get_verification_service(
         high_risk_guild_service=high_risk_guild_service,
         verification_log_service=verification_log_service,
         verification_decision_service=VerificationDecisionService(),
+        guild_ban_service=guild_ban_service,
+        bot_client=bot_client,
     )
 
 

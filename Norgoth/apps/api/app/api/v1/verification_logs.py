@@ -22,13 +22,19 @@ from app.api.v1.dependencies_auth import (
 )
 from app.integrations.discord.bot_rest import DiscordBotAPIError, DiscordBotClient
 from app.models.enums import VerificationStatus
+from app.schemas.review_evidence import ReviewEvidence
 from app.schemas.verification_log import (
+    BannedAccountEvidence,
     MatchedHighRiskServer,
     VerificationLogDetailResponse,
     VerificationLogListResponse,
     VerificationLogResponse,
     VerificationReviewRequest,
 )
+from app.services.verification_manual_review_embed import (
+    build_manual_verification_dashboard_url,
+)
+from app.services.verification_review_reasons import derive_manual_review_reason_codes
 from app.services.audit import record_audit
 from app.services.campaign_store import get_redis
 from app.services.logging_presentation import (
@@ -150,6 +156,7 @@ def _to_response(
         shared_ip_detected=view.shared_ip_detected,
         high_risk_guild_detected=view.high_risk_guild_detected,
         matched_high_risk_guild_ids=list(view.matched_high_risk_guild_ids),
+        banned_ip_match_detected=view.banned_ip_match_detected,
         reviewed_by=view.reviewed_by,
         reviewed_at=view.reviewed_at,
         created_at=view.created_at,
@@ -249,8 +256,39 @@ async def get_verification_log(
     )
     base = _to_response(view, identities.get(view.discord_user_id))
 
+    evidence: ReviewEvidence | None = None
+    if view.review_evidence:
+        try:
+            evidence = ReviewEvidence.model_validate(view.review_evidence)
+        except Exception:  # noqa: BLE001
+            evidence = None
+
     matched_servers: list[MatchedHighRiskServer] = []
-    if view.matched_high_risk_guild_ids:
+    matched_banned_accounts: list[BannedAccountEvidence] = []
+    proxy_classification: str | None = None
+    review_reasons: list[str] = []
+
+    if evidence is not None:
+        matched_servers = [
+            MatchedHighRiskServer(
+                discord_guild_id=server.discord_guild_id,
+                reason=server.description,
+            )
+            for server in evidence.matched_high_risk_servers
+        ]
+        matched_banned_accounts = [
+            BannedAccountEvidence(
+                discord_user_id=account.discord_user_id,
+                display_name=account.display_name,
+                username=account.username,
+                source=account.source,
+                resolved_at=account.resolved_at,
+            )
+            for account in evidence.matched_banned_accounts
+        ]
+        proxy_classification = evidence.proxy_classification
+        review_reasons = list(evidence.reasons)
+    elif view.matched_high_risk_guild_ids:
         entries = await high_risk_guild_service.list_entries(guild.id)
         reason_by_id = {
             entry.high_risk_discord_guild_id: entry.reason for entry in entries
@@ -263,9 +301,23 @@ async def get_verification_log(
             for guild_id in view.matched_high_risk_guild_ids
         ]
 
+    if not review_reasons:
+        review_reasons = derive_manual_review_reason_codes(
+            vpn_or_proxy_detected=view.vpn_or_proxy_detected,
+            shared_ip_detected=view.shared_ip_detected,
+            banned_ip_match_detected=view.banned_ip_match_detected,
+            high_risk_guild_detected=view.high_risk_guild_detected,
+            membership_check_unavailable=view.reason
+            == "membership_check_unavailable",
+            risk_provider_unavailable=view.reason == "risk_provider_unavailable",
+        )
+
     return VerificationLogDetailResponse(
         **base.model_dump(),
         matched_high_risk_servers=matched_servers,
+        matched_banned_accounts=matched_banned_accounts,
+        review_reasons=review_reasons,
+        proxy_classification=proxy_classification,
     )
 
 
@@ -391,20 +443,13 @@ def _build_transcript_url(
     discord_guild_id: str,
     attempt_id: UUID,
 ) -> str | None:
-    """Return a deep link to the read-only transcript, if configured.
+    """Return a deep link to the read-only transcript, if configured."""
 
-    The attempt UUID is an opaque identifier and the guild ID is a
-    non-sensitive query parameter used to select the guild client-side; the
-    transcript page itself enforces authorization via the backend.
-    """
-
-    if not dashboard_public_url:
-        return None
-
-    base = dashboard_public_url.rstrip("/")
-    return (
-        f"{base}/en/community/manual-verification/reviews/"
-        f"{attempt_id}?g={discord_guild_id}"
+    return build_manual_verification_dashboard_url(
+        dashboard_public_url=dashboard_public_url,
+        discord_guild_id=discord_guild_id,
+        attempt_id=attempt_id,
+        lang="en",
     )
 
 
