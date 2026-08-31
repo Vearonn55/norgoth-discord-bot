@@ -1,6 +1,6 @@
 """Add manual-review evidence columns to verification_attempts.
 
-Revision ID: 0037_verification_review_evidence
+Revision ID: 0037_verify_review_evidence
 Revises: 0036_guild_active_bans
 Create Date: 2026-08-31
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0037_verification_review_evidence"
+revision = "0037_verify_review_evidence"
 down_revision = "0036_guild_active_bans"
 branch_labels = None
 depends_on = None

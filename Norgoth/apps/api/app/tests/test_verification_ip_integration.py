@@ -51,6 +51,9 @@ async def test_create_log_protects_ip_automatically() -> None:
             matched_high_risk_guild_ids=kwargs.get(
                 "matched_high_risk_guild_ids"
             ),
+            banned_ip_match_detected=kwargs.get("banned_ip_match_detected", False),
+            matched_banned_user_ids=kwargs.get("matched_banned_user_ids"),
+            review_evidence=kwargs.get("review_evidence"),
             reviewed_by=None,
             reviewed_at=None,
             created_at=datetime.now(timezone.utc),

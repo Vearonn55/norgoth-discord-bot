@@ -10,6 +10,7 @@ from uuid import uuid4
 import pytest
 
 from app.api.v1 import oauth as oauth_module
+from app.api.v1.oauth import ProxycheckSignals
 from app.models.enums import RiskAction
 from app.services.verification_decision_service import VerificationDecisionReason
 from app.services.verification_service import VerificationResult
@@ -56,6 +57,9 @@ async def test_discord_callback_commits_after_verify(
         shared_ip_detected=False,
         high_risk_guild_detected=True,
         matched_high_risk_guild_ids=("900000000000000001",),
+        banned_ip_match_detected=False,
+        matched_banned_user_ids=(),
+        review_evidence=None,
         attempt_id=attempt_id,
     )
     verification_service = AsyncMock()
@@ -96,7 +100,13 @@ async def test_discord_callback_commits_after_verify(
     monkeypatch.setattr(
         oauth_module,
         "_proxycheck_vpn_or_proxy_detected",
-        AsyncMock(return_value=False),
+        AsyncMock(
+            return_value=ProxycheckSignals(
+                vpn_or_proxy_detected=False,
+                risk_provider_unavailable=False,
+                proxy_classification=None,
+            )
+        ),
     )
     monkeypatch.setattr(
         oauth_module,
@@ -157,6 +167,7 @@ async def test_discord_callback_commits_after_verify(
     )
     high_risk_guild_service = SimpleNamespace(list_entries=AsyncMock(return_value=[]))
     bot_client = SimpleNamespace(get_guild_member=AsyncMock(return_value={"roles": []}))
+    settings = SimpleNamespace(dashboard_public_url="https://www.norbot.io")
 
     await oauth_module.discord_callback(
         request=request,
@@ -170,6 +181,7 @@ async def test_discord_callback_commits_after_verify(
         verification_log_service=verification_log_service,
         high_risk_guild_service=high_risk_guild_service,
         bot_client=bot_client,
+        settings=settings,
         code="oauth-code",
         state_value="signed-state",
         error=None,

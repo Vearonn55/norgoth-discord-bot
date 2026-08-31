@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from starlette.requests import Request
 
 from app.api.v1.oauth import (
+    ProxycheckSignals,
     _get_client_ip,
     _proxycheck_vpn_or_proxy_detected,
     authorize_discord,
@@ -179,7 +180,11 @@ async def test_proxycheck_failure_does_not_block_verification_flow() -> None:
         guild_id="99",
     )
 
-    assert result is False
+    assert result == ProxycheckSignals(
+        vpn_or_proxy_detected=False,
+        risk_provider_unavailable=True,
+        proxy_classification=None,
+    )
     proxycheck_client.check_ip.assert_awaited_once_with("203.0.113.5")
 
 
