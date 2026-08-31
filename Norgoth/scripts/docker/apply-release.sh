@@ -45,8 +45,9 @@ sync_tree() {
 if [[ -n "${STAGING_DIR}" ]]; then
   sync_tree "${STAGING_DIR}/Norgoth/deploy" "${STAGING_DIR}/Norgoth/scripts/docker"
 elif [[ -d "${SRC_DIR}/.git" ]]; then
-  git -C "${SRC_DIR}" fetch --depth 1 origin "${SHA}"
-  git -C "${SRC_DIR}" checkout --detach "${SHA}"
+  # ci-apply runs as norbot; /opt/norbot/src is often cloned as root.
+  git -c "safe.directory=${SRC_DIR}" -C "${SRC_DIR}" fetch --depth 1 origin "${SHA}"
+  git -c "safe.directory=${SRC_DIR}" -C "${SRC_DIR}" checkout --detach "${SHA}"
   sync_tree "${SRC_DIR}/Norgoth/deploy" "${SRC_DIR}/Norgoth/scripts/docker"
 else
   echo "No staging dir or ${SRC_DIR} checkout; using compose/scripts already on disk."
