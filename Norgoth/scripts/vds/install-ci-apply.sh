@@ -31,6 +31,13 @@ OPT_ROOT="${OPT_ROOT:-/opt/norbot}"
 install -d -m 0750 -o "${NORBOT_USER}" -g "${NORBOT_USER}" \
   "${OPT_ROOT}/ci-apply" "${OPT_ROOT}/scripts" "${OPT_ROOT}/env"
 
+SRC_DIR="${OPT_ROOT}/src"
+if [[ -d "${SRC_DIR}/.git" ]]; then
+  chown -R "${NORBOT_USER}:${NORBOT_USER}" "${SRC_DIR}"
+  sudo -u "${NORBOT_USER}" -H \
+    git config --global --add safe.directory "${SRC_DIR}" 2>/dev/null || true
+fi
+
 install -m 0755 -o "${NORBOT_USER}" -g "${NORBOT_USER}" \
   "${AGENT_SRC}" "${OPT_ROOT}/ci-apply/ci-apply-agent.py"
 DOCKER_SCRIPTS="$(cd "${SCRIPT_DIR}/../docker" && pwd)"
