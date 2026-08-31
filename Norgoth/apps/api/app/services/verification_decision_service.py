@@ -10,9 +10,11 @@ The engine returns a three-state outcome — ``ALLOW``, ``DENY`` or
 5. Account too new        -> DENY
 6. VPN/proxy  (enabled + detected + action=MANUAL_REVIEW) -> MANUAL_REVIEW
 7. Shared IP  (enabled + detected + action=MANUAL_REVIEW) -> MANUAL_REVIEW
-8. High-risk-guild member -> MANUAL_REVIEW
-9. Membership lookup unavailable -> MANUAL_REVIEW
-10. Otherwise              -> ALLOW
+8. Banned IP match        -> MANUAL_REVIEW
+9. High-risk-guild member -> MANUAL_REVIEW
+10. Membership lookup unavailable -> MANUAL_REVIEW
+11. Risk provider unavailable (VPN enabled) -> MANUAL_REVIEW
+12. Otherwise              -> ALLOW
 
 Each detector carries a configurable action (``deny`` or ``manual_review``); a
 DENY from any enabled detector always outranks a MANUAL_REVIEW. High-risk-guild
@@ -47,6 +49,8 @@ class VerificationDecisionReason(StrEnum):
     ACCOUNT_TOO_NEW = "account_too_new"
     HIGH_RISK_GUILD = "high_risk_guild"
     MEMBERSHIP_CHECK_UNAVAILABLE = "membership_check_unavailable"
+    BANNED_IP_MATCH = "banned_ip_match"
+    RISK_PROVIDER_UNAVAILABLE = "risk_provider_unavailable"
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +84,8 @@ class VerificationSignals:
     discord_account_age_days: int
     high_risk_guild_detected: bool = False
     membership_check_unavailable: bool = False
+    banned_ip_match_detected: bool = False
+    risk_provider_unavailable: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,6 +163,12 @@ class VerificationDecisionService:
                 reason=VerificationDecisionReason.SHARED_IP_DETECTED,
             )
 
+        if signals.banned_ip_match_detected:
+            return VerificationDecision(
+                outcome=VerificationOutcome.MANUAL_REVIEW,
+                reason=VerificationDecisionReason.BANNED_IP_MATCH,
+            )
+
         if signals.high_risk_guild_detected:
             return VerificationDecision(
                 outcome=VerificationOutcome.MANUAL_REVIEW,
@@ -167,6 +179,12 @@ class VerificationDecisionService:
             return VerificationDecision(
                 outcome=VerificationOutcome.MANUAL_REVIEW,
                 reason=VerificationDecisionReason.MEMBERSHIP_CHECK_UNAVAILABLE,
+            )
+
+        if signals.risk_provider_unavailable:
+            return VerificationDecision(
+                outcome=VerificationOutcome.MANUAL_REVIEW,
+                reason=VerificationDecisionReason.RISK_PROVIDER_UNAVAILABLE,
             )
 
         return VerificationDecision(

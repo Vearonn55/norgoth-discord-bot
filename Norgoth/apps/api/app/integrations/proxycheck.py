@@ -28,6 +28,7 @@ class ProxycheckResult:
     ip_address: str
     anonymous: bool
     status: str
+    proxy_classification: str | None = None
 
     @property
     def vpn_or_proxy_detected(self) -> bool:
@@ -115,10 +116,15 @@ class ProxycheckClient:
             message = "proxycheck.io returned an invalid anonymous result."
             raise ProxycheckError(message)
 
+        proxy_classification = ProxycheckClient._read_proxy_classification(
+            detections
+        )
+
         return ProxycheckResult(
             ip_address=normalized_ip,
             anonymous=anonymous,
             status=response_status,
+            proxy_classification=proxy_classification,
         )
 
     @staticmethod
@@ -160,6 +166,18 @@ class ProxycheckClient:
             raise ProxycheckError(message)
 
         return value.strip().lower()
+
+    @staticmethod
+    def _read_proxy_classification(detections: dict[str, Any]) -> str | None:
+        """Return a coarse proxy/VPN classification when available."""
+
+        for key in ("vpn", "proxy", "tor", "relay", "hosting"):
+            value = detections.get(key)
+            if value is True:
+                return key
+        if detections.get("anonymous") is True:
+            return "anonymous"
+        return None
 
     @staticmethod
     def _read_optional_message(

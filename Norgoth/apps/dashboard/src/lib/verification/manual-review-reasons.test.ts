@@ -1,74 +1,33 @@
 import { describe, expect, it } from "vitest";
 import {
   deriveManualReviewReasons,
-  manualReviewReasonHeading,
   manualReviewReasonLabel,
-  manualReviewReasonShortLabel,
-} from "@/lib/verification/manual-review-reasons";
+} from "./manual-review-reasons";
 
 describe("deriveManualReviewReasons", () => {
-  it("returns no reasons when nothing fired", () => {
+  it("includes banned IP match and risk provider codes", () => {
     expect(
       deriveManualReviewReasons({
-        vpn_or_proxy_detected: false,
-        shared_ip_detected: false,
-        high_risk_guild_detected: false,
-      })
-    ).toEqual([]);
+        banned_ip_match_detected: true,
+        reason: "risk_provider_unavailable",
+      }),
+    ).toEqual(["banned_ip_match", "risk_provider_unavailable"]);
   });
 
-  it("derives every triggered reason in a stable order", () => {
+  it("prefers API review_reasons when present", () => {
     expect(
       deriveManualReviewReasons({
-        vpn_or_proxy_detected: true,
+        review_reasons: ["vpn_or_proxy", "banned_ip_match"],
         shared_ip_detected: true,
-        high_risk_guild_detected: true,
-      })
-    ).toEqual(["vpn_or_proxy", "shared_ip", "high_risk_server"]);
-  });
-
-  it("supports multiple signals at once", () => {
-    expect(
-      deriveManualReviewReasons({
-        shared_ip_detected: true,
-        high_risk_guild_detected: true,
-      })
-    ).toEqual(["shared_ip", "high_risk_server"]);
+      }),
+    ).toEqual(["vpn_or_proxy", "banned_ip_match"]);
   });
 });
 
 describe("manualReviewReasonLabel", () => {
-  it("localizes to English by default", () => {
-    expect(manualReviewReasonLabel("vpn_or_proxy", "en")).toBe(
-      "VPN / Proxy detected"
+  it("localizes banned IP match in Turkish", () => {
+    expect(manualReviewReasonLabel("banned_ip_match", "tr")).toContain(
+      "ban kaçırma",
     );
-  });
-
-  it("localizes to Turkish", () => {
-    expect(manualReviewReasonLabel("shared_ip", "tr")).toBe(
-      "Paylaşılan IP / olası ikincil hesap"
-    );
-  });
-
-  it("derives membership check unavailable from persisted reason", () => {
-    expect(
-      deriveManualReviewReasons({
-        reason: "membership_check_unavailable",
-      }),
-    ).toEqual(["membership_check_unavailable"]);
-  });
-
-  it("localizes membership check unavailable", () => {
-    expect(manualReviewReasonLabel("membership_check_unavailable", "en")).toBe(
-      "Server membership check unavailable",
-    );
-  });
-
-  it("provides short labels and a localized heading", () => {
-    expect(manualReviewReasonShortLabel("high_risk_server", "en")).toBe(
-      "High Risk",
-    );
-    expect(manualReviewReasonHeading("tr")).toBe("Manuel inceleme nedeni");
-    expect(manualReviewReasonHeading("en")).toBe("Manual review reason");
   });
 });

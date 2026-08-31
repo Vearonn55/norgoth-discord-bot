@@ -12,9 +12,20 @@ export type MatchedHighRiskServer = {
   reason: string | null;
 };
 
+export type MatchedBannedAccount = {
+  discord_user_id: string;
+  display_name: string | null;
+  username: string | null;
+  source: string;
+  resolved_at: string | null;
+};
+
 /** Read-only transcript detail for one attempt. */
 export type ManualReviewDetail = ManualReviewItem & {
   matched_high_risk_servers: MatchedHighRiskServer[];
+  matched_banned_accounts?: MatchedBannedAccount[];
+  review_reasons?: string[];
+  proxy_classification?: string | null;
 };
 
 export type ManualReviewStatusFilter =

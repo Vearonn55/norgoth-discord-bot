@@ -7,6 +7,7 @@ from datetime import timedelta
 from typing import TYPE_CHECKING
 
 import discord
+import httpx
 from discord import app_commands
 from discord.ext import commands
 
@@ -120,6 +121,44 @@ class ModerationCog(commands.Cog):
         except discord.HTTPException:
             logger.exception("Failed to post moderation embed")
 
+    async def _ingest_guild_ban(
+        self,
+        guild_id: int,
+        user: discord.User | discord.Member,
+        *,
+        is_active: bool,
+        source: str,
+    ) -> None:
+        base = getattr(self.bot.state, "_api_base_url", "") or ""
+        token = getattr(self.bot.state, "_bot_token", "") or ""
+        if not base or not token:
+            return
+        payload = {
+            "discord_user_id": str(user.id),
+            "is_active": is_active,
+            "username": getattr(user, "name", None) or str(user),
+            "display_name": getattr(user, "global_name", None),
+            "source": source,
+            "created_at": now_iso(),
+        }
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                await client.post(
+                    f"{base}/internal/ingest/{guild_id}/guild-ban",
+                    headers={
+                        "X-Norgoth-Internal-Token": token,
+                        "X-Norgoth-Bot-Token": token,
+                    },
+                    json=payload,
+                )
+        except Exception:  # noqa: BLE001
+            logger.debug(
+                "Guild ban ingest failed guild_id=%s user_id=%s",
+                guild_id,
+                user.id,
+                exc_info=True,
+            )
+
     @app_commands.command(name="kick", description="Kick a member from the server.")
     @app_commands.describe(member="Member to kick", reason="Why they are being kicked")
     @app_commands.default_permissions(kick_members=True)
@@ -167,6 +206,12 @@ class ModerationCog(commands.Cog):
             return
 
         await self.log_action(interaction, "ban", f"{user} ({user.id})", reason)
+        await self._ingest_guild_ban(
+            interaction.guild.id,
+            user,
+            is_active=True,
+            source="slash_ban",
+        )
         await interaction.response.send_message(
             f"Banned {user.mention}.",
             ephemeral=True,

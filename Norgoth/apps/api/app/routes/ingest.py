@@ -32,14 +32,72 @@ from app.models.runtime_events import (
     ServerEventLogEntry,
     Ticket,
 )
+from app.repositories.discord_guild_repository import DiscordGuildRepository
+from app.repositories.guild_active_ban_repository import GuildActiveBanRepository
 from app.services.audit_detail import (
     EVENT_LOG_CAP,
     MODERATION_LOG_CAP,
     is_snowflake,
     prepare_event_payload,
 )
+from app.services.guild_ban_service import GuildBanService
 
 SNOWFLAKE = r"^[0-9]{5,25}$"
+
+
+def _guild_ban_service(session: AsyncSession) -> GuildBanService:
+    return GuildBanService(
+        guild_repository=DiscordGuildRepository(session),
+        ban_repository=GuildActiveBanRepository(session),
+    )
+
+
+async def _sync_guild_ban_from_server_event(
+    session: AsyncSession,
+    *,
+    guild_id: str,
+    body: "ServerEventBody",
+) -> None:
+    if body.event_type not in {"member_ban", "member_unban"}:
+        return
+
+    payload = body.payload or {}
+    target_id = payload.get("target_discord_user_id")
+    if not isinstance(target_id, str) or not is_snowflake(target_id):
+        return
+
+    username = payload.get("username")
+    display_name = payload.get("display_name")
+    username_snapshot = username if isinstance(username, str) else None
+    display_name_snapshot = display_name if isinstance(display_name, str) else None
+    banned_at = body.created_at
+
+    service = _guild_ban_service(session)
+    if body.event_type == "member_ban":
+        await service.upsert_active_ban(
+            discord_guild_id=guild_id,
+            discord_user_id=target_id,
+            username_snapshot=username_snapshot,
+            display_name_snapshot=display_name_snapshot,
+            source="gateway_ban",
+            banned_at=banned_at,
+        )
+    else:
+        await service.deactivate_ban(
+            discord_guild_id=guild_id,
+            discord_user_id=target_id,
+            source="gateway_unban",
+            unbanned_at=banned_at,
+        )
+
+
+class GuildBanIngestBody(BaseModel):
+    discord_user_id: str = Field(pattern=SNOWFLAKE)
+    is_active: bool
+    username: Optional[str] = Field(default=None, max_length=200)
+    display_name: Optional[str] = Field(default=None, max_length=200)
+    source: str = Field(default="slash_ban", max_length=32)
+    created_at: Optional[datetime] = None
 
 
 router = APIRouter(
@@ -47,6 +105,33 @@ router = APIRouter(
     tags=["Internal Ingest"],
     dependencies=[Depends(require_internal_token)],
 )
+
+
+@router.post("/{guild_id}/guild-ban")
+async def ingest_guild_ban(
+    body: GuildBanIngestBody,
+    guild_id: str = Path(pattern=SNOWFLAKE),
+    session: AsyncSession = Depends(get_database_session),
+) -> dict[str, Any]:
+    service = _guild_ban_service(session)
+    if body.is_active:
+        row = await service.upsert_active_ban(
+            discord_guild_id=guild_id,
+            discord_user_id=body.discord_user_id,
+            username_snapshot=body.username,
+            display_name_snapshot=body.display_name,
+            source=body.source,
+            banned_at=body.created_at,
+        )
+    else:
+        row = await service.deactivate_ban(
+            discord_guild_id=guild_id,
+            discord_user_id=body.discord_user_id,
+            source=body.source,
+            unbanned_at=body.created_at,
+        )
+    await session.commit()
+    return {"id": str(row.id) if row is not None else None, "synced": row is not None}
 
 
 class RaidIncidentBody(BaseModel):
@@ -247,6 +332,7 @@ async def ingest_server_event(
             "duplicate": True,
         }
     await _prune_oldest(session, ServerEventLogEntry, guild_id, EVENT_LOG_CAP)
+    await _sync_guild_ban_from_server_event(session, guild_id=guild_id, body=body)
     await session.commit()
     return {"id": str(entry.id)}
 

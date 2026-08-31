@@ -530,3 +530,60 @@ def test_high_risk_precedes_membership_unavailable() -> None:
     )
 
     assert decision.reason is VerificationDecisionReason.HIGH_RISK_GUILD
+
+
+def test_banned_ip_match_routes_to_manual_review() -> None:
+    """An active banned-account IP match routes to manual review."""
+
+    decision = VerificationDecisionService().evaluate(
+        signals=VerificationSignals(
+            whitelisted=False,
+            user_blacklisted=False,
+            vpn_or_proxy_detected=False,
+            shared_ip_detected=False,
+            discord_account_age_days=365,
+            banned_ip_match_detected=True,
+        ),
+        policy=_default_policy(),
+    )
+
+    assert decision.outcome is VerificationOutcome.MANUAL_REVIEW
+    assert decision.reason is VerificationDecisionReason.BANNED_IP_MATCH
+
+
+def test_risk_provider_unavailable_routes_to_manual_review() -> None:
+    """When proxycheck is unavailable, route to manual review."""
+
+    decision = VerificationDecisionService().evaluate(
+        signals=VerificationSignals(
+            whitelisted=False,
+            user_blacklisted=False,
+            vpn_or_proxy_detected=False,
+            shared_ip_detected=False,
+            discord_account_age_days=365,
+            risk_provider_unavailable=True,
+        ),
+        policy=_default_policy(),
+    )
+
+    assert decision.outcome is VerificationOutcome.MANUAL_REVIEW
+    assert decision.reason is VerificationDecisionReason.RISK_PROVIDER_UNAVAILABLE
+
+
+def test_banned_ip_match_precedes_high_risk_manual_review() -> None:
+    """Banned IP match outranks high-risk manual review."""
+
+    decision = VerificationDecisionService().evaluate(
+        signals=VerificationSignals(
+            whitelisted=False,
+            user_blacklisted=False,
+            vpn_or_proxy_detected=False,
+            shared_ip_detected=False,
+            discord_account_age_days=365,
+            banned_ip_match_detected=True,
+            high_risk_guild_detected=True,
+        ),
+        policy=_default_policy(),
+    )
+
+    assert decision.reason is VerificationDecisionReason.BANNED_IP_MATCH

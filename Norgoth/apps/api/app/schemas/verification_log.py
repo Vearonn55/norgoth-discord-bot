@@ -46,6 +46,7 @@ class VerificationLogResponse(BaseModel):
     shared_ip_detected: bool
     high_risk_guild_detected: bool
     matched_high_risk_guild_ids: list[str] = Field(default_factory=list)
+    banned_ip_match_detected: bool = False
     reviewed_by: str | None
     reviewed_at: datetime | None
     created_at: datetime
@@ -65,6 +66,16 @@ class MatchedHighRiskServer(BaseModel):
     reason: str | None = None
 
 
+class BannedAccountEvidence(BaseModel):
+    """Banned-account identity snapshot for manual-review evidence."""
+
+    discord_user_id: DiscordSnowflakeValue
+    display_name: str | None = None
+    username: str | None = None
+    source: str
+    resolved_at: datetime | None = None
+
+
 class VerificationLogDetailResponse(VerificationLogResponse):
     """Read-only transcript detail for a single verification attempt.
 
@@ -75,3 +86,9 @@ class VerificationLogDetailResponse(VerificationLogResponse):
     matched_high_risk_servers: list[MatchedHighRiskServer] = Field(
         default_factory=list
     )
+    matched_banned_accounts: list[BannedAccountEvidence] = Field(
+        default_factory=list
+    )
+    review_reasons: list[str] = Field(default_factory=list)
+    banned_ip_match_detected: bool = False
+    proxy_classification: str | None = None

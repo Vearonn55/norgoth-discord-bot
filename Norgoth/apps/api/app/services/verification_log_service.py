@@ -30,6 +30,9 @@ def _to_view(
         matched_high_risk_guild_ids=tuple(
             attempt.matched_high_risk_guild_ids or ()
         ),
+        banned_ip_match_detected=attempt.banned_ip_match_detected,
+        matched_banned_user_ids=tuple(attempt.matched_banned_user_ids or ()),
+        review_evidence=attempt.review_evidence,
         reviewed_by=attempt.reviewed_by,
         reviewed_at=attempt.reviewed_at,
         created_at=attempt.created_at,
@@ -61,6 +64,9 @@ class VerificationLogService:
         shared_ip_detected: bool,
         high_risk_guild_detected: bool = False,
         matched_high_risk_guild_ids: list[str] | None = None,
+        banned_ip_match_detected: bool = False,
+        matched_banned_user_ids: list[str] | None = None,
+        review_evidence: dict | None = None,
     ) -> VerificationAttemptView:
         """Create a verification attempt with protected IP data."""
 
@@ -78,6 +84,9 @@ class VerificationLogService:
             shared_ip_detected=shared_ip_detected,
             high_risk_guild_detected=high_risk_guild_detected,
             matched_high_risk_guild_ids=matched_high_risk_guild_ids,
+            banned_ip_match_detected=banned_ip_match_detected,
+            matched_banned_user_ids=matched_banned_user_ids,
+            review_evidence=review_evidence,
         )
 
         return _to_view(attempt, discord_user_id=discord_user_id)

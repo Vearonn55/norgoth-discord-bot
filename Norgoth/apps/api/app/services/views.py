@@ -80,3 +80,6 @@ class VerificationAttemptView:
     reviewed_by: str | None
     reviewed_at: datetime | None
     created_at: datetime
+    banned_ip_match_detected: bool = False
+    matched_banned_user_ids: tuple[str, ...] = ()
+    review_evidence: dict | None = None

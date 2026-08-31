@@ -67,6 +67,13 @@ def _mock_create_log_return(
     return resolved_id
 
 
+def _guild_ban_service_mock() -> AsyncMock:
+    service = AsyncMock()
+    service.find_banned_users_with_ip.return_value = []
+    service.get_ban_snapshots.return_value = {}
+    return service
+
+
 class _RecordingBotClient:
     """Fake DiscordBotClient recording role + message calls."""
 
@@ -96,8 +103,14 @@ async def test_high_risk_membership_captures_ids_and_routes_manual_review() -> N
 
     high_risk_guild_service = AsyncMock()
     high_risk_guild_service.list_entries.return_value = [
-        SimpleNamespace(high_risk_discord_guild_id="900000000000000001"),
-        SimpleNamespace(high_risk_discord_guild_id="900000000000000002"),
+        SimpleNamespace(
+            high_risk_discord_guild_id="900000000000000001",
+            reason="Risk A",
+        ),
+        SimpleNamespace(
+            high_risk_discord_guild_id="900000000000000002",
+            reason="Risk B",
+        ),
     ]
 
     verification_log_service = AsyncMock()
@@ -109,6 +122,7 @@ async def test_high_risk_membership_captures_ids_and_routes_manual_review() -> N
         high_risk_guild_service=high_risk_guild_service,
         verification_log_service=verification_log_service,
         verification_decision_service=VerificationDecisionService(),
+        guild_ban_service=_guild_ban_service_mock(),
     )
 
     configuration = SimpleNamespace(
@@ -121,6 +135,7 @@ async def test_high_risk_membership_captures_ids_and_routes_manual_review() -> N
     request = VerificationRequest(
         guild_id=guild_id,
         discord_user_id="123456789012345678",
+        discord_guild_id="111111111111111111",
         matched_high_risk_guild_ids=("900000000000000002",),
         discord_account_age_days=365,
         ip_address="203.0.113.7",
@@ -161,6 +176,7 @@ async def test_whitelisted_user_bypasses_high_risk() -> None:
         high_risk_guild_service=high_risk_guild_service,
         verification_log_service=verification_log_service,
         verification_decision_service=VerificationDecisionService(),
+        guild_ban_service=_guild_ban_service_mock(),
     )
 
     result = await service.verify(
@@ -174,6 +190,7 @@ async def test_whitelisted_user_bypasses_high_risk() -> None:
         request=VerificationRequest(
             guild_id=uuid4(),
             discord_user_id="123456789012345678",
+            discord_guild_id="111111111111111111",
             matched_high_risk_guild_ids=("900000000000000002",),
             discord_account_age_days=365,
             ip_address="203.0.113.7",
@@ -267,6 +284,7 @@ async def test_manual_review_paths_create_pending_attempt(
         high_risk_guild_service=high_risk_guild_service,
         verification_log_service=verification_log_service,
         verification_decision_service=VerificationDecisionService(),
+        guild_ban_service=_guild_ban_service_mock(),
     )
 
     result = await service.verify(
@@ -277,6 +295,7 @@ async def test_manual_review_paths_create_pending_attempt(
         request=VerificationRequest(
             guild_id=uuid4(),
             discord_user_id="123456789012345678",
+            discord_guild_id="111111111111111111",
             discord_account_age_days=365,
             ip_address="203.0.113.7",
             **request_kwargs,
@@ -306,6 +325,7 @@ async def test_membership_check_unavailable_routes_to_manual_review() -> None:
         high_risk_guild_service=high_risk_guild_service,
         verification_log_service=verification_log_service,
         verification_decision_service=VerificationDecisionService(),
+        guild_ban_service=_guild_ban_service_mock(),
     )
 
     result = await service.verify(
@@ -319,6 +339,7 @@ async def test_membership_check_unavailable_routes_to_manual_review() -> None:
         request=VerificationRequest(
             guild_id=uuid4(),
             discord_user_id="123456789012345678",
+            discord_guild_id="111111111111111111",
             matched_high_risk_guild_ids=(),
             discord_account_age_days=365,
             ip_address="203.0.113.7",

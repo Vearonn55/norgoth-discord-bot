@@ -95,6 +95,23 @@ class VerificationAttempt(UUIDPrimaryKeyMixin, Base):
         nullable=True,
     )
 
+    banned_ip_match_detected: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
+
+    matched_banned_user_ids: Mapped[list[str] | None] = mapped_column(
+        JSON,
+        nullable=True,
+    )
+
+    review_evidence: Mapped[dict | None] = mapped_column(
+        JSON,
+        nullable=True,
+    )
+
     reviewed_by: Mapped[str | None] = mapped_column(
         DiscordSnowflake(),
         nullable=True,

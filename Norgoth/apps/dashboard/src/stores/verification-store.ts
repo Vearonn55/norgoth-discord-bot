@@ -111,6 +111,7 @@ export type VerificationLog = {
   vpn_or_proxy_detected: boolean;
   shared_ip_detected: boolean;
   high_risk_guild_detected: boolean;
+  banned_ip_match_detected: boolean;
   matched_high_risk_guild_ids: string[];
   reviewed_by: string | null;
   reviewed_at: string | null;
