@@ -34,8 +34,9 @@ Secrets on both environments (or repo secrets if preferred):
 - `DEPLOY_USER` — `norbot`
 - `DEPLOY_SSH_KEY` — private key for Actions → VDS (not the repo Deploy Key)
 - `DEPLOY_APPLY_SECRET` — HMAC secret for the HTTPS deploy fallback
-  (`/opt/norbot/env/ci-apply.secret`). Required when GitHub-hosted runners
-  cannot reach `DEPLOY_PORT`.
+  (`/opt/norbot/env/ci-apply.secret`). **Required** for GitHub-hosted runners
+  unless `NORBOT_FORCE_SSH_DEPLOY=true` and `DEPLOY_PORT` is open to Actions.
+  Generate with `sudo bash Norgoth/scripts/vds/install-ci-apply.sh` on the VDS.
 - `DEPLOY_APPLY_URL` — optional. Defaults to
   `https://api.norbot.io/__norbot/ci-apply` (production) or
   `https://api.test.norbot.io/__norbot/ci-apply` (test).

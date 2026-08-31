@@ -15,6 +15,12 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Verify deploy transport
+        id: deploy
+        uses: ./.github/actions/vds-deploy-preflight
+        with:
+          apply_secret: ${{ secrets.DEPLOY_APPLY_SECRET }}
+          force_ssh: ${{ vars.NORBOT_FORCE_SSH_DEPLOY }}
       - uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
         with:
           registry: ghcr.io
@@ -44,8 +50,20 @@ jobs:
             "ghcr.io/${OWNER}/norbot-api:${TAG}" \
             "ghcr.io/${OWNER}/norbot-bot:${TAG}" \
             "ghcr.io/${OWNER}/norbot-web:${TAG}"
+      - name: Deploy over HTTPS
+        if: steps.deploy.outputs.transport == 'https'
+        uses: ./.github/actions/vds-https-apply
+        with:
+          url: ${{ secrets.DEPLOY_APPLY_URL }}
+          secret: ${{ secrets.DEPLOY_APPLY_SECRET }}
+          env_name: production
+          sha: ${{ github.sha }}
+          owner: ${{ steps.meta.outputs.owner }}
+          ghcr_user: ${{ github.actor }}
+          ghcr_token: ${{ secrets.GITHUB_TOKEN }}
       - name: Resolve VDS SSH target
         id: vds
+        if: steps.deploy.outputs.transport == 'ssh'
         continue-on-error: true
         uses: ./.github/actions/vds-ssh-target
         with:
@@ -74,7 +92,7 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT }}
           timeout: 60s
-          source: "Norgoth/deploy,Norgoth/scripts/docker"
+          source: "Norgoth/deploy,Norgoth/scripts/docker,Norgoth/scripts/vds"
           target: "/var/tmp/norbot-git-${{ github.run_id }}"
           rm: false
           overwrite: true
@@ -99,7 +117,7 @@ jobs:
             bash "/var/tmp/norbot-git-${{ github.run_id }}/Norgoth/scripts/docker/apply-release.sh" \
               production "${{ github.sha }}" "/var/tmp/norbot-git-${{ github.run_id }}"
       - name: Deploy over HTTPS (SSH unreachable)
-        if: steps.vds.outcome != 'success'
+        if: steps.deploy.outputs.transport == 'ssh' && steps.vds.outcome != 'success'
         uses: ./.github/actions/vds-https-apply
         with:
           url: ${{ secrets.DEPLOY_APPLY_URL }}

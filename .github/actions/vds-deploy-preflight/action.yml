@@ -1,0 +1,44 @@
+name: Verify deploy transport
+description: >
+  GitHub-hosted runners usually cannot reach the VDS SSH port. Require
+  DEPLOY_APPLY_SECRET (HTTPS ci-apply) unless NORBOT_FORCE_SSH_DEPLOY is set.
+
+inputs:
+  apply_secret:
+    required: false
+    default: ""
+  force_ssh:
+    required: false
+    default: ""
+
+outputs:
+  transport:
+    description: https or ssh
+    value: ${{ steps.resolve.outputs.transport }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve transport
+      id: resolve
+      shell: bash
+      env:
+        APPLY_SECRET: ${{ inputs.apply_secret }}
+        FORCE_SSH: ${{ inputs.force_ssh }}
+      run: |
+        set -euo pipefail
+        if [[ -n "${APPLY_SECRET//[[:space:]]/}" ]]; then
+          echo "transport=https" >> "${GITHUB_OUTPUT}"
+          echo "Deploy transport: HTTPS ci-apply (DEPLOY_APPLY_SECRET is set)."
+          exit 0
+        fi
+        if [[ "${FORCE_SSH}" == "true" ]]; then
+          echo "transport=ssh" >> "${GITHUB_OUTPUT}"
+          echo "Deploy transport: SSH (NORBOT_FORCE_SSH_DEPLOY=true)."
+          exit 0
+        fi
+        echo "::error::DEPLOY_APPLY_SECRET is not set. GitHub-hosted runners cannot reach the VDS SSH port from Azure."
+        echo "::error::On the VDS (from your laptop SSH session): sudo bash Norgoth/scripts/vds/install-ci-apply.sh"
+        echo "::error::Then add the printed value to GitHub → Settings → Environments → production and test as DEPLOY_APPLY_SECRET."
+        echo "::error::Only set repository variable NORBOT_FORCE_SSH_DEPLOY=true if DEPLOY_PORT is open to GitHub Actions IP ranges."
+        exit 1
