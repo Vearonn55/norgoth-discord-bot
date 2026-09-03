@@ -1,0 +1,602 @@
+{
+  "version": "2026-09-03.1",
+  "commands": [
+    {
+      "name": "kick",
+      "description": "Kick a member from the server.",
+      "category": "Moderation",
+      "module": "moderation",
+      "default_member_permissions": [
+        "kick_members"
+      ],
+      "bot_permissions": [
+        "kick_members"
+      ],
+      "visibility": "ephemeral",
+      "cooldown_seconds": null,
+      "command_type": "chat",
+      "options": [
+        "member",
+        "reason?"
+      ]
+    },
+    {
+      "name": "ban",
+      "description": "Ban a user from the server.",
+      "category": "Moderation",
+      "module": "moderation",
+      "default_member_permissions": [
+        "ban_members"
+      ],
+      "bot_permissions": [
+        "ban_members"
+      ],
+      "visibility": "ephemeral",
+      "cooldown_seconds": null,
+      "command_type": "chat",
+      "options": [
+        "user",
+        "reason?"
+      ]
+    },
+    {
+      "name": "timeout",
+      "description": "Timeout a member for a number of minutes.",
+      "category": "Moderation",
+      "module": "moderation",
+      "default_member_permissions": [
+        "moderate_members"
+      ],
+      "bot_permissions": [
+        "moderate_members"
+      ],
+      "visibility": "ephemeral",
+      "cooldown_seconds": null,
+      "command_type": "chat",
+      "options": [
+        "member",
+        "minutes",
+        "reason?"
+      ]
+    },
+    {
+      "name": "purge",
+      "description": "Delete the last N messages in this channel.",
+      "category": "Moderation",
+      "module": "moderation",
+      "default_member_permissions": [
+        "manage_messages"
+      ],
+      "bot_permissions": [
+        "manage_messages"
+      ],
+      "visibility": "ephemeral",
+      "cooldown_seconds": null,
+      "command_type": "chat",
+      "options": [
+        "amount"
+      ]
+    },
+    {
+      "name": "userinfo",
+      "description": "Show info about a member.",
+      "category": "Info",
+      "module": null,
+      "default_member_permissions": [],
+      "bot_permissions": [],
+      "visibility": "ephemeral",
+      "cooldown_seconds": 3,
+      "command_type": "chat",
+      "options": [
+        "member?"
+      ]
+    },
+    {
+      "name": "rank",
+      "description": "Show your (or a member's) level and XP.",
+      "category": "Levels",
+      "module": "leveling",
+      "default_member_permissions": [],
+      "bot_permissions": [],
+      "visibility": "public",
+      "cooldown_seconds": null,
+      "command_type": "chat",
+      "options": [
+        "member?"
+      ]
+    },
+    {
+      "name": "give-xp",
+      "description": "Grant XP to a member (Manage Server required).",
+      "category": "Levels",
+      "module": "leveling",
+      "default_member_permissions": [
+        "manage_guild"
+      ],
+      "bot_permissions": [],
+      "visibility": "public",
+      "cooldown_seconds": null,
+      "command_type": "chat",
+      "options": [
+        "member",
+        "amount"
+      ]
+    },
+    {
+      "name": "leaderboard",
+      "description": "Show the server XP leaderboard.",
+      "category": "Levels",
+      "module": "leveling",
+      "default_member_permissions": [],
+      "bot_permissions": [],
+      "visibility": "public",
+      "cooldown_seconds": null,
+      "command_type": "chat",
+      "options": [
+        "type?"
+      ]
+    },
+    {
+      "name": "role add",
+      "description": "Give a role to a member.",
+      "category": "Moderation",
+      "module": "roles",
+      "default_member_permissions": [
+        "manage_roles"
+      ],
+      "bot_permissions": [
+        "manage_roles"
+      ],
+      "visibility": "ephemeral",
+      "cooldown_seconds": null,
+      "command_type": "chat",
+      "options": [
+        "member",
+        "role"
+      ]
+    },
+    {
+      "name": "role remove",
+      "description": "Remove a role from a member.",
+      "category": "Moderation",
+      "module": "roles",
+      "default_member_permissions": [
+        "manage_roles"
+      ],
+      "bot_permissions": [
+        "manage_roles"
+      ],
+      "visibility": "ephemeral",
+      "cooldown_seconds": null,
+      "command_type": "chat",
+      "options": [
+        "member",
+        "role"
+      ]
+    },
+    {
+      "name": "ticket close",
+      "description": "Close this ticket.",
+      "category": "Tickets",
+      "module": "tickets",
+      "default_member_permissions": [],
+      "bot_permissions": [
+        "manage_channels"
+      ],
+      "visibility": "channel",
+      "cooldown_seconds": null,
+      "command_type": "chat",
+      "options": []
+    },
+    {
+      "name": "invites",
+      "description": "Show how many members someone has invited.",
+      "category": "Invites",
+      "module": "invites",
+      "default_member_permissions": [],
+      "bot_permissions": [],
+      "visibility": "public",
+      "cooldown_seconds": null,
+      "command_type": "chat",
+      "options": [
+        "member?"
+      ]
+    },
+    {
+      "name": "unsubscribe",
+      "description": "Stop receiving campaign DMs from this server.",
+      "category": "Campaigns",
+      "module": "campaigns",
+      "default_member_permissions": [],
+      "bot_permissions": [],
+      "visibility": "ephemeral",
+      "cooldown_seconds": null,
+      "command_type": "chat",
+      "options": []
+    },
+    {
+      "name": "help",
+      "description": "List NorBot commands available to you.",
+      "category": "General",
+      "module": null,
+      "default_member_permissions": [],
+      "bot_permissions": [],
+      "visibility": "ephemeral",
+      "cooldown_seconds": 5,
+      "command_type": "chat",
+      "options": [
+        "command?"
+      ]
+    },
+    {
+      "name": "dashboard",
+      "description": "Open the NorBot dashboard for this server.",
+      "category": "General",
+      "module": null,
+      "default_member_permissions": [],
+      "bot_permissions": [],
+      "visibility": "ephemeral",
+      "cooldown_seconds": 5,
+      "command_type": "chat",
+      "options": []
+    },
+    {
+      "name": "status",
+      "description": "Show bot health for this server.",
+      "category": "General",
+      "module": null,
+      "default_member_permissions": [
+        "manage_guild"
+      ],
+      "bot_permissions": [],
+      "visibility": "ephemeral",
+      "cooldown_seconds": 10,
+      "command_type": "chat",
+      "options": []
+    },
+    {
+      "name": "avatar",
+      "description": "Show a user's avatar.",
+      "category": "Info",
+      "module": null,
+      "default_member_permissions": [],
+      "bot_permissions": [],
+      "visibility": "public",
+      "cooldown_seconds": 3,
+      "command_type": "chat",
+      "options": [
+        "user?",
+        "type?"
+      ]
+    },
+    {
+      "name": "server",
+      "description": "Show information about this server.",
+      "category": "Info",
+      "module": null,
+      "default_member_permissions": [],
+      "bot_permissions": [],
+      "visibility": "public",
+      "cooldown_seconds": 5,
+      "command_type": "chat",
+      "options": []
+    },
+    {
+      "name": "roles",
+      "description": "List roles in this server.",
+      "category": "Info",
+      "module": null,
+      "default_member_permissions": [],
+      "bot_permissions": [],
+      "visibility": "ephemeral",
+      "cooldown_seconds": 5,
+      "command_type": "chat",
+      "options": []
+    },
+    {
+      "name": "unban",
+      "description": "Remove a ban from a user.",
+      "category": "Moderation",
+      "module": "moderation",
+      "default_member_permissions": [
+        "ban_members"
+      ],
+      "bot_permissions": [
+        "ban_members"
+      ],
+      "visibility": "ephemeral",
+      "cooldown_seconds": null,
+      "command_type": "chat",
+      "options": [
+        "user",
+        "reason?"
+      ]
+    },
+    {
+      "name": "untimeout",
+      "description": "Remove a timeout from a member.",
+      "category": "Moderation",
+      "module": "moderation",
+      "default_member_permissions": [
+        "moderate_members"
+      ],
+      "bot_permissions": [
+        "moderate_members"
+      ],
+      "visibility": "ephemeral",
+      "cooldown_seconds": null,
+      "command_type": "chat",
+      "options": [
+        "member",
+        "reason?"
+      ]
+    },
+    {
+      "name": "setnick",
+      "description": "Set or clear a member's nickname.",
+      "category": "Moderation",
+      "module": "moderation",
+      "default_member_permissions": [
+        "manage_nicknames"
+      ],
+      "bot_permissions": [
+        "manage_nicknames"
+      ],
+      "visibility": "ephemeral",
+      "cooldown_seconds": null,
+      "command_type": "chat",
+      "options": [
+        "member",
+        "nickname?"
+      ]
+    },
+    {
+      "name": "vkick",
+      "description": "Disconnect a member from voice.",
+      "category": "Moderation",
+      "module": "moderation",
+      "default_member_permissions": [
+        "move_members"
+      ],
+      "bot_permissions": [
+        "move_members"
+      ],
+      "visibility": "ephemeral",
+      "cooldown_seconds": null,
+      "command_type": "chat",
+      "options": [
+        "member",
+        "reason?"
+      ]
+    },
+    {
+      "name": "move",
+      "description": "Move a member to a voice channel.",
+      "category": "Moderation",
+      "module": "moderation",
+      "default_member_permissions": [
+        "move_members"
+      ],
+      "bot_permissions": [
+        "move_members"
+      ],
+      "visibility": "ephemeral",
+      "cooldown_seconds": null,
+      "command_type": "chat",
+      "options": [
+        "member",
+        "channel"
+      ]
+    },
+    {
+      "name": "lock",
+      "description": "Lock a text channel (deny @everyone Send Messages).",
+      "category": "Moderation",
+      "module": "moderation",
+      "default_member_permissions": [
+        "manage_channels"
+      ],
+      "bot_permissions": [
+        "manage_channels",
+        "manage_roles"
+      ],
+      "visibility": "ephemeral",
+      "cooldown_seconds": null,
+      "command_type": "chat",
+      "options": [
+        "channel?",
+        "reason?"
+      ]
+    },
+    {
+      "name": "unlock",
+      "description": "Unlock a text channel.",
+      "category": "Moderation",
+      "module": "moderation",
+      "default_member_permissions": [
+        "manage_channels"
+      ],
+      "bot_permissions": [
+        "manage_channels",
+        "manage_roles"
+      ],
+      "visibility": "ephemeral",
+      "cooldown_seconds": null,
+      "command_type": "chat",
+      "options": [
+        "channel?",
+        "reason?"
+      ]
+    },
+    {
+      "name": "slowmode",
+      "description": "Set slowmode for a text channel.",
+      "category": "Moderation",
+      "module": "moderation",
+      "default_member_permissions": [
+        "manage_channels"
+      ],
+      "bot_permissions": [
+        "manage_channels"
+      ],
+      "visibility": "ephemeral",
+      "cooldown_seconds": null,
+      "command_type": "chat",
+      "options": [
+        "seconds",
+        "channel?"
+      ]
+    },
+    {
+      "name": "level-reset",
+      "description": "Reset a member's XP (text, voice, or all).",
+      "category": "Levels",
+      "module": "leveling",
+      "default_member_permissions": [
+        "manage_guild"
+      ],
+      "bot_permissions": [],
+      "visibility": "ephemeral",
+      "cooldown_seconds": null,
+      "command_type": "chat",
+      "options": [
+        "member",
+        "metric"
+      ]
+    },
+    {
+      "name": "invites-top",
+      "description": "Show the invite leaderboard.",
+      "category": "Invites",
+      "module": "invites",
+      "default_member_permissions": [],
+      "bot_permissions": [],
+      "visibility": "public",
+      "cooldown_seconds": null,
+      "command_type": "chat",
+      "options": []
+    },
+    {
+      "name": "ticket add",
+      "description": "Add a member to this ticket channel.",
+      "category": "Tickets",
+      "module": "tickets",
+      "default_member_permissions": [],
+      "bot_permissions": [
+        "manage_channels"
+      ],
+      "visibility": "ephemeral",
+      "cooldown_seconds": null,
+      "command_type": "chat",
+      "options": [
+        "member"
+      ]
+    },
+    {
+      "name": "ticket remove",
+      "description": "Remove a member from this ticket channel.",
+      "category": "Tickets",
+      "module": "tickets",
+      "default_member_permissions": [],
+      "bot_permissions": [
+        "manage_channels"
+      ],
+      "visibility": "ephemeral",
+      "cooldown_seconds": null,
+      "command_type": "chat",
+      "options": [
+        "member"
+      ]
+    },
+    {
+      "name": "modlogs",
+      "description": "Show recent moderation actions for this server.",
+      "category": "Moderation",
+      "module": "moderation",
+      "default_member_permissions": [
+        "manage_guild"
+      ],
+      "bot_permissions": [],
+      "visibility": "ephemeral",
+      "cooldown_seconds": null,
+      "command_type": "chat",
+      "options": [
+        "limit?"
+      ]
+    },
+    {
+      "name": "verification pending",
+      "description": "Show pending manual verifications (dashboard link).",
+      "category": "Verification",
+      "module": null,
+      "default_member_permissions": [
+        "manage_roles"
+      ],
+      "bot_permissions": [],
+      "visibility": "ephemeral",
+      "cooldown_seconds": null,
+      "command_type": "chat",
+      "options": []
+    },
+    {
+      "name": "Kick",
+      "description": "Kick this member.",
+      "category": "Moderation",
+      "module": "moderation",
+      "default_member_permissions": [
+        "kick_members"
+      ],
+      "bot_permissions": [
+        "kick_members"
+      ],
+      "visibility": "ephemeral",
+      "cooldown_seconds": null,
+      "command_type": "user",
+      "options": []
+    },
+    {
+      "name": "Ban",
+      "description": "Ban this user.",
+      "category": "Moderation",
+      "module": "moderation",
+      "default_member_permissions": [
+        "ban_members"
+      ],
+      "bot_permissions": [
+        "ban_members"
+      ],
+      "visibility": "ephemeral",
+      "cooldown_seconds": null,
+      "command_type": "user",
+      "options": []
+    },
+    {
+      "name": "Timeout",
+      "description": "Timeout this member for 10 minutes.",
+      "category": "Moderation",
+      "module": "moderation",
+      "default_member_permissions": [
+        "moderate_members"
+      ],
+      "bot_permissions": [
+        "moderate_members"
+      ],
+      "visibility": "ephemeral",
+      "cooldown_seconds": null,
+      "command_type": "user",
+      "options": []
+    },
+    {
+      "name": "User info",
+      "description": "Show info about this member.",
+      "category": "Info",
+      "module": null,
+      "default_member_permissions": [],
+      "bot_permissions": [],
+      "visibility": "ephemeral",
+      "cooldown_seconds": null,
+      "command_type": "user",
+      "options": []
+    }
+  ]
+}

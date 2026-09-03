@@ -11,6 +11,8 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.state import now_iso
+from bot.commands.checks import module_enabled, role_hierarchy_problem
+from bot.commands.i18n import L
 
 if TYPE_CHECKING:
     from bot.client import NorgothBot
@@ -290,7 +292,7 @@ class RolesCog(commands.Cog):
 
     role_group = app_commands.Group(
         name="role",
-        description="Add or remove a role from a member",
+        description=L("cmd.role.description"),
         default_permissions=discord.Permissions(manage_roles=True),
     )
 
@@ -301,26 +303,11 @@ class RolesCog(commands.Cog):
     ) -> str | None:
         guild = interaction.guild
         assert guild is not None
-
-        if role.managed:
-            return f"**{role.name}** is managed by an integration."
-
-        if role >= guild.me.top_role:
-            return (
-                f"I can't manage **{role.name}**: it is above my highest role."
-            )
-
-        if (
-            isinstance(interaction.user, discord.Member)
-            and interaction.user != guild.owner
-            and role >= interaction.user.top_role
-        ):
-            return (
-                f"You can't manage **{role.name}**: it is not below your "
-                "highest role."
-            )
-
-        return None
+        if not isinstance(interaction.user, discord.Member):
+            return "This command only works in a server."
+        return role_hierarchy_problem(
+            interaction.user, role, guild.me
+        )
 
     async def log_role_action(
         self,
@@ -343,8 +330,9 @@ class RolesCog(commands.Cog):
             },
         )
 
-    @role_group.command(name="add", description="Give a role to a member")
+    @role_group.command(name="add", description=L("cmd.role.add.description"))
     @app_commands.describe(member="Member to update", role="Role to add")
+    @module_enabled("roles")
     async def role_add(
         self,
         interaction: discord.Interaction,
@@ -384,8 +372,9 @@ class RolesCog(commands.Cog):
             ephemeral=True,
         )
 
-    @role_group.command(name="remove", description="Remove a role from a member")
+    @role_group.command(name="remove", description=L("cmd.role.remove.description"))
     @app_commands.describe(member="Member to update", role="Role to remove")
+    @module_enabled("roles")
     async def role_remove(
         self,
         interaction: discord.Interaction,

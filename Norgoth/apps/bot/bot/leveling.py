@@ -10,6 +10,9 @@ import httpx
 from discord import app_commands
 from discord.ext import commands, tasks
 
+from bot.commands.checks import module_enabled
+from bot.commands.i18n import L
+
 if TYPE_CHECKING:
     from bot.client import NorgothBot
 
@@ -316,16 +319,42 @@ class LevelingCog(commands.Cog):
                 exc_info=True,
             )
 
-    async def clear_member_xp(self, guild_id: int, user_id: int | str) -> None:
+    async def clear_member_xp(
+        self,
+        guild_id: int,
+        user_id: int | str,
+        *,
+        metric: str = "all",
+    ) -> None:
         """Remove a member's guild XP from Redis and Postgres (idempotent)."""
 
         member = str(user_id)
         redis = self.bot.state.redis
-        await redis.zrem(xp_key(guild_id), member)
-        await redis.zrem(xp_text_key(guild_id), member)
-        await redis.zrem(xp_voice_key(guild_id), member)
-        await redis.delete(xp_cooldown_key(guild_id, member))
-        await self._ingest_xp_clear(guild_id, member)
+        metric = (metric or "all").lower()
+        if metric not in {"all", "text", "voice"}:
+            metric = "all"
+
+        if metric in {"all", "text"}:
+            await redis.zrem(xp_text_key(guild_id), member)
+        if metric in {"all", "voice"}:
+            await redis.zrem(xp_voice_key(guild_id), member)
+
+        if metric == "all":
+            await redis.zrem(xp_key(guild_id), member)
+            await redis.delete(xp_cooldown_key(guild_id, member))
+            await self._ingest_xp_clear(guild_id, member)
+            return
+
+        # Partial clear: recompute combined total from remaining metric ZSETs.
+        text_xp = int(await redis.zscore(xp_text_key(guild_id), member) or 0)
+        voice_xp = int(await redis.zscore(xp_voice_key(guild_id), member) or 0)
+        total = text_xp + voice_xp
+        if total > 0:
+            await redis.zadd(xp_key(guild_id), {member: float(total)})
+        else:
+            await redis.zrem(xp_key(guild_id), member)
+            await redis.delete(xp_cooldown_key(guild_id, member))
+        await self._ingest_xp_rollup(guild_id, member)
 
     async def reconcile_departed_xp(self, guild: discord.Guild) -> None:
         """Drop XP for user IDs no longer in the current guild member cache."""
@@ -631,8 +660,10 @@ class LevelingCog(commands.Cog):
 
     # ---- slash commands ------------------------------------------------------
 
-    @app_commands.command(name="rank", description="Show your (or a member's) level and XP")
+    @app_commands.command(name="rank", description=L("cmd.rank.description"))
     @app_commands.describe(member="Member to look up (defaults to you)")
+    @app_commands.guild_only()
+    @module_enabled("leveling")
     async def rank(
         self,
         interaction: discord.Interaction,
@@ -676,13 +707,16 @@ class LevelingCog(commands.Cog):
 
     @app_commands.command(
         name="give-xp",
-        description="Grant XP to a member (Manage Server required)",
+        description=L("cmd.give-xp.description"),
     )
     @app_commands.describe(
         member="Member who should receive XP",
         amount="XP amount to grant (1–1,000,000)",
     )
+    @app_commands.default_permissions(manage_guild=True)
     @app_commands.checks.has_permissions(manage_guild=True)
+    @app_commands.guild_only()
+    @module_enabled("leveling")
     async def give_xp(
         self,
         interaction: discord.Interaction,
@@ -698,16 +732,6 @@ class LevelingCog(commands.Cog):
         if member.bot:
             await interaction.response.send_message(
                 "Bots cannot earn XP.", ephemeral=True
-            )
-            return
-
-        # Respect the leveling master switch: when disabled, XP progression is
-        # halted for the guild, including manual grants.
-        if not await self.bot.state.is_module_enabled(
-            interaction.guild.id, "leveling"
-        ):
-            await interaction.response.send_message(
-                "Leveling is disabled for this server.", ephemeral=True
             )
             return
 
@@ -746,7 +770,9 @@ class LevelingCog(commands.Cog):
         else:
             await interaction.response.send_message(message, ephemeral=True)
 
-    @app_commands.command(name="leaderboard", description="Show the server XP leaderboard")
+    @app_commands.command(
+        name="leaderboard", description=L("cmd.leaderboard.description")
+    )
     @app_commands.describe(type="Leaderboard metric (text or voice XP)")
     @app_commands.choices(
         type=[
@@ -754,6 +780,8 @@ class LevelingCog(commands.Cog):
             app_commands.Choice(name="Voice XP", value="voice"),
         ]
     )
+    @app_commands.guild_only()
+    @module_enabled("leveling")
     async def leaderboard(
         self,
         interaction: discord.Interaction,
@@ -773,7 +801,6 @@ class LevelingCog(commands.Cog):
             else xp_voice_key(interaction.guild.id)
         )
         if metric == "text":
-            # Heal empty text ZSET from pre-split totals for top members.
             total_entries = await redis.zrevrange(
                 xp_key(interaction.guild.id), 0, 9, withscores=True
             )
@@ -807,7 +834,11 @@ class LevelingCog(commands.Cog):
         for index, (user_id, score) in enumerate(entries, start=1):
             xp = int(score)
             total_score, other_score = scores[index * 2 - 2], scores[index * 2 - 1]
-            total_xp = int(total_score) if total_score is not None and float(total_score) > 0 else xp + int(other_score or 0)
+            total_xp = (
+                int(total_score)
+                if total_score is not None and float(total_score) > 0
+                else xp + int(other_score or 0)
+            )
             member = interaction.guild.get_member(int(user_id))
             name = member.display_name if member else f"User {user_id}"
             lines.append(
@@ -822,3 +853,37 @@ class LevelingCog(commands.Cog):
         )
 
         await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(
+        name="level-reset",
+        description=L("cmd.level-reset.description"),
+    )
+    @app_commands.describe(
+        member="Member whose XP should be reset",
+        metric="Which XP pool to clear",
+    )
+    @app_commands.choices(
+        metric=[
+            app_commands.Choice(name="Text", value="text"),
+            app_commands.Choice(name="Voice", value="voice"),
+            app_commands.Choice(name="All", value="all"),
+        ]
+    )
+    @app_commands.default_permissions(manage_guild=True)
+    @app_commands.checks.has_permissions(manage_guild=True)
+    @app_commands.guild_only()
+    @module_enabled("leveling")
+    async def level_reset(
+        self,
+        interaction: discord.Interaction,
+        member: discord.Member,
+        metric: app_commands.Choice[str],
+    ) -> None:
+        assert interaction.guild is not None
+        await self.clear_member_xp(
+            interaction.guild.id, member.id, metric=metric.value
+        )
+        await interaction.response.send_message(
+            f"Reset **{metric.name.lower()}** XP for {member.mention}.",
+            ephemeral=True,
+        )
