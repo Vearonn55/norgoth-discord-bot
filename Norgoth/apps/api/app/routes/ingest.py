@@ -1106,3 +1106,27 @@ async def ingest_feed_reconcile(
     session: AsyncSession = Depends(get_database_session),
 ) -> dict[str, Any]:
     return await ingest_feed_repair(guild_id=guild_id, session=session)
+
+
+@router.get("/{guild_id}/verification-pending-count")
+async def verification_pending_count(
+    guild_id: str = Path(pattern=SNOWFLAKE),
+    session: AsyncSession = Depends(get_database_session),
+) -> dict[str, Any]:
+    """Return open manual-review verification attempt count for Discord /verification pending."""
+
+    from app.models.enums import VerificationStatus
+    from app.repositories.verification_log_repository import (
+        VerificationLogRepository,
+    )
+
+    guild = await DiscordGuildRepository(session).get_by_discord_guild_id(guild_id)
+    if guild is None:
+        return {"guild_id": guild_id, "count": 0}
+
+    count = await VerificationLogRepository(session).count_by_guild(
+        guild_id=guild.id,
+        status=VerificationStatus.MANUAL_REVIEW,
+    )
+    return {"guild_id": guild_id, "count": int(count)}
+

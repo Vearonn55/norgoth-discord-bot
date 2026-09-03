@@ -12,6 +12,7 @@ import redis.asyncio as redis
 
 BOT_HEARTBEAT_KEY = "norgoth:bot:heartbeat"
 BOT_STATUS_KEY = "norgoth:bot:status"
+COMMAND_MANIFEST_VERSION_KEY = "norgoth:bot:command_manifest_version"
 HEARTBEAT_TTL_SECONDS = 45
 
 logger = logging.getLogger("norgoth.bot.state")
@@ -307,6 +308,34 @@ class BotState:
                 guild_id,
             )
         return hydrated
+
+    async def get_command_manifest_version(self) -> str | None:
+        value = await self._redis.get(COMMAND_MANIFEST_VERSION_KEY)
+        return str(value) if value else None
+
+    async def set_command_manifest_version(self, version: str) -> None:
+        await self._redis.set(COMMAND_MANIFEST_VERSION_KEY, version)
+
+    async def get_moderation_logs(
+        self,
+        guild_id: int,
+        *,
+        limit: int = 10,
+    ) -> list[dict[str, Any]]:
+        raw_entries = await self._redis.lrange(
+            moderation_log_key(guild_id),
+            0,
+            max(0, limit - 1),
+        )
+        entries: list[dict[str, Any]] = []
+        for raw in raw_entries:
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, dict):
+                entries.append(parsed)
+        return entries
 
     async def append_moderation_log(
         self,

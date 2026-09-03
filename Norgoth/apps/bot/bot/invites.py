@@ -18,6 +18,8 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.state import now_iso
+from bot.commands.checks import module_enabled
+from bot.commands.i18n import L
 from bot.invite_log_render import (
     DEFAULT_JOIN_MESSAGE,
     DEFAULT_LEAVE_MESSAGE,
@@ -1023,9 +1025,11 @@ class InvitesCog(commands.Cog):
 
     @app_commands.command(
         name="invites",
-        description="Show how many members someone has invited",
+        description=L("cmd.invites.description"),
     )
     @app_commands.describe(member="Member to look up (defaults to you)")
+    @app_commands.guild_only()
+    @module_enabled("invites")
     async def invites_command(
         self,
         interaction: discord.Interaction,
@@ -1066,4 +1070,63 @@ class InvitesCog(commands.Cog):
         embed.add_field(name="Left", value=str(leaves))
         embed.add_field(name="Rejoins", value=str(rejoins))
 
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(
+        name="invites-top",
+        description=L("cmd.invites.top.description"),
+    )
+    @app_commands.guild_only()
+    @module_enabled("invites")
+    async def invites_top(self, interaction: discord.Interaction) -> None:
+        if interaction.guild is None:
+            await interaction.response.send_message(
+                "This command only works in a server.", ephemeral=True
+            )
+            return
+
+        counters = await self.bot.state.redis.hgetall(
+            invite_counters_key(interaction.guild.id)
+        )
+        leaderboard: list[tuple[int, str, int, int, int]] = []
+        for inviter_id, raw in counters.items():
+            try:
+                stored = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(stored, dict):
+                continue
+            joins = int(stored.get("joins", 0))
+            leaves = int(stored.get("leaves", 0))
+            rejoins = int(stored.get("rejoins", 0))
+            net = max(0, joins - leaves)
+            if net <= 0 and joins <= 0:
+                continue
+            member = interaction.guild.get_member(int(inviter_id))
+            name = (
+                member.display_name
+                if member is not None
+                else str(stored.get("name") or inviter_id)
+            )
+            leaderboard.append((net, name, joins, leaves, rejoins))
+
+        leaderboard.sort(key=lambda row: row[0], reverse=True)
+        top = leaderboard[:10]
+        if not top:
+            await interaction.response.send_message(
+                "No invite stats recorded yet."
+            )
+            return
+
+        lines = [
+            f"**{index}.** {name} — {net} net ({joins} joins / {leaves} left)"
+            for index, (net, name, joins, leaves, _rejoins) in enumerate(
+                top, start=1
+            )
+        ]
+        embed = discord.Embed(
+            title=f"Invite leaderboard — {interaction.guild.name}",
+            description="\n".join(lines),
+            color=discord.Color.blurple(),
+        )
         await interaction.response.send_message(embed=embed)

@@ -10,6 +10,9 @@ import httpx
 from discord import app_commands
 from discord.ext import commands
 
+from bot.commands.checks import module_enabled
+from bot.commands.i18n import L
+
 if TYPE_CHECKING:
     from bot.client import NorgothBot
 
@@ -77,8 +80,10 @@ class CampaignsCog(commands.Cog):
 
     @app_commands.command(
         name="unsubscribe",
-        description="Stop receiving campaign DMs from this server",
+        description=L("cmd.unsubscribe.description"),
     )
+    @app_commands.guild_only()
+    @module_enabled("campaigns")
     async def unsubscribe(self, interaction: discord.Interaction) -> None:
         if interaction.guild is None:
             await interaction.response.send_message(

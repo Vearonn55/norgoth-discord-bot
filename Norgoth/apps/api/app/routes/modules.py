@@ -34,7 +34,7 @@ MODULE_DEFINITIONS: list[dict[str, str]] = [
     {
         "key": "moderation",
         "name": "Moderation Commands",
-        "description": "Slash commands: kick, ban, timeout, purge.",
+        "description": "Slash commands: kick, ban, timeout, purge, unban, lock, and more.",
     },
     {
         "key": "automod",

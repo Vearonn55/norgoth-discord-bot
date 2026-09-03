@@ -15,6 +15,8 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.state import now_iso
+from bot.commands.checks import module_enabled
+from bot.commands.i18n import L
 from bot.ticket_log_fields import (
     build_closed_ticket_log_fields,
     build_opened_ticket_log_fields,
@@ -697,9 +699,142 @@ class TicketsCog(commands.Cog):
 
     ticket_group = app_commands.Group(
         name="ticket",
-        description="Ticket management",
+        description=L("cmd.ticket.description"),
     )
 
-    @ticket_group.command(name="close", description="Close this ticket")
+    async def _can_manage_ticket(
+        self,
+        interaction: discord.Interaction,
+        record: dict[str, Any],
+    ) -> bool:
+        if not isinstance(interaction.user, discord.Member):
+            return False
+        if interaction.user.guild_permissions.manage_channels:
+            return True
+        config = await self.get_config(interaction.guild.id)  # type: ignore[union-attr]
+        support_role_ids = {
+            int(role_id) for role_id in config.get("support_role_ids", [])
+        }
+        if any(role.id in support_role_ids for role in interaction.user.roles):
+            return True
+        return False
+
+    @ticket_group.command(name="close", description=L("cmd.ticket.close.description"))
+    @module_enabled("tickets")
     async def ticket_close(self, interaction: discord.Interaction) -> None:
         await self.handle_close_ticket(interaction)
+
+    @ticket_group.command(name="add", description=L("cmd.ticket.add.description"))
+    @app_commands.describe(member="Member to add to this ticket")
+    @app_commands.checks.bot_has_permissions(manage_channels=True)
+    @module_enabled("tickets")
+    async def ticket_add(
+        self,
+        interaction: discord.Interaction,
+        member: discord.Member,
+    ) -> None:
+        guild = interaction.guild
+        if guild is None or not isinstance(interaction.channel, discord.TextChannel):
+            await interaction.response.send_message(
+                "Run this inside a ticket channel.",
+                ephemeral=True,
+            )
+            return
+
+        record = await self.find_open_ticket_by_channel(
+            guild.id, interaction.channel.id
+        )
+        if record is None:
+            await interaction.response.send_message(
+                "This channel is not an open ticket.",
+                ephemeral=True,
+            )
+            return
+
+        if not await self._can_manage_ticket(interaction, record):
+            await interaction.response.send_message(
+                "You need Manage Channels or a support role to add members.",
+                ephemeral=True,
+            )
+            return
+
+        try:
+            await interaction.channel.set_permissions(
+                member,
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True,
+                reason=f"/ticket add by {interaction.user}",
+            )
+        except discord.Forbidden:
+            await interaction.response.send_message(
+                "I can't update permissions in this channel.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.send_message(
+            f"Added {member.mention} to this ticket.",
+            ephemeral=True,
+        )
+
+    @ticket_group.command(
+        name="remove", description=L("cmd.ticket.remove.description")
+    )
+    @app_commands.describe(member="Member to remove from this ticket")
+    @app_commands.checks.bot_has_permissions(manage_channels=True)
+    @module_enabled("tickets")
+    async def ticket_remove(
+        self,
+        interaction: discord.Interaction,
+        member: discord.Member,
+    ) -> None:
+        guild = interaction.guild
+        if guild is None or not isinstance(interaction.channel, discord.TextChannel):
+            await interaction.response.send_message(
+                "Run this inside a ticket channel.",
+                ephemeral=True,
+            )
+            return
+
+        record = await self.find_open_ticket_by_channel(
+            guild.id, interaction.channel.id
+        )
+        if record is None:
+            await interaction.response.send_message(
+                "This channel is not an open ticket.",
+                ephemeral=True,
+            )
+            return
+
+        if not await self._can_manage_ticket(interaction, record):
+            await interaction.response.send_message(
+                "You need Manage Channels or a support role to remove members.",
+                ephemeral=True,
+            )
+            return
+
+        if str(member.id) == str(record.get("opener_id")):
+            await interaction.response.send_message(
+                "You can't remove the ticket opener. Close the ticket instead.",
+                ephemeral=True,
+            )
+            return
+
+        try:
+            await interaction.channel.set_permissions(
+                member,
+                overwrite=None,
+                reason=f"/ticket remove by {interaction.user}",
+            )
+        except discord.Forbidden:
+            await interaction.response.send_message(
+                "I can't update permissions in this channel.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.send_message(
+            f"Removed {member.mention} from this ticket.",
+            ephemeral=True,
+        )

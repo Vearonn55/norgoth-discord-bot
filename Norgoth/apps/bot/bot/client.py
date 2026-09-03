@@ -146,14 +146,20 @@ class NorgothBot(commands.Bot):
             api_base_url=settings.api_base_url,
             bot_token=settings.internal_token,
         )
+        self._commands_synced_this_process = False
 
     async def setup_hook(self) -> None:
         from bot.analytics import AnalyticsCog
         from bot.automod import AutoModCog
         from bot.autoresponder import AutoResponderCog
         from bot.campaigns import CampaignsCog
+        from bot.commands.errors import install_tree_error_handler
+        from bot.commands.i18n import NorBotTranslator
         from bot.embed_sync import EmbedSyncCog
+        from bot.feed_channels import FeedChannelsCog
+        from bot.help_cog import HelpCog
         from bot.honeypot import HoneypotCog
+        from bot.info_cog import InfoCog
         from bot.invites import InvitesCog
         from bot.leveling import LevelingCog
         from bot.moderation import ModerationCog
@@ -163,9 +169,15 @@ class NorgothBot(commands.Bot):
         from bot.roles import RolesCog
         from bot.server_logging import ServerLoggingCog
         from bot.tickets import TicketCloseView, TicketPanelView, TicketsCog
-        from bot.feed_channels import FeedChannelsCog
+        from bot.verification_cog import VerificationCog
 
+        await self.tree.set_translator(NorBotTranslator())
+        install_tree_error_handler(self.tree)
+
+        await self.add_cog(HelpCog(self))
+        await self.add_cog(InfoCog(self))
         await self.add_cog(ModerationCog(self))
+        await self.add_cog(VerificationCog(self))
         await self.add_cog(AutoModCog(self))
         await self.add_cog(ServerLoggingCog(self))
         await self.add_cog(AnalyticsCog(self))
@@ -189,6 +201,7 @@ class NorgothBot(commands.Bot):
         self.heartbeat_loop.start()
         self.member_refresh_loop.start()
         self._resources_tick = 0
+        self._commands_synced_this_process = False
 
     @tasks.loop(seconds=15)
     async def heartbeat_loop(self) -> None:
@@ -315,23 +328,79 @@ class NorgothBot(commands.Bot):
         except httpx.HTTPError:
             logger.exception("Guild registration with the API failed")
 
+    async def sync_application_commands(
+        self,
+        *,
+        guild: discord.Guild | None = None,
+    ) -> None:
+        """Register slash commands according to NORBOT_COMMAND_SYNC_MODE."""
+
+        from bot.commands.registry import COMMAND_MANIFEST_VERSION
+
+        mode = self.settings.command_sync_mode
+        test_ids = set(self.settings.test_guild_ids)
+
+        if mode == "global":
+            if not self._commands_synced_this_process:
+                stored = await self.state.get_command_manifest_version()
+                if stored != COMMAND_MANIFEST_VERSION:
+                    synced = await self.tree.sync()
+                    await self.state.set_command_manifest_version(
+                        COMMAND_MANIFEST_VERSION
+                    )
+                    logger.info(
+                        "Global command sync complete version=%s count=%s",
+                        COMMAND_MANIFEST_VERSION,
+                        len(synced),
+                    )
+                else:
+                    logger.info(
+                        "Skipping global command sync; manifest version=%s unchanged",
+                        COMMAND_MANIFEST_VERSION,
+                    )
+                self._commands_synced_this_process = True
+
+            # Keep test guilds instantly updated during development.
+            for guild_id in test_ids:
+                target = self.get_guild(guild_id) or discord.Object(id=guild_id)
+                self.tree.copy_global_to(guild=target)
+                await self.tree.sync(guild=target)
+            return
+
+        # guild mode (default): sync allowlisted test guilds, or all guilds
+        # when the allowlist is empty (local / legacy deploys).
+        if guild is not None:
+            if test_ids and guild.id not in test_ids:
+                return
+            self.tree.copy_global_to(guild=guild)
+            await self.tree.sync(guild=guild)
+            return
+
+        targets = [
+            g for g in self.guilds if not test_ids or g.id in test_ids
+        ]
+        for target in targets:
+            self.tree.copy_global_to(guild=target)
+            await self.tree.sync(guild=target)
+        logger.info(
+            "Guild command sync complete mode=guild guilds=%s",
+            len(targets),
+        )
+
     async def on_ready(self) -> None:
         guild_names = ", ".join(guild.name for guild in self.guilds) or "none"
         logger.info("Bot ready as %s. Guilds: %s", self.user, guild_names)
 
         for guild in self.guilds:
             await self.sync_guild(guild)
-            # Guild-scoped sync keeps slash-command iteration instant.
-            self.tree.copy_global_to(guild=guild)
-            await self.tree.sync(guild=guild)
 
+        await self.sync_application_commands()
         await self.publish_status()
 
     async def on_guild_join(self, guild: discord.Guild) -> None:
         logger.info("Joined guild %s (%s)", guild.name, guild.id)
         await self.sync_guild(guild)
-        self.tree.copy_global_to(guild=guild)
-        await self.tree.sync(guild=guild)
+        await self.sync_application_commands(guild=guild)
         await self.publish_status()
 
     async def on_guild_channel_create(self, channel: discord.abc.GuildChannel) -> None:
