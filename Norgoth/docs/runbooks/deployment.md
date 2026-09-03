@@ -111,6 +111,29 @@ Then set GitHub Environment secrets `test` and `production`:
 If Cloudflare WAF sits in front of `api.norbot.io`, skip that path or it
 will 403.
 
+### HTTPS apply returns FastAPI `not_found` (HTTP 404)
+
+Images may already be on GHCR while apply fails. A JSON body like
+`{"error":{"code":"not_found",...}}` means **nginx proxied `/__norbot/ci-apply`
+to the API**, not to `127.0.0.1:9277`.
+
+From a laptop SSH session on the VDS:
+
+```bash
+# Prefer a fresh checkout so the hardened installer is present; otherwise pull main.
+cd /opt/norbot/src   # or your clone
+sudo bash Norgoth/scripts/vds/install-ci-apply.sh
+
+# Expect 405 (agent rejects GET), not FastAPI 404:
+curl -sI https://api.norbot.io/__norbot/ci-apply | head -1
+
+# Apply the SHA Actions already pushed (full 40-char commit):
+sudo -u norbot -H env NORBOT_IMAGE_OWNER=vearonn55 \
+  /opt/norbot/scripts/apply-release.sh production <40-char-sha>
+```
+
+Then re-run the Deploy workflow, or rely on the manual apply above.
+
 ### Apply a SHA GitHub already pushed (manual)
 
 Images for a failed deploy are on GHCR. From an SSH session that *does*

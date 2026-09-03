@@ -1,0 +1,7 @@
+# Keep generated / CI-compared text LF so Windows checkouts match Linux runners.
+*.md text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.sh text eol=lf
+*.py text eol=lf
