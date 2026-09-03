@@ -96,10 +96,13 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python -m pytest -q
       - name: Command manifest snapshot
+        working-directory: ${{ github.workspace }}
         run: |
-          python -c "import json; from bot.commands.registry import manifest_snapshot; expected=json.load(open('tests/command_manifest.snapshot.json',encoding='utf-8')); actual=manifest_snapshot(); assert actual==expected, 'command manifest drifted — update tests/command_manifest.snapshot.json'"
+          cd Norgoth/apps/bot
+          python -c "import json; from bot.commands.registry import manifest_snapshot; expected=json.load(open('tests/command_manifest.snapshot.json',encoding='utf-8')); actual=json.loads(json.dumps(manifest_snapshot())); assert actual==expected, 'command manifest drifted — update tests/command_manifest.snapshot.json'"
           python scripts/export_command_docs.py
-          git diff --exit-code -- ../../docs/commands.md || (echo 'docs/commands.md out of date; re-run export_command_docs.py' && exit 1)
+          cd "${GITHUB_WORKSPACE}"
+          git diff --ignore-cr-at-eol --exit-code -- Norgoth/docs/commands.md || (echo 'docs/commands.md out of date; re-run export_command_docs.py' && exit 1)
 
   security:
     name: Dependency audit

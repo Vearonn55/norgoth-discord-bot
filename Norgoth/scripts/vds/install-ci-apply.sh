@@ -90,25 +90,45 @@ EOF
 python3 - <<'PY'
 from pathlib import Path
 import re
+import sys
 
 zone_line = "limit_req_zone $binary_remote_addr zone=norbot_ci:10m rate=2r/m;"
 include_line = "    include snippets/norbot-ci-apply.inc;"
-candidates = [
-    Path("/etc/nginx/sites-available/norbot.conf"),
-    Path("/etc/nginx/sites-enabled/norbot.conf"),
-    Path("/etc/nginx/sites-available/norbot-test.conf"),
-    Path("/etc/nginx/sites-enabled/norbot-test.conf"),
-]
-seen = set()
+
+candidates: list[Path] = []
+for base in (Path("/etc/nginx/sites-available"), Path("/etc/nginx/sites-enabled")):
+    if not base.is_dir():
+        continue
+    for path in sorted(base.iterdir()):
+        if not path.is_file():
+            continue
+        name = path.name.lower()
+        if "norbot" in name or name.endswith(".conf"):
+            candidates.append(path)
+# Also scan conf.d for api host configs not named norbot*.
+conf_d = Path("/etc/nginx/conf.d")
+if conf_d.is_dir():
+    candidates.extend(sorted(p for p in conf_d.iterdir() if p.is_file()))
+
+seen: set[Path] = set()
+patched_api = False
+missing_hint: list[str] = []
+
 for path in candidates:
     if not path.is_file():
         continue
-    resolved = path.resolve()
+    try:
+        resolved = path.resolve()
+    except OSError:
+        continue
     if resolved in seen:
         continue
     seen.add(resolved)
     text = path.read_text(encoding="utf-8")
     original = text
+    if "api." not in text and "norbot_api" not in text:
+        continue
+
     if "zone=norbot_ci" not in text:
         idx = text.rfind("limit_req_zone")
         if idx != -1:
@@ -116,7 +136,8 @@ for path in candidates:
             text = text[: nl + 1] + zone_line + "\n" + text[nl + 1 :]
         else:
             text = zone_line + "\n" + text
-    if "__norbot/ci-apply" not in text:
+
+    if "__norbot/ci-apply" not in text and "norbot-ci-apply.inc" not in text:
         updated, n = re.subn(
             r"(location \^~ /internal/ \{.*?\n    \}\n)",
             r"\1\n" + include_line + "\n",
@@ -127,14 +148,56 @@ for path in candidates:
         if n:
             text = updated
         else:
-            print(f"Add this inside the api.* server block in {path}:")
-            print(include_line)
+            # Insert before each api server's catch-all location / (proxy to API).
+            def insert_before_api_root(match: re.Match[str]) -> str:
+                prefix, loc = match.group(1), match.group(2)
+                if "norbot-ci-apply.inc" in prefix or "__norbot/ci-apply" in prefix:
+                    return match.group(0)
+                return prefix + "\n" + include_line + "\n" + loc
+
+            text2, n2 = re.subn(
+                r"(server_name\s+api\.[^\n]+;\n(?:(?!\nserver\s*\{).)*?)(\n    location / \{)",
+                insert_before_api_root,
+                text,
+                flags=re.S,
+            )
+            if n2:
+                text = text2
+            else:
+                # Last resort: before any location / that proxies norbot_api.
+                text3, n3 = re.subn(
+                    r"(\n)(    location / \{\n(?:[^\n]*\n)*?        proxy_pass http://norbot_api;)",
+                    r"\1" + include_line + r"\n\2",
+                    text,
+                    count=1,
+                )
+                if n3:
+                    text = text3
+                else:
+                    missing_hint.append(str(path))
+
+    if "__norbot/ci-apply" in text or "norbot-ci-apply.inc" in text:
+        patched_api = True
+
     if text != original:
         bak = path.with_name(path.name + ".bak-ci-apply")
         if not bak.exists():
             bak.write_text(original, encoding="utf-8")
         path.write_text(text, encoding="utf-8")
         print(f"Updated {path}")
+
+if not patched_api:
+    print(
+        "ERROR: could not wire /__norbot/ci-apply into an api.* nginx server block.",
+        file=sys.stderr,
+    )
+    if missing_hint:
+        print("Add this line inside the api.norbot.io (and api.test) server block,", file=sys.stderr)
+        print("immediately before `location /`:", file=sys.stderr)
+        print(include_line, file=sys.stderr)
+        for p in missing_hint:
+            print(f"  file: {p}", file=sys.stderr)
+    sys.exit(1)
 PY
 
 if nginx -t; then
@@ -149,7 +212,23 @@ else
   done
   nginx -t || true
   echo "Add snippets/norbot-ci-apply.inc inside the api.* server block manually." >&2
+  exit 1
 fi
+
+# Prove the public route hits the agent (405 Method Not Allowed on GET), not FastAPI.
+PROBE_HOST="${CI_APPLY_PROBE_HOST:-api.norbot.io}"
+if command -v curl >/dev/null 2>&1; then
+  code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://${PROBE_HOST}/__norbot/ci-apply" || true)"
+  if [[ "${code}" == "405" ]]; then
+    echo "Probe OK: GET https://${PROBE_HOST}/__norbot/ci-apply → 405 (agent reachable)."
+  elif [[ "${code}" == "404" ]]; then
+    echo "WARNING: GET https://${PROBE_HOST}/__norbot/ci-apply → 404 (still FastAPI or missing route)." >&2
+    echo "Check sites-enabled and Cloudflare; agent listens on 127.0.0.1:9277." >&2
+  else
+    echo "Probe HTTP ${code:-?} for https://${PROBE_HOST}/__norbot/ci-apply (expected 405)." >&2
+  fi
+fi
+
 echo
 echo "Put this value in GitHub Environments test + production as DEPLOY_APPLY_SECRET:"
 echo

@@ -82,7 +82,23 @@ runs:
         except urllib.error.HTTPError as exc:
             raw = exc.read().decode(errors="replace")
             print(raw)
-            print(f"::error::HTTPS apply returned HTTP {exc.code}. If 404, install nginx location /__norbot/ci-apply and the ci-apply systemd unit.")
+            fastapi_404 = '"code":"not_found"' in raw.replace(" ", "") or '"code": "not_found"' in raw
+            if exc.code == 404 and fastapi_404:
+                print(
+                    "::error::HTTPS apply hit the FastAPI app (404), not the ci-apply agent. "
+                    "nginx on the VDS is missing location = /__norbot/ci-apply → 127.0.0.1:9277. "
+                    "SSH in and run: sudo bash Norgoth/scripts/vds/install-ci-apply.sh "
+                    "Then verify: curl -sI https://api.norbot.io/__norbot/ci-apply | head -1  (expect 405). "
+                    "Apply the pushed SHA manually if needed: sudo -u norbot -H "
+                    "/opt/norbot/scripts/apply-release.sh production <40-char-sha>",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    f"::error::HTTPS apply returned HTTP {exc.code}. "
+                    "If 404, install nginx location /__norbot/ci-apply and the ci-apply systemd unit.",
+                    file=sys.stderr,
+                )
             sys.exit(1)
         except urllib.error.URLError as exc:
             print(f"::error::HTTPS apply could not reach {url}: {exc}")

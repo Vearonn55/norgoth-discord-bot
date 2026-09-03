@@ -71,7 +71,8 @@ def main() -> None:
 
     out = ROOT / "docs" / "commands.md"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # Force LF so Windows checkouts do not trip Linux CI git-diff.
+    out.write_bytes(("\n".join(lines) + "\n").encode("utf-8"))
     print(f"Wrote {out}")
 
 
